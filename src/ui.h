@@ -1,0 +1,15 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+#pragma once
+#include <stdint.h>
+void ui_init(void);
+void ui_encoder(int knob, int steps);       /* KNOB1..4 (0..3) */
+void ui_button(int id);                      /* a button went down (BTN_*) */
+void ui_tick(uint32_t ms);                   /* time: animation phase */
+int  ui_scene(int *y0, int *y1);             /* what to redraw: rows [y0,y1) */
+void ui_prepare(void);                       /* once per frame, before the bands */
+void ui_draw(int y0, int y1);                /* the scene, into the current band (gfx_band) */
+void ui_octave(int d);
+int  ui_note_of_key(int key);                /* key 0..26 -> MIDI note with the octave */
+/* the panel (fm1_input.h ids) */
+enum { BTN_OCTM = 0, BTN_OCTP = 1, BTN_FX = 2, BTN_SEL = 3, BTN_ENV = 4, BTN_LFO = 5, BTN_EDIT = 6, BTN_GLO = 7,
+       BTN_HOME = 8, BTN_SAVE = 9, BTN_ARP = 10, BTN_SEQ = 11, BTN_PLAY = 12, BTN_REC = 13 };
