@@ -245,6 +245,23 @@ void gfx_cov_add_span(int x, int32_t top16, int32_t bot16, int w)     /* y in 1/
         }
     }
 }
+void gfx_band_rows(int *y0, int *y1) { *y0 = gy0; *y1 = gy1; }
+void gfx_cov_flush_a(uint32_t col, uint32_t alpha)                   /* the same at opacity alpha (0..256) */
+{
+    int y, x;
+    if (!cov_used)
+        return;
+    for (y = 0; y < gy1 - gy0; y++)
+        for (x = 0; x < SCR_W; x++) {
+            uint16_t a = cov[y * SCR_W + x];
+            if (a) {
+                a = (uint16_t)((a > 256 ? 256 : a) * alpha >> 8);
+                gb[y * SCR_W + x] = mix(gb[y * SCR_W + x], col, a);
+                cov[y * SCR_W + x] = 0;
+            }
+        }
+    cov_used = 0;
+}
 void gfx_cov_flush(uint32_t col)
 {
     int y, x;

@@ -39,6 +39,8 @@ void gfx_disc(int32_t cx, int32_t cy, int32_t rx, int32_t ry, uint32_t col);   /
 void gfx_cov_begin(void);
 void gfx_cov_add_span(int x, int32_t top16, int32_t bot16, int w);   /* coverage accumulator for the graph strokes */
 void gfx_cov_flush(uint32_t col);
+void gfx_cov_flush_a(uint32_t col, uint32_t alpha);
+void gfx_band_rows(int *y0, int *y1);
 
 /* ---- math (mathfx.c) ---- */
 extern const int16_t SIN_TAB[1025];

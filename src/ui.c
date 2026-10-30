@@ -19,7 +19,7 @@ static const page_t PAGES[PG_COUNT] = {
 };
 static void env_tick(uint32_t ms);
 static void lfo_tick(uint32_t dt);
-static uint32_t arp_now;
+static uint32_t arp_now, fx_ms;
 static int page = PG_GLO, oct;
 static uint8_t dirty_top, dirty_all = 1;
 static uint32_t ed_phase;                      /* the scope's scroll (edP), 32-bit turns */
@@ -94,6 +94,7 @@ void ui_tick(uint32_t ms)                      /* the scope scrolls: .25 + 1.5 *
     if (dt > 50u) dt = 50u;
     env_tick(ms);
     arp_now = ms;
+    fx_ms = ms % 1000000u;
     lfo_tick(dt);
     ed_phase += dt * (uint32_t)(250 + (3 * PV[P_FREQ]) / 2) * 4295u;      /* turns/ms in 2^32 / 1e6 units */
 }
@@ -173,6 +174,7 @@ static void draw_scope(void)
 #include "envgraph.c"
 #include "lfograph.c"
 #include "arpgraph.c"
+#include "fxgraph.c"
 
 /* ---- the knob cells ---- */
 #define KS 0.71983                              /* knob px per svg unit: 43.19 / 60 */
@@ -263,6 +265,7 @@ void ui_draw(int y0, int y1)                    /* the current band is [y0, y1) 
         if (page == PG_ENV) env_draw();
         else if (page == PG_LFO) lfo_draw();
         else if (page == PG_ARP || page == PG_ARP2 || page == PG_ARP3) arp_draw();
+        else if (page == PG_FX) fx_draw();
         else draw_scope();
     }
 }

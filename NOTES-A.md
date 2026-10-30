@@ -25,3 +25,9 @@
 - ui.h now exports the page enum + `ui_set_page()` / `ui_get_page()` (agent C: OP keys -> PG_ARP2/PG_ARP3, HOME+EDIT -> PG_MENU/PG_MENU2, HOME+GLO -> PG_TEMPO).
 - gfx.c: gfx_frect16 (sub-pixel rectangle with opacity).
 - Verified: host render vs capture graph 1.28/255 (current step is clock driven), emulator snapshot shows the step moving.
+
+## FX pages (src/fxgraph.c)
+16 effect graphs (Overdrive, Phaser, Flanger, Chorus, Micro pitch, Delay, Reverb, Granular, Feedback, Bitcrush, Ring mod, Stutter, Reverse, Freeze, Tape, Shimmer), drawn per band, animated from fx_ms. FX button cycles slot 1-6; Delay shows the sync box.
+Host-vs-prototype graph error mostly 0.1-3 /255; higher: fx2b ~9.8, fx7b 11.8, fx10b 5.0, fx15b 8.1 (thin outline differences only).
+Known difference: Stutter (11) and Reverb random bars (6b) use an integer hash, not the prototype's sin*43758.5 fraction, so the pseudo-random pattern differs.
+Emulator snapshot of FX1 Overdrive verified.

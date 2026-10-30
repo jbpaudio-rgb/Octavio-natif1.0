@@ -25,6 +25,15 @@ int main(int argc, char **argv)
     for (i = 3; i + 1 < argc; i += 2) {        /* "kN steps" pairs: knob N, steps */
         if (argv[i][0] == 'k') ui_encoder(argv[i][1] - '1', atoi(argv[i + 1]));
         if (argv[i][0] == 'b') ui_button(atoi(argv[i + 1]));
+        if (argv[i][0] == 'f' && argv[i][1] == 'x') {                  /* "fx 3a" / "fx 13b": effect 3 in slot 1, variant a (knobs .5, mix 0) or b (.8, mix 1, hold 1) at t = 1.234 s */
+            int e = atoi(argv[i + 1]), b = strchr(argv[i + 1], 'b') != 0, j;
+            fxs[0] = (uint8_t)e; fxo = 0; page = PG_FX; fx_ms = 1234;
+            for (j = 0; j < FX_P[e].n; j++) {
+                int l = FX_P[e].l[j];
+                PV[FX_FIRST[e] + j] = (l == L_MIX || l == L_HOLD) ? (b ? 1000 : 0) : (b ? 800 : 500);
+            }
+        }
+        if (argv[i][0] == 'p') PV[atoi(argv[i] + 1)] = (int16_t)atoi(argv[i + 1]);
     }
     vac_update();
     if (argc > 2) ed_phase = (uint32_t)strtoul(argv[2], 0, 0);
