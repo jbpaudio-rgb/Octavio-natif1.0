@@ -33,7 +33,9 @@ int main(int argc, char **argv)
                 PV[FX_FIRST[e] + j] = (l == L_MIX || l == L_HOLD) ? (b ? 1000 : 0) : (b ? 800 : 500);
             }
         }
-        if (argv[i][0] == 'p') PV[atoi(argv[i] + 1)] = (int16_t)atoi(argv[i + 1]);
+        if (argv[i][0] == 'p' && argv[i][1] >= '0' && argv[i][1] <= '9') PV[atoi(argv[i] + 1)] = (int16_t)atoi(argv[i + 1]);
+        if (argv[i][0] == 'p' && argv[i][1] == 'g') ui_set_page(atoi(argv[i + 1]));      /* "pg N": a page (PG_*) */
+        if (argv[i][0] == 't' && argv[i][1] == 'm') { ui_tick((uint32_t)atoi(argv[i + 1])); }     /* "tm ms": the clock */
     }
     vac_update();
     if (argc > 2) ed_phase = (uint32_t)strtoul(argv[2], 0, 0);

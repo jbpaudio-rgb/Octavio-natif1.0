@@ -31,3 +31,16 @@
 Host-vs-prototype graph error mostly 0.1-3 /255; higher: fx2b ~9.8, fx7b 11.8, fx10b 5.0, fx15b 8.1 (thin outline differences only).
 Known difference: Stutter (11) and Reverb random bars (6b) use an integer hash, not the prototype's sin*43758.5 fraction, so the pseudo-random pattern differs.
 Emulator snapshot of FX1 Overdrive verified.
+
+## TEMPO, MENU, HOME, FXO, SEQ (src/screens.c)
+Pages that are not a "scope graph": all drawn from the prototype's measured layout (tools: /home/claude/run-A/ref/dumprect.js dumps every element's rect/font; boxes are pixel-snapped like Chrome).
+- TEMPO (`PG_TEMPO`, chord HOME+GLO): canvas page, big BPM (Courier New bold 56 px canvas font F_TBIG), "BPM", four beat boxes (the active one fades 1-.7f with the clock: `tempo_beat()` from `ui_tick` ms and P_BPM).
+- MENU (`PG_MENU`, HOME+EDIT; MENU2 = same chord again, cells only): 16 channel boxes, assigned tracks listed ("T1,3") from P_CHS0..3.
+- HOME (`PG_HOME`): 4 strips (engine name from P_TYP0-3, fader cap from P_VOL0-3, 14-LED peak wells, red frame on the selected track). API: `ui_set_track(t)`, `ui_peak(t, q15)` (call per audio block; decays .9 per 11.6 ms like the prototype). Knobs 1-4 = the four volumes. The peak hook is NOT yet called from main.c (wells stay dark until someone calls ui_peak).
+- FXO (`PG_FXO`, entered with the black key 8 in the prototype): six tiles (FX1..6) with the grid pattern; the selected tile (`fxo`) is red, lifted by 2.88 px with a bigger shadow and 4 corner dots. SEL cycles `fxo`. The 0.22 s "hit" bounce animation is not drawn.
+- SEQ (`PG_SEQ`): "PITCH (MAJOR)"-style title (destination of the selected line), 16 steps (bar up = cream, down = red, gate dash below, selection frame, playing-step outline), three knobs KEY / STEP VALUE / AMOUNT (a bigger Vactrol knob sprite, KNOB_BIG). State: 6 lines x 16 steps (thousandths), gate mask; API `ui_seq_select(line, step)`, `ui_seq_set`, `ui_seq_gate_toggle`, `ui_seq_cur`. Encoders: knob1 = destination, 2 = key, 3 = step value (written into the step), 4 = amount. The sequencer does not play (no audio side).
+- New params (tools/gen_pext.py): P_M4T..P_M9G (line destination (72 full names), key, amount, glide) and P_STEPV (FMT_STEP: "+25").
+- New fonts (assets/fonts.json via tools/chrome_fonts.js, fonts2.json via tools/chrome_fonts2.js for canvas texts): hen, mbi, mbb, stt, tbig, tsm, mch, sql, sqv; image grew 167 KB -> 289 KB (XIP window is 581 KB).
+- Test builds can start on a page: `XCFLAGS=-DBOOT_PAGE=PG_SEQ ./build.sh`. Host: `tools/cmp.sh seq pg 12`, `pg N` / `tm ms` arguments added to host/render.c.
+Errors vs the capture (host render, mean abs /255): TEMPO cells 1.5 / graph area 4.5 (beat box differs: clock), MENU 0.8, HOME 2.2 (title band incl. name plates; rest 0.2), FXO 1.1-1.7, SEQ 0.9-3.5 (the 12th full-height bar is 1 px wider than the reference, rounded corners approximated by coverage constants).
+Known differences: the reference captures are RGB888 while the firmware screen is RGB565 (colours differ by up to 4 levels).

@@ -17,3 +17,15 @@ enum { BTN_OCTM = 0, BTN_OCTP = 1, BTN_FX = 2, BTN_SEL = 3, BTN_ENV = 4, BTN_LFO
 enum { PG_GLO, PG_EDIT, PG_ENV, PG_LFO, PG_FX, PG_ARP, PG_ARP2, PG_ARP3, PG_TEMPO, PG_MENU, PG_MENU2, PG_HOME, PG_SEQ, PG_FXO, PG_COUNT };
 void ui_set_page(int page);
 int  ui_get_page(void);
+void ui_set_track(int t);                   /* the selected track 0..3 (HOME's red frame) */
+int  ui_get_track(void);
+void ui_peak(int t, int32_t pk_q15);         /* output peak of track t (0..32767, post volume not applied) for HOME's meters */
+/* SEQ page: 6 lines x 16 steps (thousandths, -1000..1000), gate bits, selected line/step, the playing step */
+void ui_seq_select(int line, int step);
+int  ui_seq_line(void);
+int  ui_seq_step(void);
+void ui_seq_set(int line, int step, int v);
+int  ui_seq_get(int line, int step);
+void ui_seq_gate_toggle(int step);
+int  ui_seq_gate(int step);
+void ui_seq_cur(int step);                   /* -1: stopped */

@@ -16,10 +16,16 @@ static const page_t PAGES[PG_COUNT] = {
     [PG_TEMPO] = { "INTERNAL CLOCK", { "TEMPO", "\x03", "\x03", "\x03" },  { P_BPM, 255, 255, 255 } },
     [PG_MENU] = { "MIDI CHANNELS", { "T1", "T2", "T3", "T4" },              { P_CHS0, P_CHS1, P_CHS2, P_CHS3 } },
     [PG_MENU2] = { "MIDI ROUTING", { "NOTES", "CLOCK", "START", "SEND" },   { P_IONOTE, P_IOCLK, P_IOTRN, P_IOSND } },
+    [PG_FXO] = { "FX ORDER", { "", "", "", "" }, { 255, 255, 255, 255 } },
+    [PG_HOME] = { "", { "T1", "T2", "T3", "T4" },                           { P_VOL0, P_VOL1, P_VOL2, P_VOL3 } },
 };
 static void env_tick(uint32_t ms);
 static void lfo_tick(uint32_t dt);
 static uint32_t arp_now, fx_ms;
+static void home_tick(uint32_t dt);
+static int sq_line;
+static void sin_cos_deg(int32_t deg_q8, int32_t *s, int32_t *c);
+static void seq_commit(void);
 static int page = PG_GLO, oct;
 static uint8_t dirty_top, dirty_all = 1;
 static uint32_t ed_phase;                      /* the scope's scroll (edP), 32-bit turns */
@@ -34,13 +40,24 @@ static int pid_of(int k)                       /* the parameter under KNOB k+1 o
         return P_OPEN;
     if (page == PG_LFO || page == PG_FX)
         return dyn_cell(k, 0, 0);
+    if (page == PG_SEQ) {
+        static const uint8_t o[4] = { 0, 1, 255, 2 };            /* destination, key, (step value), amount: P_M4T + 4 * line + o */
+        return k == 2 ? P_STEPV : P_M4T + 4 * sq_line + o[k] ;
+    }
     return PAGES[page].p[k] == 255 ? -1 : PAGES[page].p[k];
 }
 
 void ui_set_page(int p) { if (p >= 0 && p < PG_COUNT && p != page) { page = p; dirty_all = 1; } }
 int ui_get_page(void) { return page; }
 
-void ui_init(void) { param_reset(); dirty_all = 1; }
+static void seq_sync(void);
+void ui_init(void)
+{
+    param_reset(); seq_sync(); dirty_all = 1;
+#ifdef BOOT_PAGE                                /* test builds: start on a page (XCFLAGS=-DBOOT_PAGE=PG_SEQ) */
+    page = BOOT_PAGE;
+#endif
+}
 
 void ui_octave(int d)
 {
@@ -65,6 +82,7 @@ void ui_encoder(int k, int steps)              /* one detent = 1/50 of the range
         param_set_n(id, nv);
         wheel[k] = nv;
         wheel_p[k] = id;
+        if (id == P_STEPV) seq_commit();
     }
     dirty_top = 1;
 }
@@ -96,13 +114,14 @@ void ui_tick(uint32_t ms)                      /* the scope scrolls: .25 + 1.5 *
     arp_now = ms;
     fx_ms = ms % 1000000u;
     lfo_tick(dt);
+    home_tick(dt);
     ed_phase += dt * (uint32_t)(250 + (3 * PV[P_FREQ]) / 2) * 4295u;      /* turns/ms in 2^32 / 1e6 units */
 }
 
 int ui_scene(int *y0, int *y1)
 {
     if (dirty_all) { dirty_all = 0; dirty_top = 0; *y0 = 0; *y1 = SCR_H; return 1; }
-    *y0 = dirty_top ? 0 : 124;
+    *y0 = dirty_top || page == PG_HOME ? 0 : 124;
     *y1 = 206;
     dirty_top = 0;
     return 1;
@@ -175,6 +194,7 @@ static void draw_scope(void)
 #include "lfograph.c"
 #include "arpgraph.c"
 #include "fxgraph.c"
+#include "screens.c"
 
 /* ---- the knob cells ---- */
 #define KS 0.71983                              /* knob px per svg unit: 43.19 / 60 */
@@ -247,14 +267,18 @@ void ui_draw(int y0, int y1)                    /* the current band is [y0, y1) 
 {
     int k;
     gfx_bg();
+    if (page == PG_HOME) { home_draw(); return; }
+    if (page == PG_SEQ) { seq_draw(); return; }
     {
         char tb[32];
         const char *t = PAGES[page].title;
         int32_t w;
         if (page == PG_LFO || page == PG_FX) { dyn_title(tb); t = tb; }
-        w = gfx_text_w64(F_TITLE, t, 65);
-        gfx_text(F_TITLE, t, 460 + ((14440 - w) >> 1), 23, COL_TEXT, 65, 0, 233);   /* centred in 7.19 .. 232.82 */
+        int ls = page == PG_FXO ? 0 : 65;                                  /* #fot has no letter-spacing */
+        w = gfx_text_w64(F_TITLE, t, ls);
+        gfx_text(F_TITLE, t, 460 + ((14440 - w) >> 1), 23, COL_TEXT, ls, 0, 233);   /* centred in 7.19 .. 232.82 */
     }
+    if (page == PG_FXO) { fxo_draw(); return; }
     for (k = 0; k < 4; k++)
         draw_cell(k);
     if (page == PG_LFO)
@@ -266,6 +290,8 @@ void ui_draw(int y0, int y1)                    /* the current band is [y0, y1) 
         else if (page == PG_LFO) lfo_draw();
         else if (page == PG_ARP || page == PG_ARP2 || page == PG_ARP3) arp_draw();
         else if (page == PG_FX) fx_draw();
+        else if (page == PG_TEMPO) tempo_draw();
+        else if (page == PG_MENU) menu_draw();
         else draw_scope();
     }
 }
