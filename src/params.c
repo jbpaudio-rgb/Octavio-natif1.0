@@ -167,3 +167,11 @@ void param_text(int id, char *out)
     }
     *o = 0;
 }
+
+void param_text_ms(int attack, int s, char *out)    /* an envelope time: attack 2000^s ms, the others .005 * 600^s s (engine pages) */
+{
+    char *o = out;
+    if (attack) o = put_dur(o, (exp2_fx(lg(s, K_L2000), 8) + 128u) >> 8);
+    else o = put_dur(o, (exp2_fx(lg(s, K_L600), 8) * 5u + 128u) >> 8);
+    *o = 0;
+}

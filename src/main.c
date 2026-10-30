@@ -55,7 +55,12 @@ static int ctrl_bank_key_cb(int key)                  /* HOME held / SAVE BANK: 
 {
     static const uint8_t WH[12] = { 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1 };
     int k, w = 0;
-    if (!ctrl_bank_mode() || !WH[(53 + key) % 12]) return 0;
+    if (!WH[(53 + key) % 12]) {                           /* a black key: the OP key o (chords with EDIT / GLO / ENV held) */
+        int o = 0;
+        for (k = 0; k < key; k++) o += !WH[(53 + k) % 12];
+        return ctrl_op_key(o);
+    }
+    if (!ctrl_bank_mode()) return 0;
     for (k = 0; k < key; k++) w += WH[(53 + k) % 12];
     return ctrl_bank_key(w, ms);
 }

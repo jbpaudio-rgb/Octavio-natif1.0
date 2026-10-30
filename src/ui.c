@@ -34,6 +34,7 @@ static uint32_t last_ms;
 static int32_t wheel[4];                       /* the knobs' unrounded positions (the prototype's `ws`) */
 static int wheel_p[4] = { -1, -1, -1, -1 };
 #include "pages.c"                             /* dynamic pages (LFO, FX), page state */
+#include "engine_pages.c"                      /* the Minimoog / Prophet / drum settings pages */
 
 static int pid_of(int k)                       /* the parameter under KNOB k+1 on this page (ENV: cutoff in low-pass) */
 {
@@ -70,6 +71,8 @@ int ui_note_of_key(int key) { return 53 + key + 12 * oct; }
 void ui_encoder(int k, int steps)              /* one detent = 1/50 of the range, like the prototype's wheel */
 {
     int i, n = steps < 0 ? -steps : steps;
+    if (ep_on()) { ep_encoder(k, steps); dirty_top = 1; return; }
+    if (ep_strips()) { epm_encoder(k, steps); dirty_top = 1; return; }
     for (i = 0; i < n; i++) {
         int id = pid_of(k);
         int32_t g;
@@ -121,7 +124,8 @@ void ui_tick(uint32_t ms)                      /* the scope scrolls: .25 + 1.5 *
 
 static int page_of(int pgn)                    /* the controller's PGN_* -> this screen's PG_* */
 {
-    static const int8_t M[PGN_COUNT] = { PG_GLO, PG_EDIT, PG_ENV, PG_LFO, PG_FX, PG_FXO, PG_ARP, PG_SEQ, PG_HOME, PG_MENU, PG_MENU2, PG_TEMPO };
+    static const int8_t M[PGN_COUNT] = { PG_GLO, PG_EDIT, PG_ENV, PG_LFO, PG_FX, PG_FXO, PG_ARP, PG_SEQ, PG_HOME, PG_MENU, PG_MENU2, PG_TEMPO,
+                                         PG_OSC1, PG_OSC2, PG_OSC3, PG_OSC4, PG_ENV2, PG_GLO2 };
     return pgn >= 0 && pgn < PGN_COUNT ? M[pgn] : page;
 }
 static void ctrl_sync(void)                    /* the controller's state -> the pages' (page, LFO source, FX slot, HOME's track) */
@@ -221,6 +225,7 @@ static void draw_scope(void)
 #include "arpgraph.c"
 #include "fxgraph.c"
 #include "screens.c"
+#include "engine_graphs.c"
 
 /* ---- the knob cells ---- */
 #define KS 0.71983                              /* knob px per svg unit: 43.19 / 60 */
@@ -238,10 +243,14 @@ static void sin_cos_deg(int32_t deg_q8, int32_t *s, int32_t *c)     /* degrees (
 #define PTR_B 368
 #define PTR_R 203
 #endif
-static void draw_knob(int cx, int cy, int32_t n_q16, uint32_t am)       /* am: opacity 0..256 (a dimmed cell) */
+static uint32_t dimmix(uint32_t c);
+extern const uint8_t KNOB_SPRM0[], KNOB_SPRM1[], KNOB_SPRP0[], KNOB_SPRP1[], KNOB_SPRD0[], KNOB_SPRD1[];
+static void draw_knob(int cx, int cy, int32_t n_q16, uint32_t am)       /* am: opacity 0..256 (a dimmed cell); the skin follows the track's engine */
 {
     int32_t ox = KX8[cx], oy = KY8[cy], cxq = ox + 5528, cyq = oy + 5528;       /* centre = origin + 30 * 0.71983 px */
-    int i;
+    int i, skin = voices_engine(voices_sel());
+    const uint8_t *spr = skin == ENG_MOOG ? (cx ? KNOB_SPRM1 : KNOB_SPRM0) : skin == ENG_PROPH ? (cx ? KNOB_SPRP1 : KNOB_SPRP0)
+                         : skin == ENG_DRUM ? (cx ? KNOB_SPRD1 : KNOB_SPRD0) : (cx ? KNOB_SPR1 : KNOB_SPR0);
     for (i = 0; i < 11; i++) {                                                  /* the 11 ticks */
         int32_t s, c;
         int lit = (int32_t)i * 6554 <= n_q16 + 66;
@@ -249,12 +258,21 @@ static void draw_knob(int cx, int cy, int32_t n_q16, uint32_t am)       /* am: o
         gfx_capsule(cxq + ((s * 4237) >> 15), cyq - ((c * 4237) >> 15), cxq + ((s * 5159) >> 15), cyq - ((c * 5159) >> 15),
                     184, lit ? COL_TEXT : COL_DIMTICK, am);                    /* r 23 .. 28 svg units, stroke 2 */
     }
-    gfx_sprite(cx ? KNOB_SPR1 : KNOB_SPR0, ox >> 8, oy >> 8, 44, am);
+    gfx_sprite(spr, ox >> 8, oy >> 8, 44, am);
     {
         int32_t s, c, deg = -135 * 256 + (int32_t)(((int64_t)n_q16 * 270 * 256) >> 16);
         sin_cos_deg(deg, &s, &c);
-        gfx_capsule(cxq + ((s * PTR_A) >> 15), cyq - ((c * PTR_A) >> 15), cxq + ((s * PTR_B) >> 15), cyq - ((c * PTR_B) >> 15),
-                    PTR_R, 0x15181bu, am);                                       /* the pointer, (30,17.5)-(30,28) */
+        if (skin == ENG_MOOG) {                                                  /* a cream dot on the rim: circle (30, 11) r 3, stroke .5 */
+            int32_t dx = cxq + ((s * 3502) >> 15), dy = cyq - ((c * 3502) >> 15);
+            gfx_disc(dx, dy, 599, 599, am < 256 ? dimmix(0x000000u) : 0x000000u);
+            gfx_disc(dx, dy, 507, 507, am < 256 ? dimmix(0xf4f1e6u) : 0xf4f1e6u);
+        } else if (skin == ENG_PROPH)                                            /* a thin light line from 3.5 to 14.5 units out */
+            gfx_capsule(cxq + ((s * 2672) >> 15), cyq - ((c * 2672) >> 15), cxq + ((s * 645) >> 15), cyq - ((c * 645) >> 15), 166, 0xf4f4f0u, am);
+        else if (skin == ENG_DRUM)                                               /* a dark bar, 2.8 x 7 units, 7 .. 14 out */
+            gfx_capsule(cxq + ((s * 2322) >> 15), cyq - ((c * 2322) >> 15), cxq + ((s * 1548) >> 15), cyq - ((c * 1548) >> 15), 258, 0x141414u, am);
+        else
+            gfx_capsule(cxq + ((s * PTR_A) >> 15), cyq - ((c * PTR_A) >> 15), cxq + ((s * PTR_B) >> 15), cyq - ((c * PTR_B) >> 15),
+                        PTR_R, 0x15181bu, am);                                   /* the pointer, (30,17.5)-(30,28) */
     }
 }
 
@@ -269,22 +287,25 @@ static uint32_t dimmix(uint32_t c)                                            /*
 }
 static void draw_cell(int k)
 {
-    int cx = k & 1, cy = k >> 1, id = pid_of(k), dim = id < 0;
+    int cx = k & 1, cy = k >> 1, id = pid_of(k), dim = id < 0, eon = ep_on(), clip = cx ? 233 : 116;      /* a cell clips its text at its own edge */
     const char *lab = PAGES[page].names[k];
     char v[16];
     if (page == PG_LFO || page == PG_FX)
         dyn_cell(k, &lab, &dim);
-    draw_knob(cx, cy, dim ? -1000 : param_n_q16(id), dim ? DIM_A : 256);
-    gfx_text(F_LABEL, id == P_OPEN ? "CUTOFF" : lab, TXT_X64[cx], LAB_BASE[cy], COL_LABEL, LS_CELL, 0, 233);
+    if (eon) { id = EP.id[k]; dim = id < 0; lab = EP.nm[k]; }
+    draw_knob(cx, cy, dim ? -1000 : eon ? ep_n_q16(id) : param_n_q16(id), dim ? DIM_A : 256);
+    gfx_text(F_LABEL, id == P_OPEN && !eon ? "CUTOFF" : lab, TXT_X64[cx], LAB_BASE[cy], COL_LABEL, LS_CELL, 0, clip);
     if (dim)
         return;
-    cell_text(id, v);
-    gfx_text(F_VALUE, v, TXT_X64[cx], VAL_BASE[cy], COL_TEXT, LS_CELL, 0, 233);
+    if (eon) ep_text(id, v); else cell_text(id, v);
+    gfx_text(F_VALUE, v, TXT_X64[cx], VAL_BASE[cy], COL_TEXT, LS_CELL, 0, clip);
 }
 
 void ui_prepare(void)
 {
-    if (page == PG_ENV) env_prepare();
+    if (ep_on()) epg_prepare();
+    else if (ep_strips()) { }
+    else if (page == PG_ENV) env_prepare();
     else if (page == PG_LFO) lfo_prepare();
     else scope_prepare();
 }
@@ -300,11 +321,13 @@ static void ui_draw_page(int y0, int y1)
     int k;
     gfx_bg();
     if (page == PG_HOME) { home_draw(); return; }
+    if (ep_strips()) { epm_draw(); return; }
     if (page == PG_SEQ) { seq_draw(); return; }
     {
         char tb[32];
         const char *t = PAGES[page].title;
         int32_t w;
+        if (ep_on()) t = EP.title;
         if (page == PG_LFO || page == PG_FX) { dyn_title(tb); t = tb; }
         int ls = page == PG_FXO ? 0 : 65;                                  /* #fot has no letter-spacing */
         w = gfx_text_w64(F_TITLE, t, ls);
@@ -318,7 +341,8 @@ static void ui_draw_page(int y0, int y1)
     else if (page == PG_FX && fxs[fxo] == 5)
         sync_box(PV[P_F5SYNC]);
     if (y1 > 124 && y0 < 206) {
-        if (page == PG_ENV) env_draw();
+        if (ep_on()) epg_draw();
+        else if (page == PG_ENV) env_draw();
         else if (page == PG_LFO) lfo_draw();
         else if (page == PG_ARP || page == PG_ARP2 || page == PG_ARP3) arp_draw();
         else if (page == PG_FX) fx_draw();

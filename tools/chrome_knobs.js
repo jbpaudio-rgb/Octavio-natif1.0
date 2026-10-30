@@ -3,10 +3,12 @@ const {chromium}=require('playwright');const fs=require('fs');
 const PROTO=process.env.PROTO;
 (async()=>{const b=await chromium.launch();
 const p0=await b.newPage({viewport:{width:1100,height:1000}});await p0.goto('file://'+PROTO);await p0.waitForTimeout(300);
-let svg=await p0.evaluate(()=>kv(0,false));
+const ENG=+(process.env.ENG||0);
+if(ENG){await p0.evaluate(()=>{document.getElementById('pwrsw').click()});await p0.waitForTimeout(2500)}
+let svg=await p0.evaluate((e)=>{if(e){const s=document.getElementById('eng');s.selectedIndex=e;s.dispatchEvent(new Event('change',{bubbles:true}))}return kv(0,false)},ENG);
 svg=svg.replace(/<line x1="[0-9.]+" y1="[0-9.]+" x2="[0-9.]+" y2="[0-9.]+" stroke="#(f2efe6|3a3a3a)" stroke-width="2" stroke-linecap="round"\/>/g,'');
-svg=svg.replace(/<g transform="rotate\([^"]*\)"><line [^>]*\/><\/g>/,'');
-console.log('pointer left?',/stroke="#15181b"/.test(svg));
+svg=svg.replace(/<g transform="rotate\([^"]*\)"><(?:line|circle|rect) [^>]*\/><\/g>/,'');
+console.log('pointer left?',/<g transform="rotate/.test(svg));
 const S=+(process.env.KS||43.2),cells=JSON.parse(process.env.CELLS||'[[7.19,32.14],[123.59,32.14]]'),NN=+(process.env.NN||44),OUT=process.env.OUT||'knob.json';
 const res=[];
 const shots={};

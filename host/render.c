@@ -13,8 +13,12 @@
 #include "../src/gfx.c"
 #include "../src/params.c"
 #include "../src/vactrol.c"
+#include "../src/voices.c"
+#include "../src/ctrl.c"
+#include "../src/overlay.c"
 #include "../src/ui.c"
 void ui_params_changed(void) {}
+static int ctrl_bank_key_cb(int key) { (void)key; return 0; }
 int main(int argc, char **argv)
 {
     static uint16_t band[SCR_W * 8];
@@ -22,9 +26,13 @@ int main(int argc, char **argv)
     int y, i;
     ui_init();
     vac_init();
+    voices_init();
     for (i = 3; i + 1 < argc; i += 2) {        /* "kN steps" pairs: knob N, steps */
         if (argv[i][0] == 'k') ui_encoder(argv[i][1] - '1', atoi(argv[i + 1]));
         if (argv[i][0] == 'b') ui_button(atoi(argv[i + 1]));
+        if (argv[i][0] == 'e' && argv[i][1] == 'n') voices_set_engine(0, atoi(argv[i + 1]));            /* "en N": the engine of track 1 */
+        if (argv[i][0] == 'd' && argv[i][1] == 'v') dv[0] = (uint8_t)atoi(argv[i + 1]);                  /* "dv N": the drum voice shown */
+        if (argv[i][0] == 'v' && argv[i][1] == 'p') { int id = atoi(argv[i + 1]), val = atoi(strchr(argv[i + 1], ',') + 1); voices_param(0, voices_engine(0), id, val); }   /* "vp id,value" */
         if (argv[i][0] == 'f' && argv[i][1] == 'x') {                  /* "fx 3a" / "fx 13b": effect 3 in slot 1, variant a (knobs .5, mix 0) or b (.8, mix 1, hold 1) at t = 1.234 s */
             int e = atoi(argv[i + 1]), b = strchr(argv[i + 1], 'b') != 0, j;
             fxs[0] = (uint8_t)e; fxo = 0; page = PG_FX; fx_ms = 1234;

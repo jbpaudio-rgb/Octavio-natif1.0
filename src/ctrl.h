@@ -6,7 +6,8 @@
 #include <stdint.h>
 
 /* the prototype's `pg` names */
-enum { PGN_GLO, PGN_EDIT, PGN_ENV, PGN_LFO, PGN_FX, PGN_FXO, PGN_ARP, PGN_SEQ, PGN_HOME, PGN_MENU, PGN_MENU2, PGN_TEMPO, PGN_COUNT };
+enum { PGN_GLO, PGN_EDIT, PGN_ENV, PGN_LFO, PGN_FX, PGN_FXO, PGN_ARP, PGN_SEQ, PGN_HOME, PGN_MENU, PGN_MENU2, PGN_TEMPO,
+       PGN_OSC1, PGN_OSC2, PGN_OSC3, PGN_OSC4, PGN_ENV2, PGN_GLO2, PGN_COUNT };   /* OSC1..4, ENV2, GLO2: the Minimoog / Prophet / drum pages */
 /* the prototype's buttons, in the order of its #bt row (ui.h BTN_*: the panel ids) */
 enum { CB_FX, CB_SEL, CB_ENV, CB_LFO, CB_EDIT, CB_GLO, CB_HOME, CB_SAVE, CB_ARP, CB_SEQ, CB_PLAY, CB_REC, CB_COUNT };
 enum { ROLE_SELECT, ROLE_ALGO, ROLE_PRESETS };      /* the left cluster's encoders */
@@ -27,6 +28,8 @@ int  ctrl_src(void);                                /* the LFO source (SELECT kn
 int  ctrl_track(void);                              /* the selected track (HOME: SELECT knob) 0..3 */
 int  ctrl_fx_slot(void);                            /* FX pressed on FX: the slot 0..5 */
 int  ctrl_octave_val(void);
+int  ctrl_drum_voice(void);                         /* the drum voice 0..5 the EDIT / ENV pages show (ENV / EDIT held + an OP key) */
+int  ctrl_op_key(int o);                            /* a black key (0..) pressed: 1 when a held button made it a chord (no note) */
 int  ctrl_playing(void), ctrl_rec(void);
 uint32_t ctrl_lit(void);                            /* buttons whose LED is on: bit CB_* (current page, PLAY, REC, locks) */
 uint32_t ctrl_locked(void);                         /* bit CB_*: latched by a double tap */
