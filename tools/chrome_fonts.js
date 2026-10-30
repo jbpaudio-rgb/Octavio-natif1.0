@@ -1,14 +1,14 @@
 // Renders the prototype's glyphs with Chrome (same raster as the prototype) -> assets/fonts.json
 // usage: node tools/chrome_fonts.js   (needs playwright)
 const {chromium}=require('playwright');const fs=require('fs');
-const STACK='ui-monospace, Menlo, Consolas, monospace';
+const STACK0='ui-monospace, Menlo, Consolas, monospace';
 const FONTS=JSON.parse(fs.readFileSync(__dirname+'/fonts_spec.json','utf8'));
 const SPECIAL=['\u25CF','\u00B7','\u2014','\u2026','\u25B6','\u25A0'];
 const charset=(set)=>{const a=[];for(let c=32;c<127;c++){const ch=String.fromCharCode(c);if(set==='upper'&&ch>='a'&&ch<='z')continue;a.push(ch)}return a.concat(SPECIAL)};
 const PH=[0,0.25,0.5,0.75];
 (async()=>{const b=await chromium.launch();const out={};
 for(const F of FONTS){
- const CH=charset(F.set||'full');
+ const STACK=F.stack||STACK0;const CH=F.chars?F.chars.split(''):charset(F.set||'full');
  const p=await b.newPage({viewport:{width:48*16,height:64*Math.ceil(CH.length/16)+8},deviceScaleFactor:1});
  const cell=(i)=>({x:(i%16)*48,y:Math.floor(i/16)*64+4});
  const phases=[];
