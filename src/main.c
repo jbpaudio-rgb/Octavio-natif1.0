@@ -35,6 +35,8 @@
 #include "overlay.c"
 #include "leds.c"
 #include "ui.c"
+#include "fxdsp.c"
+#include "lfo.c"
 
 extern uint32_t _data_start[], _data_end[], _data_load[], _bss_start[], _bss_end[];
 extern uint32_t _rt_start[], _rt_end[], _rt_load[];
@@ -78,11 +80,18 @@ void fm1_alnk0_irq(void)
             vac_update();
         }
         voices_keys(now);                           /* kOnT / kOffT of the selected track (the bank keys: voices.c) */
+        mod_apply(HALF_FRAMES);                     /* LFOs / S&H -> destinations (lfo.c), put back by mod_restore */
         voices_render(tmp, HALF_FRAMES);
+        mod_restore();
         for (i = 0; i < HALF_FRAMES; i++) {
             int32_t s = (int32_t)(((int64_t)tmp[i] * (int32_t)master_q12) >> 12);
             s = s > 32767 ? 32767 : s < -32768 ? -32768 : s;
             o[2u * i] = o[2u * i + 1u] = s * (1 << 7);          /* Q15 -> 24 bit, -6 dBFS ceiling */
+#ifdef MOD_TEST
+            o[2u * i] = s * (1 << 7); o[2u * i + 1u] = mod_tap * 32 * (1 << 7);          /* test builds: R = PV[MOD_ID] (modulated), x16 in the wav */
+#elif defined(FX_TEST)                                         /* test builds: L = the bus after the effects, R = before, raw Q15 / 2 (no master, no tanh) */
+            { int32_t w = fx_wet_tap[i] >> 1, d = fx_dry_tap[i] >> 1; w = w > 32767 ? 32767 : w < -32768 ? -32768 : w; d = d > 32767 ? 32767 : d < -32768 ? -32768 : d; o[2u * i] = w * (1 << 7); o[2u * i + 1u] = d * (1 << 7); }
+#endif
         }
         fm1_audio_ack_half();
     }
