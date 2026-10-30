@@ -19,3 +19,9 @@
 - ui.c button map: ENV, EDIT->FM page, GLO->GLOBAL, LFO (again: next source of 6), FX (again: next slot of 6), ARP, HOME, SEQ, SEL (on FX ORDER: next slot).
 - Verified (host render vs capture, tools/ref_all.js + tools/cmp.sh): LFO 1 cells 0.94, graph 9.6 (phase animated; same waveform), LFO 5 (S&H) graph 3.2; emulator shows the wave scrolling and LFO 1..4 switching.
 - Not implemented: modulation routing (Dest/Amount only stored), the S&H/LFO values do not drive any engine parameter.
+
+## ARP / ARP2 / ARP3 — done
+- src/arpgraph.c: darp() port: 16 steps on the 5-line grid, step list from arpBuild() (modes Up/Down/Up-Dn/Dn-Up/Random/Played/Conv/Div, octaves, repeat, pattern), swing/gate/accent/chance, current step follows bpm * rate. `arp_set_held()` is the hook for the key handling (without held keys the prototype shows the 60-64-67 triad).
+- ui.h now exports the page enum + `ui_set_page()` / `ui_get_page()` (agent C: OP keys -> PG_ARP2/PG_ARP3, HOME+EDIT -> PG_MENU/PG_MENU2, HOME+GLO -> PG_TEMPO).
+- gfx.c: gfx_frect16 (sub-pixel rectangle with opacity).
+- Verified: host render vs capture graph 1.28/255 (current step is clock driven), emulator snapshot shows the step moving.

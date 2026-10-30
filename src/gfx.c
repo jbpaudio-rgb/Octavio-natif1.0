@@ -97,6 +97,25 @@ void gfx_text(int f, const char *s, int32_t x64, int base, uint32_t col, int32_t
     }
 }
 
+/* a rectangle with sub-pixel edges (1/16 px), colour col at opacity a (0..256) */
+void gfx_frect16(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint32_t col, uint32_t a)
+{
+    int px, py, ya = y0 >> 4, yb = (y1 - 1) >> 4, xa = x0 >> 4, xb = (x1 - 1) >> 4;
+    if (ya < gy0) ya = gy0;
+    if (yb >= gy1) yb = gy1 - 1;
+    if (xa < 0) xa = 0;
+    if (xb >= SCR_W) xb = SCR_W - 1;
+    for (py = ya; py <= yb; py++) {
+        int32_t oy = (y1 < (py + 1) * 16 ? y1 : (py + 1) * 16) - (y0 > py * 16 ? y0 : py * 16);
+        uint16_t *row = gb + (py - gy0) * SCR_W;
+        for (px = xa; px <= xb; px++) {
+            int32_t ox = (x1 < (px + 1) * 16 ? x1 : (px + 1) * 16) - (x0 > px * 16 ? x0 : px * 16);
+            if (ox > 0 && oy > 0)
+                row[px] = mix(row[px], col, (uint32_t)(ox * oy * (int32_t)a) >> 8);
+        }
+    }
+}
+
 /* an 8-bit alpha mask (a pre-rendered piece of static chrome) in one colour */
 void gfx_mask(const uint8_t *m, int x0, int y0, int w, int h, uint32_t col)
 {

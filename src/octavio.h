@@ -30,6 +30,7 @@ void gfx_text(int f, const char *s, int32_t x64, int base, uint32_t col, int32_t
 int32_t gfx_text_w64(int f, const char *s, int32_t ls64);
 void gfx_capsule(int32_t x0, int32_t y0, int32_t x1, int32_t y1, int32_t r, uint32_t col, uint32_t amul);  /* Q8 px */
 void gfx_sprite(const uint8_t *spr, int x0, int y0, int n, uint32_t amul);
+void gfx_frect16(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint32_t col, uint32_t a);
 void gfx_mask(const uint8_t *m, int x0, int y0, int w, int h, uint32_t col);
 void gfx_hline(int x0, int x1, int y, uint32_t col, uint32_t a);
 void gfx_vline(int x, int y0, int y1, uint32_t col, uint32_t a);

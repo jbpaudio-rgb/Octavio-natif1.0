@@ -5,7 +5,6 @@
 #include "params.h"
 #include "ui.h"
 
-enum { PG_GLO, PG_EDIT, PG_ENV, PG_LFO, PG_FX, PG_ARP, PG_ARP2, PG_ARP3, PG_TEMPO, PG_MENU, PG_MENU2, PG_HOME, PG_SEQ, PG_FXO, PG_COUNT };
 typedef struct { const char *title; const char *names[4]; uint8_t p[4]; } page_t;
 static const page_t PAGES[PG_COUNT] = {
     [PG_GLO]  = { "FM",     { "FM ENV", "MOD WAVE", "RATIO", "FM" },        { P_FENV, P_MWAVE, P_RATIO, P_FM } },
@@ -20,6 +19,7 @@ static const page_t PAGES[PG_COUNT] = {
 };
 static void env_tick(uint32_t ms);
 static void lfo_tick(uint32_t dt);
+static uint32_t arp_now;
 static int page = PG_GLO, oct;
 static uint8_t dirty_top, dirty_all = 1;
 static uint32_t ed_phase;                      /* the scope's scroll (edP), 32-bit turns */
@@ -36,6 +36,9 @@ static int pid_of(int k)                       /* the parameter under KNOB k+1 o
         return dyn_cell(k, 0, 0);
     return PAGES[page].p[k] == 255 ? -1 : PAGES[page].p[k];
 }
+
+void ui_set_page(int p) { if (p >= 0 && p < PG_COUNT && p != page) { page = p; dirty_all = 1; } }
+int ui_get_page(void) { return page; }
 
 void ui_init(void) { param_reset(); dirty_all = 1; }
 
@@ -90,6 +93,7 @@ void ui_tick(uint32_t ms)                      /* the scope scrolls: .25 + 1.5 *
     last_ms = ms;
     if (dt > 50u) dt = 50u;
     env_tick(ms);
+    arp_now = ms;
     lfo_tick(dt);
     ed_phase += dt * (uint32_t)(250 + (3 * PV[P_FREQ]) / 2) * 4295u;      /* turns/ms in 2^32 / 1e6 units */
 }
@@ -168,6 +172,7 @@ static void draw_scope(void)
 #include "graphs.c"
 #include "envgraph.c"
 #include "lfograph.c"
+#include "arpgraph.c"
 
 /* ---- the knob cells ---- */
 #define KS 0.71983                              /* knob px per svg unit: 43.19 / 60 */
@@ -257,6 +262,7 @@ void ui_draw(int y0, int y1)                    /* the current band is [y0, y1) 
     if (y1 > 124 && y0 < 206) {
         if (page == PG_ENV) env_draw();
         else if (page == PG_LFO) lfo_draw();
+        else if (page == PG_ARP || page == PG_ARP2 || page == PG_ARP3) arp_draw();
         else draw_scope();
     }
 }

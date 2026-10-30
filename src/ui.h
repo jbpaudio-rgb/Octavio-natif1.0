@@ -13,3 +13,7 @@ int  ui_note_of_key(int key);                /* key 0..26 -> MIDI note with the 
 /* the panel (fm1_input.h ids) */
 enum { BTN_OCTM = 0, BTN_OCTP = 1, BTN_FX = 2, BTN_SEL = 3, BTN_ENV = 4, BTN_LFO = 5, BTN_EDIT = 6, BTN_GLO = 7,
        BTN_HOME = 8, BTN_SAVE = 9, BTN_ARP = 10, BTN_SEQ = 11, BTN_PLAY = 12, BTN_REC = 13 };
+/* the pages of the prototype (ui_set_page: for the OP keys -> ARP2/ARP3, the HOME+EDIT / HOME+GLO chords -> MENU/MENU2/TEMPO, SEL -> FXO ...) */
+enum { PG_GLO, PG_EDIT, PG_ENV, PG_LFO, PG_FX, PG_ARP, PG_ARP2, PG_ARP3, PG_TEMPO, PG_MENU, PG_MENU2, PG_HOME, PG_SEQ, PG_FXO, PG_COUNT };
+void ui_set_page(int page);
+int  ui_get_page(void);
