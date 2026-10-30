@@ -45,6 +45,8 @@ int  ctrl_playing(void), ctrl_rec(void);
 uint32_t ctrl_lit(void);                            /* buttons whose LED is on: bit CB_* (current page, PLAY, REC, locks) */
 uint32_t ctrl_locked(void);                         /* bit CB_*: latched by a double tap */
 int  ctrl_bank_mode(void);                          /* HOME held or SAVE BANK waiting: the keys pick a bank */
+int  ctrl_bank_mode_key(void);                      /* the same for a note key arriving in the audio ISR (counts the buttons physically down: ctrl_hw_held) */
+void ctrl_hw_held(uint32_t cb_mask);                 /* the ISR: the buttons (bit CB_*) physically down now; the chords of the next note keys count them as held */
 int  ctrl_bank_cur(void);                           /* the current bank, -1 none */
 int  ctrl_bank_key(int w, uint32_t ms);             /* a white key (0..15) in bank mode: load (or SAVE BANK: save); 1 = used */
 

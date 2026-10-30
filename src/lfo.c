@@ -20,7 +20,7 @@ enum { MOD_N = 6, MOD_SAVE = 32 };
 static struct { uint32_t ph; int32_t shv, shs; } MS_[4][MOD_N];       /* per track and source: LFO phase (turns, Q32); S&H: held value and smoothed value (Q15) */
 static struct { uint8_t kind, t, eng; int16_t id, base; } mod_sv[MOD_SAVE];      /* kind 0 PV, 1 arpeggiator table, 2 engine parameter */
 static int mod_nsv, mod_vac_dirty, mod_ready;
-uint32_t mod_t0;                           /* CPU: worst mod_apply + mod_restore (timer ticks) */
+uint32_t mod_t0, mod_acc;                  /* CPU: worst mod_apply + mod_restore (timer ticks; octavio-J: H's figure also contained voices_render, which runs between the two) */
 
 static int32_t lfo_wf(uint32_t ph, int shape)             /* wf(): sine / triangle / saw / square, Q15 */
 {
@@ -162,6 +162,7 @@ void mod_apply(int n)
     }
     for (t = 0; t < 4; t++) { voices_lvl_mod(t, lvl[t]); voices_sqg_mod(t, sqg[t]); }
     if (vac || mod_vac_dirty) { vac_update(); mod_vac_dirty = 0; }
+    mod_acc = fm1_ticks() - mod_t0;
 #ifdef MOD_TEST
     mod_tap = MOD_ID >= P_F0DRIVE && MOD_ID <= P_F15MIX ? FEFF[fx_view][MOD_ID - P_F0DRIVE] : PV[MOD_ID];
 #endif
@@ -169,6 +170,7 @@ void mod_apply(int n)
 void mod_restore(void)
 {
     int k, vac = 0;
+    uint32_t t1 = fm1_ticks();
     for (k = mod_nsv - 1; k >= 0; k--) {
         mod_put(mod_sv[k].kind, mod_sv[k].t, mod_sv[k].eng, mod_sv[k].id, mod_sv[k].base);
         if (mod_sv[k].kind == 0) vac = 1;
@@ -176,8 +178,11 @@ void mod_restore(void)
     mod_nsv = 0;
     if (vac) mod_vac_dirty = 1;                       /* the derived values stay modulated until the next block's mod_apply recomputes them (once per block) */
     {
-        uint32_t d = fm1_ticks() - mod_t0;
+        uint32_t d = mod_acc + (fm1_ticks() - t1);
         if (d > mod_ticks_max) mod_ticks_max = d;
+#ifndef NO_PERF
+        perf.mod_last = d;
+#endif
     }
 }
 

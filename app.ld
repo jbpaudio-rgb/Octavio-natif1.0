@@ -9,7 +9,7 @@ MEMORY
 {
     XIP    (rx)  : ORIGIN = 0x02000120, LENGTH = 0x8DFBC
     RAMTEXT (rwx): ORIGIN = 0x01C00000, LENGTH = 0x6000
-    RAM    (rwx) : ORIGIN = 0x01C08000, LENGTH = 420K   /* the SRAM runs to the stacks at 0x01C74000 (hard limit 432K); the effects' delay-line pools (fxdsp.c) are 4 x 72 KB of it; the link fails if .data+.bss outgrow 420K */
+    RAM    (rwx) : ORIGIN = 0x01C08000, LENGTH = 432K   /* the SRAM runs to the stacks at 0x01C74000 (hard limit 432K); the effects' delay-line pools (fxdsp.c) are 4 x 72 KB of it; the link fails if .data+.bss outgrow 420K */
     NOINIT (rw)  : ORIGIN = 0x01C7C000, LENGTH = 0x3D50
 }
 SECTIONS

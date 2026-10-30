@@ -528,25 +528,49 @@ void fx_begin(void)                                     /* once per audio block,
     fx_blk_ticks = 0;
     for (t = 0; t < FX_NTRK; t++) {
         memcpy(FEFF[t], FXT[t].p, sizeof FEFF[t]);
-        if (!fx_ready[t] || memcmp(fx_sig[t], FXT[t].ord, FX_NSLOT)) { fx_alloc(t); fx_ready[t] = 1; fx_idle[t] = 0; fx_run[t] = 0; }
+        if (!fx_ready[t] || memcmp(fx_sig[t], FXT[t].ord, FX_NSLOT)) {
+#ifndef NO_PERF
+            uint32_t ta = fm1_ticks();
+#endif
+            fx_alloc(t); fx_ready[t] = 1; fx_idle[t] = 0; fx_run[t] = 0;
+#ifndef NO_PERF
+            if (perf.blocks > PERF_WARM) { uint32_t d = fm1_ticks() - ta; perf.alloc_n++; perf.alloc_sum += d; if (d > perf.alloc_max) perf.alloc_max = d; }
+#endif
+        }
     }
 }
 void fx_admit(void)                                     /* once per audio block, after mod_apply: which active slots (Mix > 0, modulated) the CPU budget lets run */
 {
     int t, q;
     {                                                   /* CPU budget: an active slot (Mix > 0) runs once admitted; the ones already running keep their place, new ones are admitted in track / slot order while they fit */
-        uint32_t used = 0;
+        uint32_t used = 0, extra = 0;
         for (t = 0; t < FX_NTRK; t++)
             for (q = 0; q < FX_NSLOT; q++) {
                 int f = FXT[t].ord[q];
                 if (FEFF[t][FX_FIRST[f] + FX_P[f].n - 1 - P_F0DRIVE] > 0) { if (fx_run[t] >> q & 1) used += FX_COST[f]; }
                 else { fx_run[t] &= (uint8_t)~(1u << q); fx_off[t] &= (uint8_t)~(1u << q); }
             }
+#ifndef NO_GOV
+        if (gov_peak > GOV_SHED && !gov_wait && used) {  /* overload (measured): bypass the last running slots (track 4 slot 4 first) until about GOV_AIM is freed */
+            uint32_t over = gov_peak - GOV_AIM, freed = 0;
+            for (t = FX_NTRK - 1; t >= 0 && freed < over; t--)
+                for (q = FX_NSLOT - 1; q >= 0 && freed < over; q--)
+                    if (fx_run[t] >> q & 1) {
+                        freed += GOV_UNIT(FX_COST[FXT[t].ord[q]]);
+                        fx_run[t] &= (uint8_t)~(1u << q); fx_off[t] |= (uint8_t)(1u << q); fx_refused++; gov.fx++;
+                    }
+            gov_wait = GOV_WAIT; gov_cool = GOV_COOL;
+        }
+#endif
         for (t = 0; t < FX_NTRK; t++)
             for (q = 0; q < FX_NSLOT; q++) {
                 int f = FXT[t].ord[q];
                 if (FEFF[t][FX_FIRST[f] + FX_P[f].n - 1 - P_F0DRIVE] <= 0 || (fx_run[t] >> q & 1)) continue;
-                if (used + FX_COST[f] <= FX_BUDGET) { used += FX_COST[f]; fx_run[t] |= (uint8_t)(1u << q); fx_off[t] &= (uint8_t)~(1u << q); }
+#ifndef NO_GOV
+                if (gov_on && gov_n < 4u) continue;             /* no measure yet */
+                if (gov_cool || gov_peak + extra + GOV_UNIT(FX_COST[f]) > GOV_ADMIT) { if (!(fx_off[t] >> q & 1)) fx_refused++; fx_off[t] |= (uint8_t)(1u << q); continue; }
+#endif
+                if (used + FX_COST[f] <= FX_BUDGET) { used += FX_COST[f]; extra += GOV_UNIT(FX_COST[f]); fx_run[t] |= (uint8_t)(1u << q); fx_off[t] &= (uint8_t)~(1u << q); }
                 else { if (!(fx_off[t] >> q & 1)) fx_refused++; fx_off[t] |= (uint8_t)(1u << q); }
             }
     }
@@ -614,6 +638,9 @@ void fx_track(int t, int32_t *x, int n, int act)        /* the chain of track t,
     }
 #ifdef FX_TEST
     if (t == 0) for (i = 0; i < n; i++) fx_wet_tap[i] = x[i];
+#endif
+#ifndef NO_PERF
+    if (perf.blocks > PERF_WARM) { uint32_t d = fm1_ticks() - t0; perf.tf_sum[t] += d; if (d > perf.tf_max[t]) perf.tf_max[t] = d; }
 #endif
     fx_blk_ticks += fm1_ticks() - t0;
     fx_ticks_last = fx_blk_ticks;
