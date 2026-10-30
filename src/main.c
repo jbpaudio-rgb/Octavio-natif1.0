@@ -29,6 +29,7 @@
 #include "gfx.c"
 #include "params.c"
 #include "vactrol.c"
+#include "voices.c"
 #include "ui.c"
 
 extern uint32_t _data_start[], _data_end[], _data_load[], _bss_start[], _bss_end[];
@@ -44,7 +45,6 @@ static struct { uint32_t magic, pending, failed; } guard __attribute__((section(
 static int32_t abuf[2u * HALF_WORDS] __attribute__((aligned(4)));
 static volatile uint32_t master_q12 = 2800;
 static volatile uint8_t params_dirty = 1;
-static uint32_t keys_prev, keys_down;
 extern void isr_alnk0(void);
 
 void ui_params_changed(void) { params_dirty = 1; }
@@ -54,26 +54,14 @@ void fm1_alnk0_irq(void)
     uint8_t p = fm1_audio_pending();
     fm1_audio_ack_aux(p);
     if (p & FM1_AUDIO_HALF) {
-        uint32_t half = fm1_audio_free_half(), i, now = fm1_in.notes, ch;
+        uint32_t half = fm1_audio_free_half(), i, now = fm1_in.notes;
         int32_t *o = &abuf[half * HALF_WORDS], tmp[HALF_FRAMES];
         if (params_dirty) {
             params_dirty = 0;
             vac_update();
         }
-        ch = now ^ keys_prev;                       /* the keys: last note wins, off when none is held */
-        for (i = 0; ch && i < 27u; i++)
-            if ((ch >> i) & 1u) {
-                if ((now >> i) & 1u) {
-                    keys_down |= 1u << i;
-                    vac_note_on(ui_note_of_key((int)i));
-                } else {
-                    keys_down &= ~(1u << i);
-                    if (!keys_down)
-                        vac_note_off();
-                }
-            }
-        keys_prev = now;
-        vac_render(tmp, HALF_FRAMES);
+        voices_keys(now);                           /* kOnT / kOffT of the selected track */
+        voices_render(tmp, HALF_FRAMES);
         for (i = 0; i < HALF_FRAMES; i++) {
             int32_t s = (int32_t)(((int64_t)tmp[i] * (int32_t)master_q12) >> 12);
             s = s > 32767 ? 32767 : s < -32768 ? -32768 : s;
@@ -272,6 +260,7 @@ static void app_main(void)
     lcd_init();
     ui_init();
     vac_init();
+    voices_init();
     fm1_input_init();
     fm1_adc_init();
     for (i = 0; i < 2u * HALF_WORDS; i++)
