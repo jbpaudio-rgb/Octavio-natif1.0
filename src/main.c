@@ -74,6 +74,14 @@ void fm1_alnk0_irq(void)
             }
         keys_prev = now;
         vac_render(tmp, HALF_FRAMES);
+        {                                       /* HOME's meter: the block's peak of track 1 */
+            int32_t pk = 0;
+            for (i = 0; i < HALF_FRAMES; i++) {
+                int32_t a = tmp[i] < 0 ? -tmp[i] : tmp[i];
+                if (a > pk) pk = a;
+            }
+            ui_peak(0, pk > 32767 ? 32767 : pk);
+        }
         for (i = 0; i < HALF_FRAMES; i++) {
             int32_t s = (int32_t)(((int64_t)tmp[i] * (int32_t)master_q12) >> 12);
             s = s > 32767 ? 32767 : s < -32768 ? -32768 : s;
