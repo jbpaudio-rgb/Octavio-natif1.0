@@ -98,11 +98,11 @@ void ui_button(int b)
     else if (b == BTN_EDIT) np = PG_GLO;       /* on the Vactrol: EDIT shows the FM page, GLO the global one */
     else if (b == BTN_GLO) np = PG_EDIT;
     else if (b == BTN_LFO) { if (page == PG_LFO) lfo_src = (lfo_src + 1) % 6; np = PG_LFO; }
-    else if (b == BTN_FX) { if (page == PG_FX) fxo = (fxo + 1) % 6; np = PG_FX; }
+    else if (b == BTN_FX) { if (page == PG_FX) fxo = (fxo + 1) % FX_NSLOT; np = PG_FX; }
     else if (b == BTN_ARP) np = PG_ARP;
     else if (b == BTN_HOME) np = PG_HOME;
     else if (b == BTN_SEQ) np = PG_SEQ;
-    else if (b == BTN_SEL && page == PG_FXO) fxo = (fxo + 1) % 6;
+    else if (b == BTN_SEL && page == PG_FXO) fxo = (fxo + 1) % FX_NSLOT;
     if (np != page || b == BTN_LFO || b == BTN_FX || b == BTN_SEL) {
         page = np;
         dirty_all = 1;
@@ -137,6 +137,7 @@ static void ctrl_sync(void)                    /* the controller's state -> the 
     fxo = ctrl_fx_slot();
     ui_set_track(ctrl_track());
     voices_select(ctrl_track());
+    fx_select(ctrl_track());                   /* the FX knobs in PV[] are the selected track's */
 }
 void ui_goto(int p)                            /* the controller shows page PGN_p (its state follows through ctrl_sync) */
 {

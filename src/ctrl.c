@@ -316,14 +316,14 @@ static void btn(int t, uint32_t ms)                /* btn(): a button's action (
     if (t == CB_ENV) pg = PGN_ENV;
     else if (t == CB_EDIT) pg = cur_engine() == ENG_VAC ? PGN_GLO : PGN_EDIT;     /* Vactrol: EDIT shows the FM page, GLO the global one; the others: EDIT = filter / drum voice, GLO = mixer */
     else if (t == CB_GLO) pg = cur_engine() == ENG_VAC ? PGN_EDIT : cur_engine() == ENG_DRUM ? (pg == PGN_GLO ? PGN_GLO2 : PGN_GLO) : PGN_GLO;
-    else if (t == CB_FX) { if (pg == PGN_FX) fxo = (fxo + 1) % 6; else pg = PGN_FX; }
+    else if (t == CB_FX) { if (pg == PGN_FX) fxo = (fxo + 1) % FX_NSLOT; else pg = PGN_FX; }
     else if (t == CB_LFO) { if (pg == PGN_LFO) src = (src + 1) % 6; else pg = PGN_LFO; }
     else if (t == CB_HOME) pg = PGN_HOME;
     else if (t == CB_SEQ) pg = PGN_SEQ;
     else if (t == CB_PLAY) { auto_play = !auto_play; }
     else if (t == CB_REC) { rec = !rec; }
     else if (t == CB_ARP) pg = PGN_ARP;
-    else if (t == CB_SEL && pg == PGN_FXO) fxo = (fxo + 1) % 6;
+    else if (t == CB_SEL && pg == PGN_FXO) fxo = (fxo + 1) % FX_NSLOT;
     else if (t == CB_SAVE) { save_preset(); return; }
     else return;                                    /* "Not assigned" */
     bump();
@@ -473,7 +473,13 @@ int ctrl_drum_voice(void) { return dv[sel & 3]; }
 int ctrl_op_key(int o)                              /* the prototype's black-key chords: EDIT / GLO + OP1..4 = OSC pages, ENV + OP1/2 = ENV / ENV2, drums: ENV / EDIT + OP1..6 = voice */
 {
     int e = cur_engine(), h_edit = (bdn >> CB_EDIT) & 1, h_glo = (bdn >> CB_GLO) & 1, h_env = (bdn >> CB_ENV) & 1;
-    if (o < 4 && (e == ENG_MOOG || e == ENG_PROPH) && (h_edit || h_glo)) {
+    if (((bdn >> CB_FX) & 1) && (pg == PGN_FX || pg == PGN_FXO) && o < FX_NSLOT) {       /* FX held + OP1..: the slot of the selected track (the prototype has six, native FX_NSLOT) */
+        chord = 1; fxo = o; pg = PGN_FX;
+    } else if (((bdn >> CB_FX) & 1) && o == 7) {                                       /* FX + OP8: the delay's tempo sync (toggleSync("FX")) */
+        chord = 1; PV[P_F5SYNC] = !PV[P_F5SYNC]; ui_params_changed();
+    } else if (o == 7 && !h_edit && !h_glo && !h_env) {                                  /* OP8: FX ORDER */
+        pg = PGN_FXO;
+    } else if (o < 4 && (e == ENG_MOOG || e == ENG_PROPH) && (h_edit || h_glo)) {
         int np = PGN_OSC1 + o;
         chord = 1; pg = pg == np ? PGN_GLO : np;
     } else if ((pg == PGN_ENV || pg == PGN_ENV2) && h_env && o < 2 && (o == 0 || e == ENG_MOOG || e == ENG_PROPH)) {
@@ -486,6 +492,15 @@ int ctrl_op_key(int o)                              /* the prototype's black-key
         return 0;
     bump();
     ui_goto(pg);
+    return 1;
+}
+void ctrl_cpu_full(uint32_t ms) { toast("CPU FULL", "FX BYPASSED", ms); bump(); }
+int ctrl_fx_key(int w, uint32_t ms)                 /* a white key with FX held on the FX page: effect w (0..15) into the selected slot of the selected track; 1 = used */
+{
+    if (!((bdn >> CB_FX) & 1) || pg != PGN_FX || w < 0 || w > 15) return 0;
+    chord = 1;
+    fx_assign(fxo, w);
+    bump(); ui_goto(pg);
     return 1;
 }
 int ctrl_src(void) { return src; }

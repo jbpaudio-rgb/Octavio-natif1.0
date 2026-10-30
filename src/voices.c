@@ -54,6 +54,7 @@ static void eng_off(int t)
 void voices_init(void)
 {
     int t, i;
+    fx_defaults();
     for (t = 0; t < NTRK; t++) {
         TK[t].eng = (uint8_t)(t == 0 ? ENG_VAC : t == 1 ? ENG_MOOG : t == 2 ? ENG_PROPH : ENG_DRUM);
         TK[t].vol = 26214;
@@ -284,7 +285,8 @@ uint32_t voices_gate_mask(void)
     return m;
 }
 
-void fx_bus(int32_t *x, int n);                 /* fxdsp.c */
+void fx_track(int t, int32_t *x, int n, int act);          /* fxdsp.c: the track's chain, in place */
+int fx_awake(int t);
 void voices_render(int32_t *out, int n)
 {
     int32_t tmp[128];
@@ -292,14 +294,20 @@ void voices_render(int32_t *out, int n)
     int64_t acc[128];
     for (i = 0; i < n; i++) acc[i] = 0;
     for (t = 0; t < NTRK; t++) {
+        int act = 1;
         arp_tick(t, n);
         switch (TK[t].eng) {
-        case ENG_VAC: if (t != vac_owner) continue; vac_render(tmp, n); break;
-        case ENG_MOOG: if (!moog_active(t)) continue; moog_render(t, tmp, n); break;
-        case ENG_PROPH: if (!proph_active(t)) continue; proph_render(t, tmp, n); break;
-        case ENG_DRUM: if (!drum_active(t)) continue; drum_render(t, tmp, n); break;
-        default: continue;
+        case ENG_VAC: if (t != vac_owner) act = 0; else vac_render(tmp, n); break;
+        case ENG_MOOG: if (!moog_active(t)) act = 0; else moog_render(t, tmp, n); break;
+        case ENG_PROPH: if (!proph_active(t)) act = 0; else proph_render(t, tmp, n); break;
+        case ENG_DRUM: if (!drum_active(t)) act = 0; else drum_render(t, tmp, n); break;
+        default: act = 0; break;
         }
+        if (!act) {                             /* silent engine: only the chain's tail (delay, reverb ...) while it lasts */
+            if (!fx_awake(t)) continue;
+            for (i = 0; i < n; i++) tmp[i] = 0;
+        }
+        fx_track(t, tmp, n, act);               /* the track's effects (fxdsp.c), then the track volume as the prototype: F(tb[i]) * t.vol */
         {                                       /* HOME's meter: this block's peak of the track */
             int32_t pk = 0;
             for (i = 0; i < n; i++) { int32_t a = tmp[i] < 0 ? -tmp[i] : tmp[i]; if (a > pk) pk = a; }
@@ -307,10 +315,8 @@ void voices_render(int32_t *out, int n)
         }
         for (i = 0; i < n; i++) acc[i] += (int64_t)tmp[i] * TK[t].vol;
     }
-    for (i = 0; i < n; i++) tmp[i] = (int32_t)(acc[i] >> 15);
-    fx_bus(tmp, n);                             /* the 6 effect slots (fxdsp.c), on the sum of the tracks */
     for (i = 0; i < n; i++) {
-        int32_t s = (int32_t)(((int64_t)tmp[i] * 34406) >> 15);            /* * 1.05 (1.5 * .7) */
+        int32_t s = (int32_t)(((acc[i] >> 15) * 34406) >> 15);            /* * 1.05 (1.5 * .7) */
         out[i] = c_tanh(s);
     }
 }

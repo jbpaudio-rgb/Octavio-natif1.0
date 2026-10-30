@@ -29,6 +29,7 @@
 #include "assets_gen.c"
 #include "gfx.c"
 #include "params.c"
+#include "fxstate.c"
 #include "vactrol.c"
 #include "voices.c"
 #include "ctrl.c"
@@ -63,8 +64,9 @@ static int ctrl_bank_key_cb(int key)                  /* HOME held / SAVE BANK: 
         for (k = 0; k < key; k++) o += !WH[(53 + k) % 12];
         return ctrl_op_key(o);
     }
-    if (!ctrl_bank_mode()) return 0;
     for (k = 0; k < key; k++) w += WH[(53 + k) % 12];
+    if (ctrl_fx_key(w, ms)) return 1;
+    if (!ctrl_bank_mode()) return 0;
     return ctrl_bank_key(w, ms);
 }
 
@@ -73,14 +75,19 @@ void fm1_alnk0_irq(void)
     uint8_t p = fm1_audio_pending();
     fm1_audio_ack_aux(p);
     if (p & FM1_AUDIO_HALF) {
-        uint32_t half = fm1_audio_free_half(), i, now = fm1_in.notes;
+        uint32_t half = fm1_audio_free_half(), i, now = fm1_in.notes, t_blk = fm1_ticks();
         int32_t *o = &abuf[half * HALF_WORDS], tmp[HALF_FRAMES];
         if (params_dirty) {
             params_dirty = 0;
             vac_update();
         }
         voices_keys(now);                           /* kOnT / kOffT of the selected track (the bank keys: voices.c) */
+#ifdef BENCH
+        bench_tick();
+#endif
+        fx_begin();                                 /* the tracks' FX knobs for this block (fxdsp.c) */
         mod_apply(HALF_FRAMES);                     /* LFOs / S&H -> destinations (lfo.c), put back by mod_restore */
+        fx_admit();                                 /* the CPU budget: which active effect slots run (fxdsp.c) */
         voices_render(tmp, HALF_FRAMES);
         mod_restore();
         for (i = 0; i < HALF_FRAMES; i++) {
@@ -94,6 +101,10 @@ void fm1_alnk0_irq(void)
 #endif
         }
         fm1_audio_ack_half();
+        perf.audio_last = fm1_ticks() - t_blk;                     /* CPU measure of the whole audio half-block (69,660 ticks = 100 %) */
+        perf.audio_sum += perf.audio_last;
+        if (perf.audio_last > perf.audio_max) perf.audio_max = perf.audio_last;
+        if (++perf.blocks > 200 && perf.audio_last > perf.audio_max_w) perf.audio_max_w = perf.audio_last;      /* worst block after the first 0.6 s (allocation and start-up excluded) */
     }
 }
 
@@ -348,6 +359,7 @@ static void app_main(void)
             if ((s = fm1_enc_take(1u)) != 0) ctrl_side(ROLE_ALGO, (int)s, now);
             if ((s = fm1_enc_take(6u)) != 0) ctrl_side(ROLE_PRESETS, (int)s, now);
             ctrl_tick(now);
+            { static uint32_t seen; if (fx_refused != seen) { seen = fx_refused; ctrl_cpu_full(now); } }      /* an effect did not fit the CPU budget */
         }
         for (i = 0; i < 4u; i++) {
             int32_t s = fm1_enc_take(2u + i);
