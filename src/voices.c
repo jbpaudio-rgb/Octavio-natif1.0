@@ -176,6 +176,30 @@ void voices_arp(int t, int id, int v)
     a->p[id] = (int16_t)v;
     if (id == ARP_MODE || id == ARP_OCT || id == ARP_REP) varp_build(a);
 }
+void voices_arp_state_get(int t, uint8_t *o)
+{
+    arp_t *a = &TK[t & 3].a;
+    int k, n = (a->p[ARP_MODE] && a->p[ARP_LATCH]) ? a->nheld : 0;       /* keys really held are not state: only a latched chord is */
+    o[0] = (uint8_t)n;
+    for (k = 0; k < 8; k++) o[1 + k] = k < n ? a->held[k] : 0;
+    if (!a->p[ARP_MODE]) { for (k = 9; k < ARP_STATE_N; k++) o[k] = 0; return; }       /* off: no position */
+    o[9] = (uint8_t)a->i; o[10] = (uint8_t)(a->i >> 8); o[11] = (uint8_t)a->cur; o[12] = (uint8_t)(a->cur >> 8);
+    for (k = 0; k < 4; k++) o[13 + k] = (uint8_t)((uint32_t)a->cnt >> (8 * k));
+}
+void voices_arp_state_set(int t, const uint8_t *b)
+{
+    arp_t *a = &TK[t & 3].a;
+    int k, n = b[0] > 8 ? 8 : b[0];
+    int32_t c = (int32_t)((uint32_t)b[13] | ((uint32_t)b[14] << 8) | ((uint32_t)b[15] << 16) | ((uint32_t)b[16] << 24));
+    if (!a->p[ARP_MODE]) return;
+    eng_off(t & 3);
+    a->goff = 0;
+    a->nheld = (uint8_t)(a->p[ARP_LATCH] ? n : 0);
+    for (k = 0; k < a->nheld; k++) a->held[k] = b[1 + k] & 127;
+    varp_build(a);
+    a->i = (uint16_t)(b[9] | (b[10] << 8)); a->cur = (uint16_t)(b[11] | (b[12] << 8));
+    a->cnt = c < 0 ? 0 : c > FS * 8 ? FS * 8 : c;
+}
 int voices_arp_get(int t, int id) { return TK[t & 3].a.p[id]; }
 void voices_arp_pos(int t, int *cur, int *len) { *cur = TK[t & 3].a.cur; *len = TK[t & 3].a.nlist; }
 

@@ -12,6 +12,7 @@ A preset (SAVE) and a key scene (HOME + SAVE, then a white key) now hold the who
 | 0x04 ARP | arpeggiator page `PV[P_ARPMODE..P_ARPPAT]` |
 | 0x05 SEQ, 0x06 STEPS | sequencer lines (destination, key, amount, step value) and the 6 x 16 step values |
 | 0x09 TARP | the 4 tracks' arpeggiators as `voices_arp` holds them (4 x 12) |
+| 0x0A ARPS (added in the second delivery, rev 1) | each track's arpeggiator position, 17 raw bytes per track: the latched chord in its order (only while Latch is on: keys really held are not state), the current step, the step counter / phase until the next step; written only when an arpeggiator is on. The direction is not a separate state (Up-Dn, Dn-Up, Conv, Div are baked into the note list, rebuilt from the saved mode / octaves / repeat); Random uses the global generator, not saved |
 | 0x10 + 3 * track + (engine - 1) | the Minimoog (31), Prophet (32) and drum (66, DR_KIT slot left out: it is a command) parameters of that track: all 12 (track, engine) pairs, not only the engine a track runs now |
 | 0x07 MIX | track volumes `PV[P_VOL0..3]` (key scenes only, like the prototype's `q.vol`) |
 
@@ -34,11 +35,17 @@ Flash record = 16-byte header (magic "OCTB", version, payload length, CRC-32 of 
 | presets | 0x93000, 4 sectors (15 344 B) | 0xEB000, 6 sectors (23 024 B), 0xEB000..0xF1000 |
 | scenes | 0xE7000, 2 sectors | 0xE7000, 4 sectors (15 344 B), 0xE7000..0xEB000 |
 0xF1000..0xFC000 stays free. Records are cut in 0xF00-byte pieces, one per 4 KiB sector (bytes 0xF00..0xFFF stay erased: update-loader record rule, as before; the 0xE8F00 stock record location is inside a scene piece boundary and untouched). Only the sectors a record needs are erased. Pages are programmed from the end to the start, header last, IRQs off around each call (as before).
-Why bigger: a full entry is up to 1 729 B (all 12 engine blocks + Vactrol/LFO/FX/arp/seq), the old 4 sectors would hold 8 worst-case presets. With the sparse coding a typical preset (one Minimoog edited, 7 Vactrol knobs, 3 FX knobs) is 215 B + 18 B header.
-RAM: the pools (23 024 + 15 344 B + a 1.9 KB entry buffer) replace the old `bank[48]` + `scn` + `ps_buf` (36 KB): `_bss_end` 0x01C46A00 -> 0x01C47140 (+1.8 KB net). The 4-sector scenes and 6-sector presets are checked by static asserts in persist.c against the pools.
+Why bigger: a full entry is up to 1 801 B (all 12 engine blocks + Vactrol/LFO/FX/arp/seq), the old 4 sectors would hold 8 worst-case presets. With the sparse coding a typical preset (one Minimoog edited, 7 Vactrol knobs, 3 FX knobs) is 215 B + 18 B header.
+RAM: the pools (23 024 + 15 344 B + a 1.9 KB entry buffer) replace the old `bank[48]` + `scn` + `ps_buf` (36 KB): `_bss_end` 0x01C46A00 -> 0x01C47140 (+1.8 KB net, unchanged by the second delivery). The 4-sector scenes and 6-sector presets are checked by static asserts in persist.c against the pools.
+
+## Envelopes and arpeggiator (second delivery)
+* Every envelope *setting* was already in the record, nothing was missing: Vactrol envelope `P_EAD, P_ATK, P_EDEC, P_FENV, P_DECAY, P_OPEN, P_MODE` (CORE); Minimoog / Prophet amp and filter envelopes (`*_ATK/DEC/SUS/REL`, `*_FATK/FDEC/FSUS/FREL`) and the drum attack / pitch peak / hold / decay of each voice (engine sections of every track).
+* Prototype: `snapAll()` stores `vals`, `fx` and `seq` only, never an arpeggiator position or a voice state. What is restored here goes further than the prototype for the arpeggiator only (the latched chord and step, which a player would expect to come back), because that state is musical.
+* Not saved, on purpose: oscillator phases, the instantaneous envelope level / stage, filter and delay memories, noise generator state. They are transient (they change every sample) and a preset load is a note boundary: the engines of the loaded tracks are released (`eng_off`, `vac_note_off`) and restart from their settings on the next note; restoring a mid-release level would only make a click. The envelope stage of a sounding note therefore does not survive a load.
+* Old records (no 0x0A) load as before: the arpeggiators keep their position.
 
 ## Limits when full
-BANK_MAX is still 48. A save that does not fit (pool full or 48 entries) is refused with the toast "BANK FULL / NOT SAVED" and changes nothing (the old preset stays). Capacity (host test, random values): 25 % of all values edited: 32 presets (avg 715 B) fit; every one of ~600 values edited: 13 presets, 8 of 16 scenes (a scene is 1 728 B worst case, the 15 344 B scene region fits 16 scenes up to ~950 B each: typical scenes are 130..700 B).
+BANK_MAX is still 48. A save that does not fit (pool full or 48 entries) is refused with the toast "BANK FULL / NOT SAVED" and changes nothing (the old preset stays). Capacity (host test, random values, arpeggiators running with a latched chord): 25 % of all values edited: 29 presets (avg 780 B) fit; every one of ~600 values edited: 12 presets, 8 of 16 scenes (a scene is 1 801 B worst case, the 15 344 B scene region fits 16 scenes up to ~950 B each: 16 scenes at 25 % edited use 12.5 KB; typical scenes are 130..700 B).
 
 ## Tests
 `tests/state_test.c` (gcc on the host, same sources as the firmware, an in-memory NOR flash that rejects erases / programs outside the allowed ranges, over-programming and crossing a 0xF00 piece):
@@ -49,15 +56,15 @@ BANK_MAX is still 48. A save that does not fit (pool full or 48 entries) is refu
 * old-format records (built byte for byte like the old persist.c) at 0x93000 / 0xE7000: read, converted, loaded; first new save rewrites in the new format and erases the old copy;
 * power cut injected at each of the first 23 flash operations of a save: always the old record, the new record or an empty bank (the sector holding the header is erased first: the old record is gone from then on, as before this change), never a mixed one;
 * an image written by `tools/mkflashrec.py` (independent Python encoder) boots and loads;
-* a full bank refuses a save without changing anything; clean under `-fsanitize=address,undefined`.
-Firmware image (build.sh + mkpkg, octavio.bin 521 268 B) run in fm1-emu: SAVE, SAVE lists "VACT 01"; HOME + SAVE + first white key shows "BANK 1 SAVED / 4 TRACKS"; ALGORITHM to MOOG, then HOME + the same key shows "BANK 1 LOADED" and the Vactrol page is back. FM1_FLASH_TRACE: boot reads the headers at 0x93000, 0xEB000, 0xE7000; a preset save erases 0xEB000 (one sector) and programs 161 B there; a scene save erases 0xE7000 and programs 152 B (only the sectors needed).
+* a full bank refuses a save without changing anything; clean under `-fsanitize=address` (UBSan only reports left shifts of negative values inside vactrol.c / eng_*.c, which the test now reaches by rendering audio; not from this change). The round trip also compares each track's arpeggiator position (latched chord, step, phase).
+Firmware image (build.sh + mkpkg, octavio.bin 521 700 B) run in fm1-emu: SAVE, SAVE lists "VACT 01"; HOME + SAVE + first white key shows "BANK 1 SAVED / 4 TRACKS"; ALGORITHM to MOOG, then HOME + the same key shows "BANK 1 LOADED" and the Vactrol page is back. FM1_FLASH_TRACE: boot reads the headers at 0x93000, 0xEB000, 0xE7000; a preset save erases 0xEB000 (one sector) and programs 161 B there; a scene save erases 0xE7000 and programs 152 B (only the sectors needed).
 `host/render.c` links again (a `fx_bus` stub). The old `tests/ctrl_test.c` does not link without voices.c (it did not before either).
 
 ## Not tested / honest limits
 * Not on hardware: real erase/program time (a preset save now erases up to 6 sectors instead of 4, a scene save up to 4 instead of 2, synchronously in the UI path as before; only the sectors the record needs), flash endurance.
 * fm1-emu does not keep the chip between runs (and `--fwsc` overwrites `--raw-flash`), so "survives a restart" was proved on the host with the real persist.c against an in-memory flash, not in the emulator. The emulator was used for the save and load UI paths in one run.
 * Notes held while a preset loads are cut (`vac_note_off`, engine changes); the sound of other engines' running voices is not reset.
-* Voice-level runtime state (envelopes, phases) is not saved; neither is the arpeggiator's running position.
+* Voice-level runtime state (envelope level / stage, oscillator phases) is not saved (see above). The arpeggiator position is restored only when its mode is on; the Random mode's next note is not reproducible.
 * `PV[P_VOL*]` is not wired to the track level by the rest of the firmware (voices_track_level is only called when a scene is loaded now); the HOME faders' wiring is not part of this work.
-* The saved arpeggiator exists twice (PV page values and the per-track tables of voices.c) because the firmware does not link them yet; both are restored.
+* The arpeggiator parameters exist twice (PV page values and the per-track tables of voices.c) because the firmware does not link them yet; both are restored.
 * A preset made on an older firmware keeps only the Vactrol / LFO / FX / arp / seq PV sections; loading it leaves the engines untouched.

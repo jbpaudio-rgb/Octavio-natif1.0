@@ -35,6 +35,9 @@ uint32_t voices_gate_mask(void);                     /* bit t: track t is soundi
 int  voices_arp_note(int t);                        /* the note the arpeggiator is playing now (-1: none) */
 uint32_t voices_held_keys(int t, int base);          /* bit k: note base+k is held (keys / arp latch), k = 0..26 */
 void voices_arp_pos(int t, int *cur, int *len);
+#define ARP_STATE_N 17                              /* bytes of one track's arpeggiator position: nheld, held[8], i u16, cur u16, cnt i32 */
+void voices_arp_state_get(int t, uint8_t *o);        /* the held notes (latch only), step, phase: for presets */
+void voices_arp_state_set(int t, const uint8_t *b);
 /* engines */
 void moog_init(int t);
 void moog_set(int t, int id, int v);

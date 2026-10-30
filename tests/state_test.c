@@ -68,7 +68,7 @@ typedef struct {
     int16_t pv[P_COUNT];
     int16_t mg[4][MG_COUNT], pr[4][PR_COUNT], dr[4][DR_COUNT];
     int16_t arp[4][ARP_COUNT], sq[96];
-    uint8_t eng[4], owner;
+    uint8_t eng[4], owner, arps[4][ARP_STATE_N];
 } snap_t;
 static void take(snap_t *s)
 {
@@ -80,6 +80,7 @@ static void take(snap_t *s)
         for (i = 0; i < DR_COUNT; i++) s->dr[t][i] = (int16_t)voices_param_get(t, ENG_DRUM, i);
         for (i = 0; i < ARP_COUNT; i++) s->arp[t][i] = (int16_t)voices_arp_get(t, i);
         s->eng[t] = (uint8_t)voices_engine(t);
+        voices_arp_state_get(t, s->arps[t]);
     }
     for (i = 0; i < 96; i++) s->sq[i] = (int16_t)ui_seq_get(i / 16, i % 16);
     s->owner = (uint8_t)voices_vac_owner();
@@ -98,6 +99,7 @@ static int diff(const snap_t *a, const snap_t *b, int scene, const char *what)
         for (i = 0; i < PR_COUNT; i++) if (a->pr[t][i] != b->pr[t][i]) { bad++; if (bad < 6) if (vb) printf("  %s: prophet t%d %d: %d != %d\n", what, t, i, a->pr[t][i], b->pr[t][i]); }
         for (i = 0; i < DR_COUNT; i++) if (i % DR_PER != DR_KIT && a->dr[t][i] != b->dr[t][i]) { bad++; if (bad < 6) if (vb) printf("  %s: drum t%d %d: %d != %d\n", what, t, i, a->dr[t][i], b->dr[t][i]); }
         for (i = 0; i < ARP_COUNT; i++) if (a->arp[t][i] != b->arp[t][i]) { bad++; if (bad < 6) if (vb) printf("  %s: arp t%d %d: %d != %d\n", what, t, i, a->arp[t][i], b->arp[t][i]); }
+        if (memcmp(a->arps[t], b->arps[t], ARP_STATE_N)) { bad++; if (vb) printf("  %s: arp position of track %d\n", what, t); }
         if (a->eng[t] != b->eng[t]) { bad++; if (vb) printf("  %s: engine of track %d: %d != %d\n", what, t, a->eng[t], b->eng[t]); }
         if (a->pv[P_TYP0 + t] != b->pv[P_TYP0 + t]) { bad++; if (vb) printf("  %s: PV[P_TYP%d]\n", what, t); }
     }
@@ -130,6 +132,15 @@ static void randomize(int density, int seed_engines)
         for (i = 0; i < DR_COUNT; i++) if (i % DR_PER != DR_KIT && (int)(rnd() % 100u) < density) voices_param(t, ENG_DRUM, i, rr(0, i % DR_PER == DR_KV ? 2 : i % DR_PER == DR_TYPE ? 7 : 1000));
         for (i = 0; i < ARP_COUNT; i++) if ((int)(rnd() % 100u) < density) voices_arp(t, i, rr(0, 3));
     }
+    for (t = 0; t < 4; t++)                    /* arpeggiators running with a latched chord, at some step / phase */
+        if ((int)(rnd() % 100u) < density) {
+            int n = rr(1, 5), k, r;
+            static int32_t tmpb[128];
+            voices_arp(t, ARP_LATCH, 1); voices_arp(t, ARP_MODE, rr(1, 8)); voices_arp(t, ARP_OCT, rr(1, 3));
+            for (k = 0; k < n; k++) { voices_note(t, rr(40, 80), 1); voices_note(t, 0, 0); }
+            r = rr(1, 60);
+            while (r--) voices_render(tmpb, 128);
+        }
     for (i = 0; i < 96; i++) if ((int)(rnd() % 100u) < density) ui_seq_set(i / 16, i % 16, rr(-1000, 1000));
 }
 

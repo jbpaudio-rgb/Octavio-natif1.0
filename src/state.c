@@ -12,6 +12,7 @@
  *   0x07 MIX    PV[P_VOL0..P_VOL3]                 the track volumes (key scenes only, like the prototype's q.vol)
  *   0x08 TRK    4 engine ids (one per track) + the track that owns the (single) Vactrol          raw bytes
  *   0x09 TARP   the 4 tracks' arpeggiators (voices_arp: 4 x ARP_COUNT)
+ *   0x0A ARPS   (added later, rev 1) each track's arpeggiator position: latched chord in order, step, phase (4 x ARP_STATE_N raw bytes)
  *   0x10 + 3 * track + (engine - 1)   ENGINE  the Minimoog / Prophet / drum parameters of that track (12 sections)
  *   0x40..0x4F  reserved: per-track effects (agent H); a reader skips ids it does not know
  * Value sections: enc u8 | nvals u8 | body. enc 0: nvals x int16 raw. enc 1: sparse, (index u8, int16) pairs for the values that
@@ -27,10 +28,10 @@
 #define ST_DRUM_N (6 * (DR_PER - 1))                /* the drum voices' parameters without the DR_KIT slot (a command, not a value) */
 #define ST_SQ_N (6 * 16)
 #define ST_TARP_N (4 * ARP_COUNT)
-#define ST_NSEC 21
+#define ST_NSEC 22
 #define ST_MAX 1900u                                /* the largest body state_save() can produce (checked by tests) */
 
-enum { SK_PV, SK_ENG, SK_SQ, SK_TARP, SK_TRK };
+enum { SK_PV, SK_ENG, SK_SQ, SK_TARP, SK_TRK, SK_ARPS };
 typedef struct { uint8_t id, rev, kind, n, t, e, scene; int16_t a; } secd_t;
 typedef char st_fit_n[(P_STEPV - P_M4T + 1 < 256 && P_F5SYNC - P_F0DRIVE + 1 < 256 && ST_TARP_N < 256 && ST_SQ_N < 256 && ST_DRUM_N < 256) ? 1 : -1];
 
@@ -60,7 +61,8 @@ static int st_sec(int i, secd_t *s)                 /* the i-th section this fir
 {
     if (i < 0 || i >= ST_NSEC) return 0;
     s->scene = 0; s->t = s->e = 0; s->a = 0;
-    if (i == 0) { s->id = 0x08; s->rev = 1; s->kind = SK_TRK; s->n = 5; }
+    if (i == 21) { s->id = 0x0A; s->rev = 1; s->kind = SK_ARPS; s->n = 0; }
+    else if (i == 0) { s->id = 0x08; s->rev = 1; s->kind = SK_TRK; s->n = 5; }
     else if (i <= 6) {
         s->id = PVR[i - 1].id; s->rev = PVR[i - 1].rev; s->scene = PVR[i - 1].scene; s->kind = SK_PV;
         s->a = PVR[i - 1].a; s->n = (uint8_t)(PVR[i - 1].z - PVR[i - 1].a + 1);
@@ -139,6 +141,12 @@ static uint32_t st_enc(uint8_t *o, uint32_t cap, const secd_t *s)     /* bytes w
 {
     uint32_t len, w;
     int i, n = s->n, d = 0;
+    if (s->kind == SK_ARPS) {
+        if (cap < 4u + 4u * ARP_STATE_N) return 0;
+        o[0] = s->id; o[1] = s->rev; o[2] = (uint8_t)(4 * ARP_STATE_N); o[3] = 0;
+        for (i = 0; i < 4; i++) voices_arp_state_get(i, o + 4 + i * ARP_STATE_N);
+        return 4u + 4u * ARP_STATE_N;
+    }
     if (s->kind == SK_TRK) {
         if (cap < 9) return 0;
         o[0] = s->id; o[1] = s->rev; o[2] = 5; o[3] = 0;
@@ -175,6 +183,7 @@ static uint32_t state_save(uint8_t *o, uint32_t cap, int scene)
     state_init();
     for (i = 0; st_sec(i, &s); i++) {
         if (s.scene && !scene) continue;
+        if (s.kind == SK_ARPS && !(voices_arp_get(0, ARP_MODE) | voices_arp_get(1, ARP_MODE) | voices_arp_get(2, ARP_MODE) | voices_arp_get(3, ARP_MODE))) continue;   /* no arpeggiator on: no position to keep */
         k = st_enc(o + w, cap - w, &s);
         if (!k) return 0;
         w += k;
@@ -204,6 +213,11 @@ static uint32_t state_save_pv(uint8_t *o, uint32_t cap, const int16_t *pv, int s
 static int st_dec(const secd_t *s, const uint8_t *d, uint32_t len)    /* 1 = applied */
 {
     int i, n = s->n;
+    if (s->kind == SK_ARPS) {
+        if (len != 4u * ARP_STATE_N) return 0;
+        for (i = 0; i < 4; i++) voices_arp_state_set(i, d + i * ARP_STATE_N);
+        return 1;
+    }
     if (s->kind == SK_TRK) {
         if (len < 5) return 0;
         st_trk_apply(d);
