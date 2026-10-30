@@ -1,18 +1,15 @@
-# octavio-native — milestone 1
+# octavio-native — merged milestone 2 (A pages + B controls/presets + C voices/engines)
 
-New FM-1 firmware written from scratch (only the felucca-bsp hardware layer in bsp/ is reused, MPL-2.0).
-Target: AC791N / pi32v2, fixed point, no float.
+From-scratch FM-1 firmware following the prototype. Only the felucca-bsp hardware layer (MPL-2.0) is reused.
 
-## Done
-- Boots in the fm1-emu emulator from build/octavio.fwsc (identity FM-1_2000, 611 KB package, 142 KB code+assets).
-- Main screen (GLO page, title "FM", 2x2 knob grid, scope graph) rendered by an 8-row band renderer.
-- Vactrol engine (fixed point) playing on the keys; knobs (1/50 detents), EDIT / GLO / ENV page buttons, octave shift.
-## Missing
-- ENV envelope graph, LFO/FX/ARP pages, presets, SELECT/ALGORITHM, button latch/lock and chords, KIT/DRUM, other engines, sequencer, key LEDs scenes.
-## Verified
-- Host render vs Playwright capture of the prototype: mean abs err 0.88/255 (title 0.80, cells 0.91, below graph 0.32).
-- Emulator screenshot (key held, graph phase differs from the reference): title 0.80, cells 0.91, below 0.32 — identical to the host render. Graph region differs only by scope phase (animated).
-- Emulator audio: key n7 pitch 260.9 Hz (expected 261.6), exponential decay of the AD envelope.
-## Unverified
-- Not run on real hardware. Audio level/envelope shape only checked roughly against the float model (tools/vactrol_ref.py); no sample-exact comparison.
-- Chrome text rendering reproduced via pre-rendered DejaVu Sans Mono 4-phase atlases; RGB565 quantization; RATIO knob steps may differ by ±0.01 (float noise in prototype).
+## Built and checked in fm1-emu
+- Boots; main FM page; ENV page; preset SAVE opens the NAME PRESET editor (VACT 01, OK / CANCEL); key n7 sounds at 261 Hz.
+- Image 448 628 B (flash window ~581 KB). Package: build/octavio.fwsc via tools/mkpkg.py (build.sh makes only octavio.bin: run mkpkg after it).
+- RAM: .data+.bss = 82.4 KB (0x01C08000..0x01C1C1C0). app.ld now gives the RAM region 256 KB (the SRAM runs up to the stacks at 0x01C74000; Felucca splits it as 72 KB RAM + POOL). The earlier "73.7 KB" figure was Felucca's partition, not a limit of this firmware.
+
+## Not done / not verified
+- Never run on hardware. SDK uboot.boot and eq_cfg_hw.bin differ from the tested version.
+- Presets are RAM only (no flash save), engine parameters only.
+- Only the Vactrol has parameter pages; Minimoog, Prophet and drums play but have no screens; sequencer/FX have screens but no audio.
+- Text is approximated with Liberation Mono / DejaVu glyph atlases; overlay positions not pixel-diffed.
+- Chords HOME+EDIT / HOME+GLO and latching not exercised in the emulator; the bank key path is wired but untested.

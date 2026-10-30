@@ -9,7 +9,7 @@ MEMORY
 {
     XIP    (rx)  : ORIGIN = 0x02000120, LENGTH = 0x8DFBC
     RAMTEXT (rwx): ORIGIN = 0x01C00000, LENGTH = 0x6000
-    RAM    (rwx) : ORIGIN = 0x01C08000, LENGTH = 96K
+    RAM    (rwx) : ORIGIN = 0x01C08000, LENGTH = 256K   /* the SRAM runs to the stacks at 0x01C74000 (Felucca uses it as RAM 72K + POOL up to there) */
     NOINIT (rw)  : ORIGIN = 0x01C7C000, LENGTH = 0x3D50
 }
 SECTIONS
