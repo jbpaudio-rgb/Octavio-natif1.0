@@ -19,6 +19,7 @@ static int pg = PGN_GLO, src, sel, fxo, oct, auto_play, rec;
 static uint16_t lt, bdn, dn_;                      /* locked (lk), held (bdn), physically down (b.dn): bit CB_* */
 static uint32_t lu[CB_COUNT];                      /* each button's last release (0 after a chord) */
 static int chord, sel_down, sel_mv;
+static uint8_t dv[4];                              /* each track's selected drum voice (the prototype's eng.dv) */
 static uint32_t now_ms;
 static uint32_t ver;
 /* the bank (presets) */
@@ -259,8 +260,8 @@ static void btn(int t, uint32_t ms)                /* btn(): a button's action (
         if (t == CB_HOME) { pend = 0; bump(); }
     }
     if (t == CB_ENV) pg = PGN_ENV;
-    else if (t == CB_EDIT) pg = PGN_GLO;           /* on the Vactrol: EDIT shows the FM page, GLO the global one */
-    else if (t == CB_GLO) pg = PGN_EDIT;
+    else if (t == CB_EDIT) pg = cur_engine() == ENG_VAC ? PGN_GLO : PGN_EDIT;     /* Vactrol: EDIT shows the FM page, GLO the global one; the others: EDIT = filter / drum voice, GLO = mixer */
+    else if (t == CB_GLO) pg = cur_engine() == ENG_VAC ? PGN_EDIT : cur_engine() == ENG_DRUM ? (pg == PGN_GLO ? PGN_GLO2 : PGN_GLO) : PGN_GLO;
     else if (t == CB_FX) { if (pg == PGN_FX) fxo = (fxo + 1) % 6; else pg = PGN_FX; }
     else if (t == CB_LFO) { if (pg == PGN_LFO) src = (src + 1) % 6; else pg = PGN_LFO; }
     else if (t == CB_HOME) pg = PGN_HOME;
@@ -344,12 +345,12 @@ static void pk_set(int32_t n)
     presets_list(nbank ? "" : "PRESS SAVE", g_ms);
 }
 /* ALGORITHM: the engine of the track (one engine so far) */
-static int32_t ak_get(void) { return 0; }
+static int32_t ak_get(void) { return ((int32_t)cur_engine() << Q) / (CENG_N - 1); }
 static void ak_set(int32_t n)
 {
-    int i = round_q(n, CENG_N > 1 ? CENG_N - 1 : 1);
+    int i = round_q(n, CENG_N - 1);
     char t[20], num[4], nb[24];
-    (void)i;
+    if (i != cur_engine()) { voices_set_engine(sel, i); ui_params_changed(); }
     ap_q = (int)n;
     scopy(t, "ALGO \x02 T", sizeof t); itoa2(num, sel + 1, 0); sappend(t, num, sizeof t);
     scopy(nb, "TRACK ", sizeof nb); sappend(nb, num, sizeof nb);
@@ -401,7 +402,37 @@ void ctrl_init(uint32_t ms)
 }
 
 /* ---- state for the pages and the overlays ---- */
-int ctrl_page(void) { return pg; }
+static void norm_pg(void)                          /* page(): a page the track's engine does not have falls back */
+{
+    int e = cur_engine();
+    if (pg == PGN_GLO2 && e != ENG_DRUM) pg = PGN_GLO;
+    if (e == ENG_DRUM) {
+        if (pg == PGN_ENV2 || (pg >= PGN_OSC1 && pg <= PGN_OSC4)) pg = PGN_EDIT;
+    } else if (e == ENG_VAC) {
+        if (pg == PGN_ENV2) pg = PGN_ENV;
+        if (pg >= PGN_OSC1 && pg <= PGN_OSC4) pg = PGN_GLO;
+    }
+}
+int ctrl_page(void) { norm_pg(); return pg; }
+int ctrl_drum_voice(void) { return dv[sel & 3]; }
+int ctrl_op_key(int o)                              /* the prototype's black-key chords: EDIT / GLO + OP1..4 = OSC pages, ENV + OP1/2 = ENV / ENV2, drums: ENV / EDIT + OP1..6 = voice */
+{
+    int e = cur_engine(), h_edit = (bdn >> CB_EDIT) & 1, h_glo = (bdn >> CB_GLO) & 1, h_env = (bdn >> CB_ENV) & 1;
+    if (o < 4 && (e == ENG_MOOG || e == ENG_PROPH) && (h_edit || h_glo)) {
+        int np = PGN_OSC1 + o;
+        chord = 1; pg = pg == np ? PGN_GLO : np;
+    } else if ((pg == PGN_ENV || pg == PGN_ENV2) && h_env && o < 2 && (o == 0 || e == ENG_MOOG || e == ENG_PROPH)) {
+        chord = 1; pg = o ? PGN_ENV2 : PGN_ENV;
+    } else if (e == ENG_DRUM && h_env && o < 6) {
+        chord = 1; dv[sel & 3] = (uint8_t)o; pg = PGN_ENV;
+    } else if (e == ENG_DRUM && h_edit && o < 6) {
+        chord = 1; dv[sel & 3] = (uint8_t)o; pg = PGN_EDIT;
+    } else
+        return 0;
+    bump();
+    ui_goto(pg);
+    return 1;
+}
 int ctrl_src(void) { return src; }
 int ctrl_track(void) { return sel; }
 int ctrl_fx_slot(void) { return fxo; }
@@ -412,9 +443,11 @@ uint32_t ctrl_locked(void) { return lt; }
 uint32_t ctrl_lit(void)                             /* #bt .on: the page's button, PLAY/STOP while playing, REC while recording; lk: locks */
 {
     uint32_t m = lt;
-    if (pg == PGN_ENV) m |= 1u << CB_ENV;
-    else if (pg == PGN_GLO) m |= 1u << CB_GLO;      /* (PNf: the Vactrol's "GLO" page is lit on EDIT / GLO as the prototype names it) */
-    else if (pg == PGN_EDIT) m |= 1u << CB_EDIT;
+    int e = cur_engine();
+    if (pg == PGN_ENV || pg == PGN_ENV2) m |= 1u << CB_ENV;
+    else if (pg == PGN_GLO) m |= 1u << (e == ENG_VAC ? CB_EDIT : CB_GLO);        /* PNf(): the button the page is named after */
+    else if (pg == PGN_GLO2 || (pg >= PGN_OSC1 && pg <= PGN_OSC4)) m |= 1u << CB_GLO;
+    else if (pg == PGN_EDIT) m |= 1u << (e == ENG_VAC ? CB_GLO : CB_EDIT);
     else if (pg == PGN_LFO) m |= 1u << CB_LFO;
     else if (pg == PGN_FX) m |= 1u << CB_FX;
     else if (pg == PGN_ARP) m |= 1u << CB_ARP;

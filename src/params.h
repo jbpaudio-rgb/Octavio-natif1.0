@@ -20,6 +20,7 @@ void param_reset(void);
 int32_t param_n_q16(int id);                /* normalised position 0..1 (Q16), as the knob shows it */
 void param_set_n(int id, int32_t n_q16);    /* setn(): value = min + n * range, snapped to the step */
 void param_text(int id, char *out);         /* what the LCD prints for it */
+void param_text_ms(int attack, int s, char *out);   /* an envelope time in thousandths (attack: 2000^s ms, else .005 * 600^s s) */
 
 /* engine (vactrol.c) */
 void vac_init(void);

@@ -40,12 +40,14 @@ o.append('const font_t FONTS[%d] = {'%len(names))
 for fn,adv,size,n in names:
     o.append('  {fg_%s, fd_%s, fm_%s, %d, %d, %d},'%(fn,fn,fn,n,adv,int(round(size*64))))
 o.append('};')
-# knob sprites: premultiplied RGB + alpha, packed as 4 bytes
-for i,s in enumerate(knob):
-    flat=[v for p in s['px'] for v in p]
-    o.append(f'const uint8_t KNOB_SPR{i}[{len(flat)}] = {{')
-    for j in range(0,len(flat),32):o.append(','.join(map(str,flat[j:j+32]))+',')
-    o.append('};')
+# knob sprites: premultiplied RGB + alpha, packed as 4 bytes (the engine skins: Vactrol, Minimoog M, Prophet P, drums D)
+for kfile,tag in (('knob',''),('knob_moog','M'),('knob_pro','P'),('knob_drum','D')):
+    kn=knob if tag=='' else json.load(open(f'{root}/assets/{kfile}.json'))
+    for i,s in enumerate(kn):
+        flat=[v for p in s['px'] for v in p]
+        o.append(f'const uint8_t KNOB_SPR{tag}{i}[{len(flat)}] = {{')
+        for j in range(0,len(flat),32):o.append(','.join(map(str,flat[j:j+32]))+',')
+        o.append('};')
 kb=json.load(open(f'{root}/assets/knob_big.json'))      # the SEQ page's larger knob (52.8 px svg)
 for i,sp in enumerate(kb):
     flat=[v for pxl in sp['px'] for v in pxl]
