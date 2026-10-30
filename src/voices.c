@@ -5,6 +5,7 @@
 #include "ui.h"
 #include "eng_moog.c"
 #include "eng_prophet.c"
+#include "eng_drum.c"
 
 #define NTRK 4
 typedef struct {
@@ -37,6 +38,7 @@ static void eng_on(int t, int note, int vel15)
     case ENG_VAC: if (t == vac_owner) vac_note_on(note); break;
     case ENG_MOOG: moog_on(t, note, vel15); break;
     case ENG_PROPH: proph_on(t, note, vel15); break;
+    case ENG_DRUM: drum_on(t, note, vel15); break;
     }
 }
 static void eng_off(int t)
@@ -57,6 +59,7 @@ void voices_init(void)
         for (i = 0; i < ARP_COUNT; i++) TK[t].a.p[i] = ARP_DEF[i];
         moog_init(t);
         proph_init(t);
+        drum_init(t);
     }
 #ifdef C_BOOT_ARP
     voices_arp(C_BOOT_TRACK, ARP_MODE, C_BOOT_ARP);
@@ -84,8 +87,9 @@ void voices_param(int t, int eng, int id, int v)
 {
     if (eng == ENG_MOOG) moog_set(t & 3, id, v);
     else if (eng == ENG_PROPH) proph_set(t & 3, id, v);
+    else if (eng == ENG_DRUM) drum_set(t & 3, id, v);
 }
-int voices_param_get(int t, int eng, int id) { return eng == ENG_MOOG ? moog_get(t & 3, id) : eng == ENG_PROPH ? proph_get(t & 3, id) : 0; }
+int voices_param_get(int t, int eng, int id) { return eng == ENG_MOOG ? moog_get(t & 3, id) : eng == ENG_PROPH ? proph_get(t & 3, id) : eng == ENG_DRUM ? drum_get(t & 3, id) : 0; }
 
 /* ---- arpeggiator ---- */
 static void arp_build(arp_t *a)
@@ -260,6 +264,7 @@ void voices_render(int32_t *out, int n)
         case ENG_VAC: if (t != vac_owner) continue; vac_render(tmp, n); break;
         case ENG_MOOG: if (!moog_active(t)) continue; moog_render(t, tmp, n); break;
         case ENG_PROPH: if (!proph_active(t)) continue; proph_render(t, tmp, n); break;
+        case ENG_DRUM: if (!drum_active(t)) continue; drum_render(t, tmp, n); break;
         default: continue;
         }
         for (i = 0; i < n; i++) acc[i] += (int64_t)tmp[i] * TK[t].vol;

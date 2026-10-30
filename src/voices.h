@@ -11,6 +11,10 @@ enum { MG_W1, MG_R1, MG_T1, MG_P1, MG_L1, MG_W2, MG_R2, MG_T2, MG_P2, MG_L2, MG_
 enum { PR_WAVE, PR_RNG, PR_TUNE, PR_PW, PR_BWAVE, PR_BRNG, PR_BTUNE, PR_BPW, PR_LA, PR_LB, PR_SW, PR_SO, PR_ST, PR_SP, PR_SL,
        PR_NTYPE, PR_NTONE, PR_NCRUSH, PR_NLEV, PR_CUT, PR_RES, PR_ENV, PR_PM, PR_ATK, PR_DEC, PR_SUS, PR_REL, PR_FATK,
        PR_FDEC, PR_FSUS, PR_FREL, PR_LVL, PR_COUNT };
+/* drums: per voice v (0..5) the controls of the prototype, id = DR_x + v * DR_STRIDE... see drum_set() */
+enum { DR_KIT, DR_TYPE, DR_KV, DR_TUNE, DR_DECAY, DR_TONE, DR_LEVEL, DR_ATK, DR_PEAK, DR_HOLD, DR_DRIVE, DR_FILT, DR_PER = 12 };
+#define DR_ID(v, x) ((v) * DR_PER + (x))              /* parameter id of control x of voice v (DR_KIT = all voices' kit) */
+#define DR_COUNT (6 * DR_PER)
 enum { ARP_MODE, ARP_OCT, ARP_RATE, ARP_GATE, ARP_SW, ARP_LATCH, ARP_ACC, ARP_CHANCE, ARP_TR, ARP_REP, ARP_HUM, ARP_PAT,
        ARP_COUNT };
 void voices_init(void);
@@ -46,3 +50,10 @@ void proph_on(int t, int note, int vel15);
 void proph_off(int t);
 int  proph_active(int t);
 void proph_render(int t, int32_t *out, int n);
+void drum_init(int t);
+void drum_set(int t, int id, int v);
+int  drum_get(int t, int id);
+void drum_hit(int t, int v, int vel15);              /* voice 0..5 */
+void drum_on(int t, int note, int vel15);            /* the prototype's noteOn: pitch class -> voice */
+int  drum_active(int t);
+void drum_render(int t, int32_t *out, int n);

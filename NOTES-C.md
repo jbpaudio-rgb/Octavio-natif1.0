@@ -11,6 +11,7 @@ Scope: keyboard / voices / key LEDs / the prototype's other engines.
 - `src/eng_moog.c` + `src/cdsp.c`: Minimoog in fixed point (3 polyBLEP oscillators, noise white/pink/brown/blue/crackle with
   tone+crush, 4-pole tanh ladder x2 sub-steps, key tracking, contour + amp ADSR, glide, release=decay).
 - `src/eng_prophet.c`: Prophet (osc A/B with sync and shape morph, sub, noise, two ADSR, soft 4-pole LP with feedback, poly-mod).
+- `src/eng_drum.c`: drum machine, 6 voices, voice types kick/snare/CH/OH/clap-tom/cowbell-ride-crash/hi tom/low tom x kits 808/909/ACOU, per-voice tune/decay/tone/level/attack/pitch env/hold/drive/filter, CH chokes OH, noteOn maps pitch class -> voice (`drum_hit` direct). Formulas follow the prototype's `voice()`.
 - `src/leds.c`: LED levels (off/dim/breath/on); keys lit while pressed, notes held by the arp glow, the playing arp step breathes,
   BTN_ARP glows while the selected track arpeggiates.
 - `tools/gen_c_tables.py` -> `src/c_tables_gen.h` (tanh, 1-exp(-x) tables, log2 constants); output committed.
@@ -21,8 +22,10 @@ Scope: keyboard / voices / key LEDs / the prototype's other engines.
 - ISR load with the Moog playing: ~10 % of the CPU in the emulator.
 
 - Prophet on a key: fundamental 174.6 Hz at note 53, filter-envelope sweep and release visible; ~8 % CPU.
+- Drums: all 6 default voices trigger from keys on track 3 (emulator wav: hits appear, decays, no clipping/instability; ~14 % CPU at peak).
 
 ## Not verified / missing
+- Drum sound is NOT compared sample-by-sample with the prototype (no numeric reference render); hat/clap bursts and the 909/ACOU kits only checked for sane level and decay. Drum sequencer (DSEQ) not ported.
 - LEDs: logic only, not observable in the emulator.
 - No UI yet selects track / engine / arp / Moog parameters (API only: `voices_select`, `voices_set_engine`, `voices_param`, `voices_arp`);
   `C_BOOT_TRACK` / `C_BOOT_ARP` compile-time defines in voices.c were used to test.
