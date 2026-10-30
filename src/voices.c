@@ -32,7 +32,7 @@ static const uint8_t SPB[6] = {1, 2, 3, 4, 6, 8};
 static const uint8_t PATS[6][8] = {{1, 1, 1, 1, 1, 1, 1, 1}, {1, 0, 0, 1, 0, 0, 1, 0}, {0, 1, 0, 1, 0, 1, 0, 1},
                                    {1, 0, 1, 1, 1, 0, 1, 1}, {1, 0, 0, 1, 0, 1, 0, 0}, {1, 0, 0, 0, 1, 0, 0, 0}};
 static const uint8_t PATN[6] = {1, 8, 2, 4, 8, 4};
-static const int16_t ARP_DEF[ARP_COUNT] = {0, 1, 3, 500, 0, 0, 0, 1000, 0, 1, 0, 0};
+static const int16_t ARP_DEF[ARP_COUNT] = {0, 1, 0, 500, 0, 0, 0, 1000, -12, 1, 0, 0};      /* the prototype: rate 1/4 (list index 0), transpose "-12" (its select starts on the first option) */
 
 static void eng_on(int t, int note, int vel15)
 {
@@ -147,7 +147,7 @@ static int seq_pitch(int t, int cur)
     int j, semi = 0;
     static const uint8_t SC[2][7] = { { 0, 2, 4, 5, 7, 9, 11 }, { 0, 2, 3, 5, 7, 8, 10 } };
     for (j = 0; j < 6; j++) {
-        int d = q[4 * j], key = q[4 * j + 1], v = ui_seq_get(j, cur), a = q[4 * j + 2], x;
+        int d = q[4 * j], key = q[4 * j + 1], v = ui_seq_get_t(t, j, cur), a = q[4 * j + 2], x;
         if (d < 1 || d > 3) continue;
         if (d == 1) { x = v * a; x = (x * 24 + (x >= 0 ? 500000 : -500000)) / 1000000; semi += x + key; }
         else {

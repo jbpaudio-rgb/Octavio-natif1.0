@@ -26,13 +26,15 @@ static void lfo_tick(uint32_t dt);
 static uint32_t arp_now, fx_ms;
 static void home_tick(uint32_t dt);
 static int sq_line;
+static const int8_t ARP_OFS[12] = { 0, 1, 0, 0, 0, 0, 0, 0, -12, 1, 0, 0 };      /* the arpeggiator's value = the page's value + this (octaves 1..4, transpose -12..12, repeat 1..4) */
+static int lfo_pid(int off);                   /* lfograph.c */
 static void sin_cos_deg(int32_t deg_q8, int32_t *s, int32_t *c);
 static void seq_commit(void);
 static int page = PG_GLO, oct;
 static uint8_t dirty_top, dirty_all = 1;
 static uint32_t ed_phase;                      /* the scope's scroll (edP), 32-bit turns */
 static uint32_t last_ms;
-static int32_t wheel[4];                       /* the knobs' unrounded positions (the prototype's `ws`) */
+static int32_t wheel[4], wheel_g[4];           /* the knobs' unrounded positions (the prototype's `ws`) and the rounded position the last step left (`wq`) */
 static int wheel_p[4] = { -1, -1, -1, -1 };
 #include "pages.c"                             /* dynamic pages (LFO, FX), page state */
 #include "engine_pages.c"                      /* the Minimoog / Prophet / drum settings pages */
@@ -55,6 +57,15 @@ static int pid_of(int k)                       /* the parameter under KNOB k+1 o
 
 void ui_set_page(int p) { if (p >= 0 && p < PG_COUNT && p != page) { page = p; dirty_all = 1; } }
 int ui_get_page(void) { return page; }
+void ui_lfo_sync_toggle(void)                  /* LFO held + OP8 (toggleSync("LFO")): the selected source's tempo sync switch */
+{
+    int id;
+    lfo_src = ctrl_src();
+    id = lfo_pid(4);
+    PV[id] = !PV[id];
+    ui_params_changed();
+    dirty_all = 1;
+}
 
 static void seq_sync(void);
 void ui_init(void)
@@ -75,6 +86,7 @@ int ui_note_of_key(int key) { return 53 + key + 12 * oct; }
 void ui_encoder(int k, int steps)              /* one detent = 1/50 of the range, like the prototype's wheel */
 {
     int i, n = steps < 0 ? -steps : steps;
+    if (page == PG_FXO) { if (k == 0) ctrl_fxo_knob(steps); dirty_all = 1; return; }     /* FX ORDER: K1 = the hidden "fxpos" slider (SEL held: move the effect) */
     if (ep_on()) { ep_encoder(k, steps); dirty_top = 1; return; }
     if (ep_strips()) { epm_encoder(k, steps); dirty_top = 1; return; }
     for (i = 0; i < n; i++) {
@@ -83,14 +95,16 @@ void ui_encoder(int k, int steps)              /* one detent = 1/50 of the range
         if (id < 0)
             return;
         g = pn_q16(id);
-        int32_t base = (wheel_p[k] == id && wheel[k] >= g - 1 && wheel[k] <= g + 1) ? wheel[k] : g;
+        int32_t base = (wheel_p[k] == id && g == wheel_g[k]) ? wheel[k] : g;      /* Math.abs(get() - wq) < 1e-9 ? ws : get() */
         int32_t nv = base + (steps < 0 ? -1 : 1) * (65536 / 50);
         if (nv < 0) nv = 0;
         if (nv > 65536) nv = 65536;
         pset_n(id, nv);
         wheel[k] = nv;
+        wheel_g[k] = pn_q16(id);
         wheel_p[k] = id;
         if (id == P_STEPV) seq_commit();
+        if (id >= P_ARPMODE && id <= P_ARPPAT) voices_arp(voices_sel(), id - P_ARPMODE, PV[id] + ARP_OFS[id - P_ARPMODE]);      /* the ARP pages edit the selected track's arpeggiator */
     }
     dirty_top = 1;
 }
@@ -136,14 +150,16 @@ static int page_of(int pgn)                    /* the controller's PGN_* -> this
 static void ctrl_sync(void)                    /* the controller's state -> the pages' (page, LFO source, FX slot, HOME's track) */
 {
     int np = page_of(ctrl_page());
-    if (page == PG_ARP2 || page == PG_ARP3) { if (ctrl_page() != PGN_ARP) page = np; }   /* (ARP 2 / 3: the keys', ui_set_page) */
-    else page = np;
+    if (np == PG_ARP) np = PG_ARP + ctrl_arp_sub();                   /* ARP held + OP1..OP3: ARP, ARP 2, ARP 3 */
+    page = np;
     lfo_src = ctrl_src();
     fxo = ctrl_fx_slot();
     ui_set_track(ctrl_track());
     voices_select(ctrl_track());
+    { int i; for (i = 0; i <= P_ARPPAT - P_ARPMODE; i++) PV[P_ARPMODE + i] = (int16_t)(voices_arp_get(ctrl_track(), i) - ARP_OFS[i]); }    /* the ARP pages show the selected track's arpeggiator */
     fx_select(ctrl_track());                   /* the FX knobs in PV[] are the selected track's */
     mod_select(ctrl_track());                  /* so are its modulation matrix and sequencer lines (dst.c) */
+    seq_sync();                                /* ... and its step values: the STEP VALUE knob shows the selected step of this track */
 }
 void ui_goto(int p)                            /* the controller shows page PGN_p (its state follows through ctrl_sync) */
 {

@@ -72,7 +72,7 @@ static int fails, quiet;
 typedef struct {
     int16_t pv[P_COUNT];
     int16_t mg[4][MG_COUNT], pr[4][PR_COUNT], dr[4][DR_COUNT];
-    int16_t arp[4][ARP_COUNT], sq[96];
+    int16_t arp[4][ARP_COUNT], sq[4][96];
     int16_t mt[4][MODT_N], dg[4][6];                 /* the matrix of each track (dst.c), the drum sequencer lanes */
     uint8_t eng[4], owner, arps[4][ARP_STATE_N];
 } snap_t;
@@ -91,7 +91,7 @@ static void take(snap_t *s)
         s->eng[t] = (uint8_t)voices_engine(t);
         voices_arp_state_get(t, s->arps[t]);
     }
-    for (i = 0; i < 96; i++) s->sq[i] = (int16_t)ui_seq_get(i / 16, i % 16);
+    for (t = 0; t < 4; t++) for (i = 0; i < 96; i++) s->sq[t][i] = (int16_t)ui_seq_get_t(t, i / 16, i % 16);
     s->owner = (uint8_t)voices_vac_owner();
 }
 /* compare what a record holds; scene: also the volumes. Returns the number of differing values. */
@@ -114,7 +114,7 @@ static int diff(const snap_t *a, const snap_t *b, int scene, const char *what)
         if (a->eng[t] != b->eng[t]) { bad++; if (vb) printf("  %s: engine of track %d: %d != %d\n", what, t, a->eng[t], b->eng[t]); }
         if (a->pv[P_TYP0 + t] != b->pv[P_TYP0 + t]) { bad++; if (vb) printf("  %s: PV[P_TYP%d]\n", what, t); }
     }
-    for (i = 0; i < 96; i++) if (a->sq[i] != b->sq[i]) { bad++; if (bad < 6) if (vb) printf("  %s: step %d: %d != %d\n", what, i, a->sq[i], b->sq[i]); }
+    for (t = 0; t < 4; t++) for (i = 0; i < 96; i++) if (a->sq[t][i] != b->sq[t][i]) { bad++; if (bad < 6) if (vb) printf("  %s: step t%d %d: %d != %d\n", what, t, i, a->sq[t][i], b->sq[t][i]); }
     for (t = 0, i = 0; t < 4; t++) i |= a->eng[t] == ENG_VAC;          /* the owner means something only while a track runs the Vactrol */
     if (i && a->owner != b->owner) { bad++; if (vb) printf("  %s: Vactrol owner %d != %d\n", what, a->owner, b->owner); }
     return bad;
@@ -163,7 +163,7 @@ static void randomize(int density, int seed_engines)
             r = rr(1, 60);
             while (r--) voices_render(tmpb, 128);
         }
-    for (i = 0; i < 96; i++) if ((int)(rnd() % 100u) < density) ui_seq_set(i / 16, i % 16, rr(-1000, 1000));
+    for (t = 0; t < 4; t++) for (i = 0; i < 96; i++) if ((int)(rnd() % 100u) < density) ui_seq_set_t(t, i / 16, i % 16, rr(-1000, 1000));
 }
 
 static uint32_t T = 5000;
@@ -205,6 +205,49 @@ int main(int argc, char **argv)
     {
         uint32_t n = state_save(ebuf, sizeof ebuf, 0), m = state_save(ebuf, sizeof ebuf, 1);
         printf("factory state: preset body %u bytes, scene body %u bytes\n", n, m);
+    }
+
+    /* 0a. the step values are per track (0x44..0x47); a legacy 0x06 section (shared by the tracks, no longer written) sets all four */
+    {
+        uint8_t b[16];
+        int tt, bad = 0;
+        state_defaults();
+        CHECK(ui_seq_get_t(0, 0, 4) == 1000 && ui_seq_get_t(1, 0, 4) == 0, "factory step values: track 1 triangle, track 2 zeros (%d %d)", ui_seq_get_t(0, 0, 4), ui_seq_get_t(1, 0, 4));
+        b[0] = 0x06; b[1] = 1; b[2] = 5; b[3] = 0; b[4] = 1; b[5] = 96; b[6] = 21; b[7] = (uint8_t)(420 & 255); b[8] = (uint8_t)(420 >> 8);      /* sparse: value 21 (line 2, step 5) = 420 */
+        CHECK(state_load(b, 9) == 1, "legacy 0x06 not applied");
+        for (tt = 0; tt < 4; tt++) if (ui_seq_get_t(tt, 1, 5) != 420) bad++;
+        CHECK(!bad, "legacy 0x06 set %d tracks of 4", 4 - bad);
+        ui_seq_set_t(2, 3, 7, -555);
+        { uint32_t n = state_save(ebuf, sizeof ebuf, 0); int k = 0, o = 0; while (o + 4 <= (int)n) { if (ebuf[o] == 0x06) k++; o += 4 + (ebuf[o + 2] | (ebuf[o + 3] << 8)); } CHECK(!k, "0x06 is still written"); }
+        state_defaults();
+        CHECK(ui_seq_get_t(2, 3, 7) == 0 && ui_seq_get_t(1, 1, 5) == 0, "defaults do not reset the step values");
+    }
+
+    /* 0c. the drum lane settings act on the step clock (the ARP page of a drum track: swing / humanize / chance / accent): chance 0 never plays, chance 100 % does */
+    {
+        static int32_t tmpb[128];
+        int k, h0 = 0, h1 = 0, hs = 0;
+        state_defaults();
+        drum_gates_set(3, 0, 0xFFFF);
+        voices_param(3, ENG_DRUM, DR_ID(0, DR_CHANCE), 0);
+        voices_play(1);
+        for (k = 0; k < 400; k++) { voices_render(tmpb, 128); if (drum_active(3)) h0++; }                 /* 400 blocks = 9 sixteenth notes at 120 bpm */
+        voices_play(0);
+        voices_param(3, ENG_DRUM, DR_ID(0, DR_CHANCE), 1000);
+        voices_play(1);
+        for (k = 0; k < 400; k++) { voices_render(tmpb, 128); if (drum_active(3)) h1++; }
+        voices_play(0);
+        { int v; for (v = 0; v < 6; v++) DRM[3].V[v].on = 0; }                                               /* let the previous hits go */
+        drum_gates_set(3, 0, 0x0002);                                                                       /* step 1 only (an odd step: swing delays it) */
+        voices_param(3, ENG_DRUM, DR_ID(0, DR_SW), 1000);
+        voices_play(1);
+        for (k = 0; k < 400; k++) { voices_render(tmpb, 128); if (drum_active(3) && !hs) hs = k; }
+        printf("drum lane: chance 0 -> %d blocks sounding, chance 100 %% -> %d; swing 100 %% on step 1: first hit at block %d (step 1 starts at block 43, +.5 step = +22)\n", h0, h1, hs);
+        CHECK(h0 == 0, "chance 0 still played (%d blocks)", h0);
+        CHECK(h1 > 200, "chance 100 %% did not play (%d blocks)", h1);
+        CHECK(hs >= 43 + 20 && hs <= 43 + 24, "swing 100 %% hit at block %d, expected ~65", hs);
+        voices_play(0);
+        state_defaults();
     }
 
     /* 0b. destinations follow the engine of the track (dst.c): the lists, the swap of the matrix per track, the validation on an engine change */

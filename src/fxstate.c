@@ -72,6 +72,20 @@ int fx_assign(int slot, int e)
     T->ord[slot] = (uint8_t)e;
     return 1;
 }
+/* the prototype's FX ORDER reordering (fxs.splice(from, 1) then splice(to, 0, e)): the effect of slot `from` goes to slot `to`, the ones between shift by one.
+ * Effects keep their knobs (they are per effect); the chain's delay lines are reallocated by fx_begin (the order is part of their signature). */
+void fx_move(int from, int to)
+{
+    uint8_t o[FX_NSLOT], e;                          /* built aside, then copied: the audio never sees a chain with a repeated effect */
+    int s;
+    if (from < 0 || to < 0 || from >= FX_NSLOT || to >= FX_NSLOT || from == to) return;
+    memcpy(o, FXT[fx_view].ord, sizeof o);
+    e = o[from];
+    if (from < to) for (s = from; s < to; s++) o[s] = o[s + 1];
+    else for (s = from; s > to; s--) o[s] = o[s - 1];
+    o[to] = e;
+    memcpy(FXT[fx_view].ord, o, sizeof o);
+}
 int fx_slot_off(int t, int s) { return (fx_off[t & 3] >> s) & 1; }       /* the slot is active but bypassed by the budget */
 
 /* ---- serialisation (octavio-G's presets): [ver, nslot, ntrk, np] then per track ord[nslot], p[np] as int16 little endian ----

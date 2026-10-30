@@ -440,13 +440,14 @@ static void epm_encoder(int k, int steps)       /* knob k edits the level of str
     for (i = 0; i < n; i++) {
         int id = DR_ID(v, DR_LEVEL), cur = voices_param_get(t, ENG_DRUM, id);
         int32_t g = (cur * 65536 + 500) / 1000, base, nv, raw;
-        base = (ep_wheel_id[k] == 5000 + id && ep_wheel[k] >= g - 1 && ep_wheel[k] <= g + 1) ? ep_wheel[k] : g;
+        base = (ep_wheel_id[k] == 5000 + id && g == ep_wg[k]) ? ep_wheel[k] : g;
         nv = base + (steps < 0 ? -1 : 1) * (65536 / 50);
         if (nv < 0) nv = 0;
         if (nv > 65536) nv = 65536;
         raw = nv * 1000;
         voices_param(t, ENG_DRUM, id, ((raw + (10 << 15)) / (10 << 16)) * 10);
         ep_wheel[k] = nv;
+        ep_wg[k] = (voices_param_get(t, ENG_DRUM, id) * 65536 + 500) / 1000;
         ep_wheel_id[k] = 5000 + id;
     }
 }
