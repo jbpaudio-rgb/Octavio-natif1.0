@@ -10,6 +10,7 @@ Scope: keyboard / voices / key LEDs / the prototype's other engines.
   selected track), so nothing is invented; chords = keys held with the arpeggiator on.
 - `src/eng_moog.c` + `src/cdsp.c`: Minimoog in fixed point (3 polyBLEP oscillators, noise white/pink/brown/blue/crackle with
   tone+crush, 4-pole tanh ladder x2 sub-steps, key tracking, contour + amp ADSR, glide, release=decay).
+- `src/eng_prophet.c`: Prophet (osc A/B with sync and shape morph, sub, noise, two ADSR, soft 4-pole LP with feedback, poly-mod).
 - `src/leds.c`: LED levels (off/dim/breath/on); keys lit while pressed, notes held by the arp glow, the playing arp step breathes,
   BTN_ARP glows while the selected track arpeggiates.
 - `tools/gen_c_tables.py` -> `src/c_tables_gen.h` (tanh, 1-exp(-x) tables, log2 constants); output committed.
@@ -18,6 +19,8 @@ Scope: keyboard / voices / key LEDs / the prototype's other engines.
 - Moog on a key: pitch (osc1 8' at note 53 = 174.6 Hz, osc3 16' = 87.1 Hz, i.e. tune law ok), gate/release shape.
 - Arp up, 2 octaves, 1/16 at 120 bpm with keys 53/57/60 held: notes 53,57,60,65,69,72 repeating, 125 ms steps.
 - ISR load with the Moog playing: ~10 % of the CPU in the emulator.
+
+- Prophet on a key: fundamental 174.6 Hz at note 53, filter-envelope sweep and release visible; ~8 % CPU.
 
 ## Not verified / missing
 - LEDs: logic only, not observable in the emulator.

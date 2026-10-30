@@ -8,6 +8,9 @@ enum { ENG_VAC, ENG_MOOG, ENG_PROPH, ENG_DRUM, ENG_N };
 enum { MG_W1, MG_R1, MG_T1, MG_P1, MG_L1, MG_W2, MG_R2, MG_T2, MG_P2, MG_L2, MG_W3, MG_R3, MG_T3, MG_P3, MG_L3,
        MG_NTYPE, MG_NTONE, MG_NCRUSH, MG_NLEV, MG_CUT, MG_RES, MG_ENV, MG_GLIDE, MG_REL, MG_ATK, MG_DEC, MG_SUS,
        MG_FATK, MG_FDEC, MG_FSUS, MG_LVL, MG_COUNT };
+enum { PR_WAVE, PR_RNG, PR_TUNE, PR_PW, PR_BWAVE, PR_BRNG, PR_BTUNE, PR_BPW, PR_LA, PR_LB, PR_SW, PR_SO, PR_ST, PR_SP, PR_SL,
+       PR_NTYPE, PR_NTONE, PR_NCRUSH, PR_NLEV, PR_CUT, PR_RES, PR_ENV, PR_PM, PR_ATK, PR_DEC, PR_SUS, PR_REL, PR_FATK,
+       PR_FDEC, PR_FSUS, PR_FREL, PR_LVL, PR_COUNT };
 enum { ARP_MODE, ARP_OCT, ARP_RATE, ARP_GATE, ARP_SW, ARP_LATCH, ARP_ACC, ARP_CHANCE, ARP_TR, ARP_REP, ARP_HUM, ARP_PAT,
        ARP_COUNT };
 void voices_init(void);
@@ -36,3 +39,10 @@ void moog_on(int t, int note, int vel15);
 void moog_off(int t);
 int  moog_active(int t);
 void moog_render(int t, int32_t *out, int n);
+void proph_init(int t);
+void proph_set(int t, int id, int v);
+int  proph_get(int t, int id);
+void proph_on(int t, int note, int vel15);
+void proph_off(int t);
+int  proph_active(int t);
+void proph_render(int t, int32_t *out, int n);
