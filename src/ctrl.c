@@ -3,6 +3,8 @@
  * savePreset / commitSave / sortBank, showList, scSave / scLoad, toast). */
 #include "params.h"
 #include "ctrl.h"
+#include "ui.h"
+#include "voices.h"
 
 #define LATCH_MS 350u            /* a second press this soon after a release latches the button */
 #define LIST_MS 1800u
@@ -22,10 +24,20 @@ static int chord, sel_down, sel_mv;
 static uint8_t dv[4];                              /* each track's selected drum voice (the prototype's eng.dv) */
 static uint32_t now_ms;
 static uint32_t ver;
-/* the bank (presets) */
-typedef struct { char n[NAME_LEN + 1]; uint8_t type; uint16_t k; int16_t v[P_COUNT]; } preset_t;
-static preset_t bank[BANK_MAX];
+#include "state.c"
+/* the bank (presets): entries packed in bpool, kept sorted by (type, k); an entry is   u16 len | char name[13] | u8 type | u16 k |
+ * state body (state.c)   - the same bytes persist.c writes to flash. boff[i] = where entry i starts. */
+#define E_HDR 18u
+static uint8_t bpool[BANK_POOL];
+static uint32_t bpool_n;
+static uint16_t boff[BANK_MAX];
 static int nbank, pi;                              /* pi: 1-based current, 0 = none */
+/* the key scenes: spool holds   u16 len | u8 slot | state body (with the track volumes)   sorted by slot */
+#define S_HDR 3u
+static uint8_t spool[SCENE_POOL];
+static uint32_t spool_n;
+static int16_t soff[16];                           /* -1: the scene was never saved */
+static uint8_t ebuf[ST_MAX + E_HDR + 8];           /* an entry being built (save) */
 static int pp_q, ap_q, pp_ws = -1, ap_ws = -1, sel_ws = -1;   /* the knobs' unrounded positions (Q16), -1 = none */
 static int pp_wq, ap_wq, sel_wq;
 /* list overlay */
@@ -91,35 +103,44 @@ static void presets_list(const char *note, uint32_t ms)       /* showList("PRESE
 }
 
 /* ---- the bank ---- */
-static void sort_bank(void)                        /* by type, then by k (the creation counter); pi follows its preset */
+static uint32_t e_len(const uint8_t *e) { return (uint32_t)(e[0] | (e[1] << 8)); }
+static const char *bname(int i) { return (const char *)bpool + boff[i] + 2; }
+static int btype(int i) { return bpool[boff[i] + 15]; }
+static int bk(int i) { return bpool[boff[i] + 16] | (bpool[boff[i] + 17] << 8); }
+static uint32_t blen(int i) { return e_len(bpool + boff[i]); }
+static int b_pos(int type, int k)                  /* where an entry (type, k) goes: after the equal ones */
 {
-    int i, j; preset_t cur_p; int had = pi > 0;
-    if (had) cur_p = bank[pi - 1];
-    for (i = 1; i < nbank; i++) {                  /* a stable insertion sort */
-        preset_t x = bank[i];
-        for (j = i - 1; j >= 0 && (bank[j].type > x.type || (bank[j].type == x.type && bank[j].k > x.k)); j--)
-            bank[j + 1] = bank[j];
-        bank[j + 1] = x;
-    }
-    if (had) {
-        pi = 0;
-        for (i = 0; i < nbank; i++)
-            if (bank[i].k == cur_p.k && bank[i].type == cur_p.type) { pi = i + 1; break; }
-    }
+    int j;
+    for (j = 0; j < nbank; j++) if (btype(j) > type || (btype(j) == type && bk(j) > k)) break;
+    return j;
+}
+static void b_remove(int i)
+{
+    uint32_t l = blen(i), o = boff[i], j;
+    for (j = o; j + l < bpool_n; j++) bpool[j] = bpool[j + l];
+    bpool_n -= l;
+    for (j = (uint32_t)i; j + 1 < (uint32_t)nbank; j++) boff[j] = (uint16_t)(boff[j + 1] - l);
+    nbank--;
+}
+static int b_insert(const uint8_t *e, uint32_t l)  /* the index it got, -1: no room */
+{
+    int at = b_pos(e[15], e[16] | (e[17] << 8)), j;
+    uint32_t o = at < nbank ? boff[at] : bpool_n, m;
+    if (nbank >= BANK_MAX || bpool_n + l > BANK_POOL) return -1;
+    for (m = bpool_n; m > o; m--) bpool[m - 1 + l] = bpool[m - 1];
+    for (m = 0; m < l; m++) bpool[o + m] = e[m];
+    for (j = nbank; j > at; j--) boff[j] = (uint16_t)(boff[j - 1] + l);
+    boff[at] = (uint16_t)o;
+    nbank++;
+    bpool_n += l;
+    return at;
 }
 int bank_count(void) { return nbank; }
 int bank_current(void) { return pi; }
 
-static void snap(preset_t *o)
+static void load_preset(int i)                     /* loadPreset(): the engines of the tracks and all their values */
 {
-    int i;
-    o->type = (uint8_t)cur_engine();
-    for (i = 0; i < P_COUNT; i++) o->v[i] = PV[i];
-}
-static void load_preset(const preset_t *b)         /* loadPreset(): the engine's values */
-{
-    int i;
-    for (i = 0; i < P_COUNT; i++) PV[i] = b->v[i];
+    state_load(bpool + boff[i] + E_HDR, blen(i) - E_HDR);
     ui_params_changed();
     bump();
 }
@@ -132,7 +153,7 @@ void scene_store(const void *p, uint32_t n);
 __attribute__((weak)) void bank_store(const void *p, uint32_t n) { (void)p; (void)n; }
 __attribute__((weak)) void scene_store(const void *p, uint32_t n) { (void)p; (void)n; }
 #endif
-static void save_bank(void) { bank_store(bank, (uint32_t)(sizeof(preset_t) * (uint32_t)nbank)); }
+static void save_bank(void) { bank_store(bpool, bpool_n); }
 
 /* ---- name editor ---- */
 static void nm_set(const char *t)
@@ -152,10 +173,10 @@ static void save_preset(void)                      /* savePreset(): open the edi
     int i, kmax = 0;
     char nm[NAME_LEN + 1], t[8];
     pend_ow = pi > 0;
-    for (i = 0; i < nbank; i++) if (bank[i].k > kmax) kmax = bank[i].k;
+    for (i = 0; i < nbank; i++) if (bk(i) > kmax) kmax = bk(i);
     pend_k = kmax + 1;
     pend = 1;
-    if (pend_ow) scopy(nm, bank[pi - 1].n, sizeof nm);
+    if (pend_ow) scopy(nm, bname(pi - 1), sizeof nm);
     else { itoa2(t, pend_k, 2); scopy(nm, etag(cur_engine()), sizeof nm); sappend(nm, " ", sizeof nm); sappend(nm, t, sizeof nm); }
     list_until = 0;
     nm_set(nm);
@@ -163,9 +184,9 @@ static void save_preset(void)                      /* savePreset(): open the edi
 }
 static void commit_save(uint32_t ms)
 {
-    preset_t o;
     char v[NAME_LEN + 1], t[8];
-    int i, a = 0, b;
+    int i, a = 0, b, k;
+    uint32_t bl, l, room;
     if (!pend) return;
     for (i = 0; i < NAME_LEN; i++) v[i] = nmA[i];
     v[NAME_LEN] = 0;
@@ -174,13 +195,23 @@ static void commit_save(uint32_t ms)
     while (a < b && v[a] == ' ') a++;
     for (i = 0; i < b - a; i++) v[i] = v[a + i];
     v[b - a] = 0;
-    snap(&o);
     if (!v[0]) { itoa2(t, pend_k, 2); scopy(v, etag(cur_engine()), sizeof v); sappend(v, " ", sizeof v); sappend(v, t, sizeof v); }
-    scopy(o.n, v, sizeof o.n);
-    if (pend_ow) { o.k = bank[pi - 1].k; bank[pi - 1] = o; }
-    else if (nbank < BANK_MAX) { o.k = (uint16_t)pend_k; bank[nbank++] = o; pi = nbank; }
-    sort_bank();
+    k = pend_ow ? bk(pi - 1) : pend_k;
+    for (i = 0; i < (int)E_HDR; i++) ebuf[i] = 0;
+    for (i = 0; i < NAME_LEN && v[i]; i++) ebuf[2 + i] = (uint8_t)v[i];
+    ebuf[15] = (uint8_t)cur_engine();
+    ebuf[16] = (uint8_t)k; ebuf[17] = (uint8_t)(k >> 8);
+    bl = state_save(ebuf + E_HDR, sizeof ebuf - E_HDR, 0);
+    l = E_HDR + bl;
+    room = BANK_POOL - bpool_n + (pend_ow ? blen(pi - 1) : 0);
     pend = 0;
+    if (!bl || l > room || (!pend_ow && nbank >= BANK_MAX)) {      /* nothing is changed: the old preset stays */
+        toast("BANK FULL", "NOT SAVED", ms);
+        return;
+    }
+    ebuf[0] = (uint8_t)l; ebuf[1] = (uint8_t)(l >> 8);
+    if (pend_ow) b_remove(pi - 1);
+    pi = b_insert(ebuf, l) + 1;
     save_bank();
     {   /* showList("PRESETS", plist(), pi, "SAVED · VACT") */
         char nb[24];
@@ -189,43 +220,66 @@ static void commit_save(uint32_t ms)
     }
 }
 
-/* ---- scenes: the bank of keys (HOME held, or SAVE BANK); the state of the one engine so far ---- */
-static int16_t scn[16][P_COUNT];
-static uint16_t scn_used;
-static void save_scenes(void)
+/* ---- scenes: the bank of keys (HOME held, or SAVE BANK): all 4 tracks, like the prototype's scSave ---- */
+static uint16_t scn_used;                          /* bit w: scene w was saved, its entry starts at soff[w] */
+static void s_reindex(void)                        /* walk spool: offsets, used mask; a damaged tail is dropped */
 {
-    static uint8_t b[2 + sizeof scn];
-    uint32_t i;
-    b[0] = (uint8_t)scn_used; b[1] = (uint8_t)(scn_used >> 8);
-    for (i = 0; i < 16u * P_COUNT; i++) { uint16_t v = (uint16_t)((int16_t *)scn)[i]; b[2 + 2 * i] = (uint8_t)v; b[3 + 2 * i] = (uint8_t)(v >> 8); }
-    scene_store(b, sizeof b);
+    uint32_t o = 0;
+    int last = -1;
+    scn_used = 0;
+    while (o + S_HDR <= spool_n) {
+        uint32_t l = e_len(spool + o);
+        int w = spool[o + 2];
+        if (l < S_HDR || o + l > spool_n || w > 15 || w <= last) break;
+        soff[w] = (int16_t)o; scn_used |= (uint16_t)(1u << w); last = w;
+        o += l;
+    }
+    spool_n = o;
 }
-void scene_restore(const void *p, uint32_t n)
+static void s_remove(int w)
 {
-    const uint8_t *b = p;
-    uint32_t i;
-    if (n != 2 + sizeof scn) return;
-    scn_used = (uint16_t)(b[0] | (b[1] << 8));
-    for (i = 0; i < 16u * P_COUNT; i++) ((int16_t *)scn)[i] = (int16_t)(b[2 + 2 * i] | (b[3 + 2 * i] << 8));
+    uint32_t l = e_len(spool + soff[w]), j;
+    for (j = (uint32_t)soff[w]; j + l < spool_n; j++) spool[j] = spool[j + l];
+    spool_n -= l;
+    s_reindex();
 }
+static int s_insert(const uint8_t *e, uint32_t l)  /* 0 = no room; the slot must not be in the pool */
+{
+    int w = e[2], j;
+    uint32_t o = spool_n, m;
+    if (spool_n + l > SCENE_POOL) return 0;
+    for (j = w + 1; j < 16; j++) if ((scn_used >> j) & 1) { o = (uint32_t)soff[j]; break; }
+    for (m = spool_n; m > o; m--) spool[m - 1 + l] = spool[m - 1];
+    for (m = 0; m < l; m++) spool[o + m] = e[m];
+    spool_n += l;
+    s_reindex();
+    return 1;
+}
+static void save_scenes(void) { scene_store(spool, spool_n); }
 static void sc_save(int w, uint32_t ms)
 {
-    int i;
     char a[16];
-    for (i = 0; i < P_COUNT; i++) scn[w][i] = PV[i];
-    scn_used |= (uint16_t)(1u << w);
+    uint32_t bl, l, old = (scn_used >> w) & 1 ? e_len(spool + soff[w]) : 0;
+    sc_mode = 0;
+    ebuf[2] = (uint8_t)w;
+    bl = state_save(ebuf + S_HDR, sizeof ebuf - S_HDR, 1);
+    l = S_HDR + bl;
+    if (!bl || spool_n - old + l > SCENE_POOL) { toast("BANK FULL", "NOT SAVED", ms); return; }
+    ebuf[0] = (uint8_t)l; ebuf[1] = (uint8_t)(l >> 8);
+    if (old) s_remove(w);
+    s_insert(ebuf, l);
     save_scenes();
-    cur_bank = w; sc_mode = 0;
+    cur_bank = w;
     scopy(a, "BANK ", sizeof a); { char t[4]; itoa2(t, w + 1, 0); sappend(a, t, sizeof a); } sappend(a, " SAVED", sizeof a);
     toast(a, "4 TRACKS", ms);
 }
-static void sc_load(int w, uint32_t ms)             /* scLoad(): an empty bank resets the track to its defaults ("DEFAULT") */
+static void sc_load(int w, uint32_t ms)             /* scLoad(): an empty bank resets the tracks to their defaults ("DEFAULT") */
 {
-    int i;
     char a[16];
     int had = (scn_used >> w) & 1;
     cur_bank = w;
-    for (i = 0; i < P_COUNT; i++) PV[i] = had ? scn[w][i] : PD[i].def;
+    if (had) state_load(spool + soff[w] + S_HDR, e_len(spool + soff[w]) - S_HDR);
+    else state_defaults();
     ui_params_changed();
     scopy(a, "BANK ", sizeof a); { char t[4]; itoa2(t, w + 1, 0); sappend(a, t, sizeof a); }
     toast(a, had ? "LOADED" : "DEFAULT", ms);
@@ -341,7 +395,7 @@ static void pk_set(int32_t n)
 {
     int i = round_q(n, nbank);
     pp_q = (int)n;
-    if (i != pi) { pi = i; if (i > 0) load_preset(&bank[i - 1]); }
+    if (i != pi) { pi = i; if (i > 0) load_preset(i - 1); }
     presets_list(nbank ? "" : "PRESS SAVE", g_ms);
 }
 /* ALGORITHM: the engine of the track (one engine so far) */
@@ -350,7 +404,7 @@ static void ak_set(int32_t n)
 {
     int i = round_q(n, CENG_N - 1);
     char t[20], num[4], nb[24];
-    if (i != cur_engine()) { voices_set_engine(sel, i); ui_params_changed(); }
+    if (i != cur_engine()) { voices_set_engine(sel, i); PV[P_TYP0 + (sel & 3)] = (int16_t)i; ui_params_changed(); }
     ap_q = (int)n;
     scopy(t, "ALGO \x02 T", sizeof t); itoa2(num, sel + 1, 0); sappend(t, num, sizeof t);
     scopy(nb, "TRACK ", sizeof nb); sappend(nb, num, sizeof nb);
@@ -398,6 +452,7 @@ void ctrl_init(uint32_t ms)
     for (i = 0; i < CB_COUNT; i++) lu[i] = ms - 1000u;
     pp_ws = ap_ws = sel_ws = -1;
     cur_bank = -1; sc_mode = 0;
+    state_init();                                  /* the engines and the sequencer hold their factory values now */
     ver++;
 }
 
@@ -469,7 +524,7 @@ int ctrl_list_rows(char rows[5][24], char tags[5][8], int cur[1], char *title, c
         tags[cnt][0] = 0;
         if (list_kind == 1) scopy(rows[cnt], etag(i), 24);
         else if (i == 0) scopy(rows[cnt], "+ NEW", 24);
-        else { scopy(rows[cnt], bank[i - 1].n, 24); scopy(tags[cnt], etag(bank[i - 1].type), 8); }
+        else { scopy(rows[cnt], bname(i - 1), 24); scopy(tags[cnt], etag(btype(i - 1)), 8); }
     }
     return cnt;
 }
@@ -492,20 +547,58 @@ int ctrl_toast(char *a, char *b)
 }
 uint32_t ctrl_version(void) { return ver; }
 
-/* the bank's storage: restored at boot by main (flash.c) */
-void bank_restore(const void *p, uint32_t n)
+/* the records' storage: persist.c reads flash straight into the pools, then asks for them to be checked and indexed */
+uint8_t *bank_pool(uint32_t *cap) { *cap = BANK_POOL; return bpool; }
+uint8_t *scene_pool(uint32_t *cap) { *cap = SCENE_POOL; return spool; }
+void bank_restore(uint32_t n)                      /* bpool holds n bytes; n = 0 empties the bank */
 {
-    uint32_t cnt = n / (uint32_t)sizeof(preset_t), i;
-    const preset_t *s = p;
-    if (cnt > BANK_MAX) cnt = BANK_MAX;
+    uint32_t o = 0;
     nbank = 0;
-    for (i = 0; i < cnt; i++) {
+    while (o + E_HDR <= n && nbank < BANK_MAX) {
+        uint32_t l = e_len(bpool + o);
         int j;
-        if (s[i].n[0] == (char)0xFF || s[i].type >= CENG_N) continue;   /* erased flash / a foreign record */
-        for (j = 0; j < NAME_LEN && s[i].n[j]; j++) ;
-        if (s[i].n[j]) continue;
-        bank[nbank++] = s[i];
+        if (l < E_HDR || o + l > n || bpool[o + 15] >= CENG_N) break;
+        for (j = 0; j < NAME_LEN && bpool[o + 2 + j]; j++) ;
+        if (bpool[o + 2 + j]) break;                  /* name not terminated: erased flash / a foreign record */
+        boff[nbank++] = (uint16_t)o;
+        o += l;
     }
+    bpool_n = o;
     pi = 0;
-    sort_bank();
+}
+void scene_restore(uint32_t n)
+{
+    spool_n = n;
+    s_reindex();
+}
+/* the first format (Vactrol only): one preset_t at a time, converted to an entry holding the PV sections. bank_restore(0) first. */
+typedef struct { char n[NAME_LEN + 1]; uint8_t type; uint16_t k; int16_t v[P_COUNT]; } preset_v1_t;
+void bank_restore_v1(const void *p)
+{
+    const preset_v1_t *s = p;
+    uint32_t bl, l;
+    int j;
+    if (s->n[0] == (char)0xFF || s->type >= CENG_N) return;
+    for (j = 0; j < NAME_LEN && s->n[j]; j++) ;
+    if (s->n[j]) return;
+    for (j = 0; j < (int)E_HDR; j++) ebuf[j] = 0;
+    for (j = 0; j < NAME_LEN && s->n[j]; j++) ebuf[2 + j] = (uint8_t)s->n[j];
+    ebuf[15] = s->type; ebuf[16] = (uint8_t)s->k; ebuf[17] = (uint8_t)(s->k >> 8);
+    bl = state_save_pv(ebuf + E_HDR, sizeof ebuf - E_HDR, s->v, 0);
+    l = E_HDR + bl;
+    if (!bl) return;
+    ebuf[0] = (uint8_t)l; ebuf[1] = (uint8_t)(l >> 8);
+    b_insert(ebuf, l);
+    pi = 0;
+}
+void scene_restore_v1(int w, const int16_t *v)      /* scene_restore(0) first */
+{
+    uint32_t bl, l;
+    if (w < 0 || w > 15 || ((scn_used >> w) & 1)) return;
+    ebuf[2] = (uint8_t)w;
+    bl = state_save_pv(ebuf + S_HDR, sizeof ebuf - S_HDR, v, 1);
+    l = S_HDR + bl;
+    if (!bl) return;
+    ebuf[0] = (uint8_t)l; ebuf[1] = (uint8_t)(l >> 8);
+    s_insert(ebuf, l);
 }

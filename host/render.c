@@ -18,6 +18,7 @@
 #include "../src/overlay.c"
 #include "../src/ui.c"
 void ui_params_changed(void) {}
+void fx_bus(int32_t *x, int n) { (void)x; (void)n; }
 static int ctrl_bank_key_cb(int key) { (void)key; return 0; }
 int main(int argc, char **argv)
 {

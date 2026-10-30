@@ -73,6 +73,12 @@ int voices_sel(void) { return sel_t; }
 void voices_bpm(int b) { bpm_v = b < 20 ? 20 : b > 300 ? 300 : b; }
 void voices_track_level(int t, int v) { TK[t & 3].vol = (int16_t)((v < 0 ? 0 : v > 1000 ? 1000 : v) * 32767 / 1000); }
 int voices_engine(int t) { return TK[t & 3].eng; }
+int voices_vac_owner(void) { return vac_owner; }
+void voices_set_vac_owner(int t)
+{
+    t &= 3;
+    if (t != vac_owner && TK[t].eng == ENG_VAC) { vac_note_off(); vac_owner = (uint8_t)t; }
+}
 void voices_set_engine(int t, int e)
 {
     t &= 3;

@@ -14,6 +14,8 @@ enum { ROLE_SELECT, ROLE_ALGO, ROLE_PRESETS };      /* the left cluster's encode
 
 #define NAME_LEN 12
 #define BANK_MAX 48
+#define BANK_POOL 23024u                            /* RAM image of the preset record = its flash capacity (persist.c: 6 sectors x 0xF00 - 16) */
+#define SCENE_POOL 15344u                           /* same for the 16 key scenes */
 #define CENG_N 4                                    /* the engines (voices.h ENG_*: Vactrol, Minimoog, Prophet, Drums) */
 
 void ctrl_init(uint32_t ms);
@@ -48,6 +50,11 @@ uint32_t ctrl_version(void);                        /* bumps on every visible ch
 /* presets (engine values: PV[] of params.h) */
 int  bank_count(void);
 int  bank_current(void);                            /* 1-based, 0 = none */
+
+/* the record images persist.c reads / writes (entries as state.c / ctrl.c lay them out; see NOTES-G.md) */
+uint8_t *bank_pool(uint32_t *cap), *scene_pool(uint32_t *cap);
+void bank_restore(uint32_t n), scene_restore(uint32_t n);      /* the pool now holds n bytes read from flash: check and index them */
+void bank_restore_v1(const void *preset), scene_restore_v1(int slot, const int16_t *v);   /* the old Vactrol-only records (persist.c hands them over) */
 
 /* hooks the rest of the firmware provides */
 void ui_goto(int pgn);                              /* ui.c: show page PGN_* (the ones it has) */
