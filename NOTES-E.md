@@ -41,7 +41,7 @@ Host render (`host/render.c`, gcc) against Playwright captures of the prototype 
 
 The Vactrol pages are unchanged (cells 0.9 / ENV 1.7 / LFO 0.9 against a fresh capture).
 
-Emulator (`fm1-emu`): see the screenshots in `shots/`.
+Emulator (`fm1-emu`, real firmware image `build/octavio.fwsc`): `shots/moog_seq*.png` (ALGORITHM -> MOOG, EDIT -> FILTER, EDIT+OP1 -> OSCILLATOR 1, ...), `shots/pro_seq.png` (FILTER / LOUDNESS / CONTOUR / MIXER / OSCILLATOR 3), `shots/drum_seq.png` (808 KICK, 808 OPEN HAT, 808 CLOSED HAT ENV, MIXER 1/2, MIXER 2/2, MIXER after K1 +10). Note: the emulator's `enc1:+N` event drops steps above ~25 per event, so the engine change is sent as +25,+15,+10.
 
 ## Honest limits
 
