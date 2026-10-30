@@ -254,6 +254,7 @@ uint32_t voices_gate_mask(void)
     return m;
 }
 
+void fx_bus(int32_t *x, int n);                 /* fxdsp.c */
 void voices_render(int32_t *out, int n)
 {
     int32_t tmp[128];
@@ -276,8 +277,10 @@ void voices_render(int32_t *out, int n)
         }
         for (i = 0; i < n; i++) acc[i] += (int64_t)tmp[i] * TK[t].vol;
     }
+    for (i = 0; i < n; i++) tmp[i] = (int32_t)(acc[i] >> 15);
+    fx_bus(tmp, n);                             /* the 6 effect slots (fxdsp.c), on the sum of the tracks */
     for (i = 0; i < n; i++) {
-        int32_t s = (int32_t)(((acc[i] >> 15) * 34406) >> 15);            /* * 1.05 (1.5 * .7) */
+        int32_t s = (int32_t)(((int64_t)tmp[i] * 34406) >> 15);            /* * 1.05 (1.5 * .7) */
         out[i] = c_tanh(s);
     }
 }
