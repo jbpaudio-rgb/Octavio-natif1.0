@@ -7,7 +7,9 @@ static const char *const OPT_WAVE[4] = { "Sine", "Triangle", "Sawtooth", "Square
 static const char *const OPT_MODE[3] = { "Low pass", "Combo", "Gate" };
 static const char *const OPT_OFF[2] = { "Off", "On" };
 
+#include "pext_opts.h"
 const pdesc_t PD[P_COUNT] = {
+#include "pext_desc.h"
     [P_FOLD]  = { "Fold",               PK_RANGE,  0, FMT_PCT,   0, 1000, 10, 250, 0 },
     [P_SYM]   = { "Symmetry",           PK_RANGE,  0, FMT_PCT,   0, 1000, 10, 100, 0 },
     [P_DECAY] = { "VACT decay",         PK_RANGE,  0, FMT_MS,    0, 1000,  5, 750, 0 },
@@ -120,6 +122,23 @@ void param_text(int id, char *out)
             o = put_dur(o, (exp2_fx(lg(s, K_L2000), 8) + 128u) >> 8);
         } else {                                /* .005 * 600^s s */
             o = put_dur(o, (exp2_fx(lg(s, K_L600), 8) * 5u + 128u) >> 8);
+        }
+        break;
+    case FMT_INT:
+        o = put_u(o, (uint32_t)s);
+        break;
+    case FMT_RATE:                              /* LFO rate: .05 * 800^s Hz ("0.7Hz": two decimals, the third dropped), or the division when synced */
+        if (PV[id + 2]) {
+            static const char *const DIVN[8] = { "4 bars", "2 bars", "1 bar", "1/2", "1/4", "1/8", "1/16", "1/32" };
+            int di = s * 8 / 1000;
+            o = put_s(o, DIVN[di > 7 ? 7 : di]);
+        } else {
+            uint32_t h = exp2_fx(-K_LOG2_20 + ((s * 632020) / 1000), 12);   /* Hz * 4096 */
+            uint32_t h100 = (h * 100u + 2048u) >> 12;
+            o = put_u(o, h100 / 100u);
+            *o++ = '.';
+            *o++ = (char)('0' + h100 / 10u % 10u);
+            o = put_s(o, "Hz");
         }
         break;
     case FMT_CUT: {                             /* 50 * 2^(9 s) Hz: "123Hz" or "1.2k" */
