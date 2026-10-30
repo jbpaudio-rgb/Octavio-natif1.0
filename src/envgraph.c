@@ -10,7 +10,8 @@ static uint32_t eg_T24;                          /* total duration, seconds in Q
 static uint32_t eg_N;                            /* samples */
 static int32_t eg_at, eg_open;                   /* attack column, vf offset Q15 */
 static int32_t eg_key[5] = { -1, -1, -1, -1, -1 };
-static int16_t eg_c_lo[NS], eg_c_hi[NS], eg_v_lo[NS], eg_v_hi[NS], eg_fy[NS];
+static stroke_t eg_c, eg_v;
+static int16_t eg_fy[NS];
 static uint8_t eg_fy_ok[NS];
 static uint32_t eg_t0, eg_now;
 
@@ -85,35 +86,10 @@ static void env_sim(void)
 #define EX16(col) ((((col) * 11202) + 207360) >> 10)           /* canvas column -> x, 1/16 px */
 #define EY16(v) (3179 - ((((int32_t)(v)) * 1843) >> 16))      /* v in Q15 -> y, 1/16 px */
 
-static void stroke_build(const int32_t *y16, int r16, int16_t *lo, int16_t *hi)
-{
-    int j, i;
-    for (i = 0; i < NS; i++) { lo[i] = 32767; hi[i] = -32768; }
-    for (j = 0; j < EC - 1; j++) {
-        int32_t xa = EX16(j), xb = EX16(j + 1), ya = y16[j], yb = y16[j + 1];
-        int32_t dy = yb - ya, ady = dy < 0 ? -dy : dy, n = (xb - xa + 2) / 3, k;
-        if ((ady + 7) / 8 > n) n = (ady + 7) / 8;
-        for (k = 0; k <= n; k++) {
-            int32_t cx = xa + (xb - xa) * k / n, cy = ya + dy * k / n;
-            int ia = (cx - r16 - 114) / 4, ib = (cx + r16 - 114) / 4 + 1;
-            if (ia < 0) ia = 0;
-            if (ib > NS - 1) ib = NS - 1;
-            for (i = ia; i <= ib; i++) {
-                int32_t ddx = 114 + 4 * i - cx, h;
-                if (ddx < 0) ddx = -ddx;
-                if (ddx >= r16) continue;
-                h = (int32_t)isqrt32((uint32_t)(r16 * r16 - ddx * ddx));
-                if (cy - h < lo[i]) lo[i] = (int16_t)(cy - h);
-                if (cy + h > hi[i]) hi[i] = (int16_t)(cy + h);
-            }
-        }
-    }
-}
-
 static void env_prepare(void)
 {
     int32_t key[5] = { PV[P_ATK], PV[P_EDEC], PV[P_DECAY], PV[P_OPEN], PV[P_MODE] }, i;
-    int32_t ye[EC], yv[EC];
+    int32_t ye[EC], yv[EC], ex[EC];
     if (key[0] != eg_key[0] || key[1] != eg_key[1] || key[2] != eg_key[2])
         env_sim();
     if (key[0] == eg_key[0] && key[1] == eg_key[1] && key[2] == eg_key[2] && key[3] == eg_key[3] && key[4] == eg_key[4])
@@ -125,8 +101,9 @@ static void env_prepare(void)
         ye[i] = EY16(eg_env[i]);
         yv[i] = EY16(v);
     }
-    stroke_build(ye, 13, eg_c_lo, eg_c_hi);
-    stroke_build(yv, 19, eg_v_lo, eg_v_hi);
+    for (i = 0; i < EC; i++) ex[i] = EX16(i);
+    poly_stroke(ex, ye, EC, 13, &eg_c);
+    poly_stroke(ex, yv, EC, 19, &eg_v);
     for (i = 0; i < NS; i++) {                         /* the fill's upper edge: yv interpolated per sub-sample */
         int32_t q = ((114 + 4 * i) * 1024 - 207360) * 256 / 11202, c = q >> 8, f = q & 255;
         if (q < 0 || c >= EC - 1) { eg_fy_ok[i] = 0; continue; }
@@ -162,12 +139,8 @@ static void env_draw(void)
         if (eg_fy_ok[i])
             gfx_cov_add_span(7 + i / 4, eg_fy[i], 3179, 64);
     gfx_cov_flush(0x212120u);
-    for (i = 0; i < NS; i++)
-        gfx_cov_add_span(7 + i / 4, eg_c_lo[i], eg_c_hi[i] + 1, 64);
-    gfx_cov_flush(0x4a4a4au);
-    for (i = 0; i < NS; i++)
-        gfx_cov_add_span(7 + i / 4, eg_v_lo[i], eg_v_hi[i] + 1, 64);
-    gfx_cov_flush(COL_TEXT);
+    stroke_paint(&eg_c, 0x4a4a4au);
+    stroke_paint(&eg_v, COL_TEXT);
     if ((uint64_t)tm * 1000u < ((uint64_t)eg_T24 * 1000u >> 24) * 1000u) {          /* the red dot, 8 samples a ms */
         uint32_t idx = tm * 8u;
         int32_t cq = (int32_t)div64((uint64_t)idx * 314u * 256u, eg_N - 1), c = cq >> 8, f = cq & 255, v;

@@ -5,26 +5,36 @@
 #include "params.h"
 #include "ui.h"
 
-enum { PG_GLO, PG_EDIT, PG_ENV, PG_COUNT };
+enum { PG_GLO, PG_EDIT, PG_ENV, PG_LFO, PG_FX, PG_ARP, PG_ARP2, PG_ARP3, PG_TEMPO, PG_MENU, PG_MENU2, PG_HOME, PG_SEQ, PG_FXO, PG_COUNT };
 typedef struct { const char *title; const char *names[4]; uint8_t p[4]; } page_t;
 static const page_t PAGES[PG_COUNT] = {
     [PG_GLO]  = { "FM",     { "FM ENV", "MOD WAVE", "RATIO", "FM" },        { P_FENV, P_MWAVE, P_RATIO, P_FM } },
     [PG_EDIT] = { "GLOBAL", { "FOLD", "SYMM.", "FREQ", "WAVE" },            { P_FOLD, P_SYM, P_FREQ, P_WAVE } },
     [PG_ENV]  = { "AD ENV", { "ATTACK", "DECAY", "VACT", "MODE" },          { P_ATK, P_EDEC, P_DECAY, P_MODE } },
+    [PG_ARP]  = { "ARPEGGIATOR", { "MODE", "OCTAVES", "RATE", "GATE" },     { P_ARPMODE, P_ARPOCT, P_ARPRATE, P_ARPGATE } },
+    [PG_ARP2] = { "ARP 2", { "SWING", "LATCH", "ACCENT", "CHANCE" },        { P_ARPSW, P_ARPLATCH, P_ARPACC, P_ARPCHANCE } },
+    [PG_ARP3] = { "ARP 3", { "TRANSP.", "REPEAT", "HUMANIZE", "PATTERN" },  { P_ARPTR, P_ARPREP, P_ARPHUM, P_ARPPAT } },
+    [PG_TEMPO] = { "INTERNAL CLOCK", { "TEMPO", "\x03", "\x03", "\x03" },  { P_BPM, 255, 255, 255 } },
+    [PG_MENU] = { "MIDI CHANNELS", { "T1", "T2", "T3", "T4" },              { P_CHS0, P_CHS1, P_CHS2, P_CHS3 } },
+    [PG_MENU2] = { "MIDI ROUTING", { "NOTES", "CLOCK", "START", "SEND" },   { P_IONOTE, P_IOCLK, P_IOTRN, P_IOSND } },
 };
 static void env_tick(uint32_t ms);
+static void lfo_tick(uint32_t dt);
 static int page = PG_GLO, oct;
 static uint8_t dirty_top, dirty_all = 1;
 static uint32_t ed_phase;                      /* the scope's scroll (edP), 32-bit turns */
 static uint32_t last_ms;
 static int32_t wheel[4];                       /* the knobs' unrounded positions (the prototype's `ws`) */
 static int wheel_p[4] = { -1, -1, -1, -1 };
+#include "pages.c"                             /* dynamic pages (LFO, FX), page state */
 
 static int pid_of(int k)                       /* the parameter under KNOB k+1 on this page (ENV: cutoff in low-pass) */
 {
     if (page == PG_ENV && k == 2 && PV[P_MODE] == 0)
         return P_OPEN;
-    return PAGES[page].p[k];
+    if (page == PG_LFO || page == PG_FX)
+        return dyn_cell(k, 0, 0);
+    return PAGES[page].p[k] == 255 ? -1 : PAGES[page].p[k];
 }
 
 void ui_init(void) { param_reset(); dirty_all = 1; }
@@ -41,7 +51,10 @@ void ui_encoder(int k, int steps)              /* one detent = 1/50 of the range
     int i, n = steps < 0 ? -steps : steps;
     for (i = 0; i < n; i++) {
         int id = pid_of(k);
-        int32_t g = param_n_q16(id);
+        int32_t g;
+        if (id < 0)
+            return;
+        g = param_n_q16(id);
         int32_t base = (wheel_p[k] == id && wheel[k] >= g - 1 && wheel[k] <= g + 1) ? wheel[k] : g;
         int32_t nv = base + (steps < 0 ? -1 : 1) * (65536 / 50);
         if (nv < 0) nv = 0;
@@ -59,9 +72,15 @@ void ui_button(int b)
     if (b == BTN_ENV) np = PG_ENV;
     else if (b == BTN_EDIT) np = PG_GLO;       /* on the Vactrol: EDIT shows the FM page, GLO the global one */
     else if (b == BTN_GLO) np = PG_EDIT;
-    if (np != page) {
+    else if (b == BTN_LFO) { if (page == PG_LFO) lfo_src = (lfo_src + 1) % 6; np = PG_LFO; }
+    else if (b == BTN_FX) { if (page == PG_FX) fxo = (fxo + 1) % 6; np = PG_FX; }
+    else if (b == BTN_ARP) np = PG_ARP;
+    else if (b == BTN_HOME) np = PG_HOME;
+    else if (b == BTN_SEQ) np = PG_SEQ;
+    else if (b == BTN_SEL && page == PG_FXO) fxo = (fxo + 1) % 6;
+    if (np != page || b == BTN_LFO || b == BTN_FX || b == BTN_SEL) {
         page = np;
-        dirty_top = 1;
+        dirty_all = 1;
     }
 }
 
@@ -71,6 +90,7 @@ void ui_tick(uint32_t ms)                      /* the scope scrolls: .25 + 1.5 *
     last_ms = ms;
     if (dt > 50u) dt = 50u;
     env_tick(ms);
+    lfo_tick(dt);
     ed_phase += dt * (uint32_t)(250 + (3 * PV[P_FREQ]) / 2) * 4295u;      /* turns/ms in 2^32 / 1e6 units */
 }
 
@@ -145,7 +165,9 @@ static void draw_scope(void)
     gfx_disc(13393, dot_y8, 875, 819, COL_RED);
 }
 
+#include "graphs.c"
 #include "envgraph.c"
+#include "lfograph.c"
 
 /* ---- the knob cells ---- */
 #define KS 0.71983                              /* knob px per svg unit: 43.19 / 60 */
@@ -163,7 +185,7 @@ static void sin_cos_deg(int32_t deg_q8, int32_t *s, int32_t *c)     /* degrees (
 #define PTR_B 368
 #define PTR_R 203
 #endif
-static void draw_knob(int cx, int cy, int32_t n_q16)
+static void draw_knob(int cx, int cy, int32_t n_q16, uint32_t am)       /* am: opacity 0..256 (a dimmed cell) */
 {
     int32_t ox = KX8[cx], oy = KY8[cy], cxq = ox + 5528, cyq = oy + 5528;       /* centre = origin + 30 * 0.71983 px */
     int i;
@@ -172,14 +194,14 @@ static void draw_knob(int cx, int cy, int32_t n_q16)
         int lit = (int32_t)i * 6554 <= n_q16 + 66;
         sin_cos_deg((-135 + 27 * i) * 256, &s, &c);
         gfx_capsule(cxq + ((s * 4237) >> 15), cyq - ((c * 4237) >> 15), cxq + ((s * 5159) >> 15), cyq - ((c * 5159) >> 15),
-                    184, lit ? COL_TEXT : COL_DIMTICK, 256);                    /* r 23 .. 28 svg units, stroke 2 */
+                    184, lit ? COL_TEXT : COL_DIMTICK, am);                    /* r 23 .. 28 svg units, stroke 2 */
     }
-    gfx_sprite(cx ? KNOB_SPR1 : KNOB_SPR0, ox >> 8, oy >> 8, 44, 256);
+    gfx_sprite(cx ? KNOB_SPR1 : KNOB_SPR0, ox >> 8, oy >> 8, 44, am);
     {
         int32_t s, c, deg = -135 * 256 + (int32_t)(((int64_t)n_q16 * 270 * 256) >> 16);
         sin_cos_deg(deg, &s, &c);
         gfx_capsule(cxq + ((s * PTR_A) >> 15), cyq - ((c * PTR_A) >> 15), cxq + ((s * PTR_B) >> 15), cyq - ((c * PTR_B) >> 15),
-                    PTR_R, 0x15181bu, 256);                                       /* the pointer, (30,17.5)-(30,28) */
+                    PTR_R, 0x15181bu, am);                                       /* the pointer, (30,17.5)-(30,28) */
     }
 }
 
@@ -187,21 +209,30 @@ static const int32_t TXT_X64[2] = { 3531, 10981 };                              
 static const int LAB_BASE[2] = { 47, 95 }, VAL_BASE[2] = { 68, 115 };
 #define LS_CELL 42                                                              /* letter-spacing .66 px, Q6 */
 
+#define DIM_A 97                                                              /* a dimmed cell: .38 (measured on the prototype) */
+static uint32_t dimmix(uint32_t c)                                            /* a colour at .3 over the background */
+{
+    return (((c >> 16 & 255u) * 97u + 5u * 159u) >> 8 << 16) | (((c >> 8 & 255u) * 97u + 5u * 159u) >> 8 << 8) | (((c & 255u) * 97u + 5u * 159u) >> 8);
+}
 static void draw_cell(int k)
 {
-    int cx = k & 1, cy = k >> 1, id = pid_of(k);
+    int cx = k & 1, cy = k >> 1, id = pid_of(k), dim = id < 0;
+    const char *lab = PAGES[page].names[k];
     char v[16];
-    draw_knob(cx, cy, param_n_q16(id));
-    gfx_text(F_LABEL, id == P_OPEN ? "CUTOFF" : PAGES[page].names[k], TXT_X64[cx], LAB_BASE[cy], COL_LABEL, LS_CELL, 0, 233);
-    param_text(id, v);
-    if (page == PG_ENV && id == P_MODE && v[0] == 'L')                         /* ENV: "Low pass" -> "LP" */
-        v[1] = 'P', v[2] = 0;
+    if (page == PG_LFO || page == PG_FX)
+        dyn_cell(k, &lab, &dim);
+    draw_knob(cx, cy, dim ? -1000 : param_n_q16(id), dim ? DIM_A : 256);
+    gfx_text(F_LABEL, id == P_OPEN ? "CUTOFF" : lab, TXT_X64[cx], LAB_BASE[cy], COL_LABEL, LS_CELL, 0, 233);
+    if (dim)
+        return;
+    cell_text(id, v);
     gfx_text(F_VALUE, v, TXT_X64[cx], VAL_BASE[cy], COL_TEXT, LS_CELL, 0, 233);
 }
 
 void ui_prepare(void)
 {
     if (page == PG_ENV) env_prepare();
+    else if (page == PG_LFO) lfo_prepare();
     else scope_prepare();
 }
 
@@ -210,14 +241,22 @@ void ui_draw(int y0, int y1)                    /* the current band is [y0, y1) 
     int k;
     gfx_bg();
     {
+        char tb[32];
         const char *t = PAGES[page].title;
-        int32_t w = gfx_text_w64(F_TITLE, t, 65);
+        int32_t w;
+        if (page == PG_LFO || page == PG_FX) { dyn_title(tb); t = tb; }
+        w = gfx_text_w64(F_TITLE, t, 65);
         gfx_text(F_TITLE, t, 460 + ((14440 - w) >> 1), 23, COL_TEXT, 65, 0, 233);   /* centred in 7.19 .. 232.82 */
     }
     for (k = 0; k < 4; k++)
         draw_cell(k);
+    if (page == PG_LFO)
+        sync_box(PV[lfo_pid(4)]);
+    else if (page == PG_FX && fxs[fxo] == 5)
+        sync_box(PV[P_F5SYNC]);
     if (y1 > 124 && y0 < 206) {
         if (page == PG_ENV) env_draw();
+        else if (page == PG_LFO) lfo_draw();
         else draw_scope();
     }
 }
