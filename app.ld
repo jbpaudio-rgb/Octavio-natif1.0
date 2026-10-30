@@ -9,7 +9,7 @@ MEMORY
 {
     XIP    (rx)  : ORIGIN = 0x02000120, LENGTH = 0x8DFBC
     RAMTEXT (rwx): ORIGIN = 0x01C00000, LENGTH = 0x6000
-    RAM    (rwx) : ORIGIN = 0x01C08000, LENGTH = 320K   /* the SRAM runs to the stacks at 0x01C74000 (Felucca uses it as RAM 72K + POOL up to there); the effects' delay-line pool (fxdsp.c) is 144 KB of it */
+    RAM    (rwx) : ORIGIN = 0x01C08000, LENGTH = 416K   /* the SRAM runs to the stacks at 0x01C74000 (hard limit 432K); the effects' delay-line pools (fxdsp.c) are 4 x 72 KB of it; the link fails if .data+.bss outgrow 416K */
     NOINIT (rw)  : ORIGIN = 0x01C7C000, LENGTH = 0x3D50
 }
 SECTIONS

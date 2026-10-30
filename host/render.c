@@ -12,12 +12,15 @@
 #include "../src/assets_gen.c"
 #include "../src/gfx.c"
 #include "../src/params.c"
+#include "../src/fxstate.c"
 #include "../src/vactrol.c"
 #include "../src/voices.c"
 #include "../src/ctrl.c"
 #include "../src/overlay.c"
 #include "../src/ui.c"
 void ui_params_changed(void) {}
+void fx_track(int t, int32_t *x, int n, int act) { (void)t; (void)x; (void)n; (void)act; }      /* the effects are not rendered on the host screen harness */
+int fx_awake(int t) { (void)t; return 0; }
 static int ctrl_bank_key_cb(int key) { (void)key; return 0; }
 int main(int argc, char **argv)
 {

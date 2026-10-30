@@ -26,9 +26,11 @@ void ctrl_tick(uint32_t ms);                        /* timeouts: overlays, SAVE 
 int  ctrl_page(void);                               /* PGN_* */
 int  ctrl_src(void);                                /* the LFO source (SELECT knob, LFO pressed twice) 0..5 */
 int  ctrl_track(void);                              /* the selected track (HOME: SELECT knob) 0..3 */
-int  ctrl_fx_slot(void);                            /* FX pressed on FX: the slot 0..5 */
+int  ctrl_fx_slot(void);                            /* FX pressed on FX: the slot 0..FX_NSLOT-1 */
 int  ctrl_octave_val(void);
 int  ctrl_drum_voice(void);                         /* the drum voice 0..5 the EDIT / ENV pages show (ENV / EDIT held + an OP key) */
+void ctrl_cpu_full(uint32_t ms);                    /* toast: an effect did not fit the CPU budget */
+int  ctrl_fx_key(int w, uint32_t ms);                 /* a white key (0..15) with FX held on the FX page: that effect into the slot; 1 = used */
 int  ctrl_op_key(int o);                            /* a black key (0..) pressed: 1 when a held button made it a chord (no note) */
 int  ctrl_playing(void), ctrl_rec(void);
 uint32_t ctrl_lit(void);                            /* buttons whose LED is on: bit CB_* (current page, PLAY, REC, locks) */

@@ -2,8 +2,8 @@
 /* Page state and the pages whose cells depend on a selection: LFO (source 1..6) and FX (slot 1..6, its effect).
  * Included from ui.c (single translation unit). */
 static int lfo_src;                                     /* 0..5: LFO 1, 2, 3, 4, S&H 1, S&H 2 */
-static int fxo;                                         /* FX slot 0..5 */
-static uint8_t fxs[6] = { 0, 1, 2, 3, 4, 5 };           /* effect of each slot (the FX ORDER page edits it) */
+static int fxo;                                         /* FX slot 0..FX_NSLOT-1 */
+/* fxs[]: the effect of each slot of the selected track (fxstate.c) */
 
 static const char *const FX_NAME[16] = { "OVERDRIVE", "PHASER", "FLANGER", "CHORUS", "MICRO PITCH", "DELAY", "REVERB", "GRANULAR",
                                          "FEEDBACK", "BITCRUSH", "RING MOD", "STUTTER", "REVERSE", "FREEZE", "TAPE", "SHIMMER" };

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 /* The prototype's modulation: LFO 1..4 + S&H 1..2 (the LFO page's six sources, native order LFO1, LFO2, LFO3, LFO4, S&H1, S&H2 =
  * prototype keys m0, m1, m2, m10, m3, m11) and the matrix that sends each to one destination (BuchlaEngine.mod()).
- * Included from main.c after fxdsp.c (it uses fx_exp2, rnd32, INC_MHZ, PVI, LFO_BASE, bpm_v of the same unit).
+ * Included from main.c after fxdsp.c (it uses fx_exp2, rnd32, INC_MHZ, LFO_BASE, bpm_v of the same unit).
  *
  * Per audio block (128 frames, the prototype steps 32): the sources advance, then for each source with a destination and an amount
  * the destination's knob position n (0..1, as the knob shows it) becomes clamp(n + source * amount^2); this is the prototype's
@@ -21,7 +21,7 @@ static int mod_nsv, mod_vac_dirty;
 static const uint8_t MOD_DSTID[17] = { 255, P_FOLD, P_SYM, P_FREQ, P_FENV, P_RATIO, P_FM, P_ATK, P_EDEC, P_DECAY, P_OPEN, 255,
                                        P_ARPGATE, P_ARPSW, P_ARPACC, P_ARPCHANCE, P_ARPHUM };
 static const uint8_t MOD_ARPID[17] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ARP_GATE, ARP_SW, ARP_ACC, ARP_CHANCE, ARP_HUM };
-uint32_t mod_ticks_max, mod_t0;                           /* CPU: worst mod_apply + mod_restore (timer ticks) */
+uint32_t mod_t0;                           /* CPU: worst mod_apply + mod_restore (timer ticks) */
 
 static int32_t lfo_wf(uint32_t ph, int shape)             /* wf(): sine / triangle / saw / square, Q15 */
 {
@@ -91,7 +91,7 @@ void mod_apply(int n)
         if (dst <= 0 || dst > 68 || !PV[b + 3]) continue;
         amt = (PV[b + 3] * PV[b + 3] * 2147) >> 16;                    /* amount^2, Q15 */
         xq = (int32_t)(((int64_t)src * amt) >> 15);
-        if (dst >= 17) { id = P_F0DRIVE + (dst - 17); x = 0; }
+        if (dst >= 17) { fx_mod(dst - 17, xq); continue; }              /* the FX knobs: on each track's own value (fxdsp.c, FEFF) */
         else if (dst >= 12) { id = MOD_ARPID[dst]; x = 1; }
         else { id = MOD_DSTID[dst]; x = 0; if (id == 255) continue; vac = 1; }
         {
@@ -108,7 +108,7 @@ void mod_apply(int n)
     }
     if (vac || mod_vac_dirty) { vac_update(); mod_vac_dirty = 0; }
 #ifdef MOD_TEST
-    mod_tap = PV[MOD_ID];
+    mod_tap = MOD_ID >= P_F0DRIVE && MOD_ID <= P_F15MIX ? FEFF[fx_view][MOD_ID - P_F0DRIVE] : PV[MOD_ID];
 #endif
 }
 void mod_restore(void)
@@ -116,7 +116,7 @@ void mod_restore(void)
     int k, vac = 0;
     for (k = mod_nsv - 1; k >= 0; k--) {
         if (mod_sv[k].arp) voices_arp(voices_sel(), mod_sv[k].id, mod_sv[k].base);
-        else { PV[mod_sv[k].id] = mod_sv[k].base; if (mod_sv[k].id < P_F0DRIVE) vac = 1; }
+        else { PV[mod_sv[k].id] = mod_sv[k].base; vac = 1; }
     }
     mod_nsv = 0;
     if (vac) mod_vac_dirty = 1;                       /* the derived values stay modulated until the next block's mod_apply recomputes them (once per block) */
@@ -125,3 +125,22 @@ void mod_restore(void)
         if (d > mod_ticks_max) mod_ticks_max = d;
     }
 }
+
+#ifdef BENCH                                            /* worst-case bench (NOTES-H): all six mod sources routed, the four tracks play and retrigger */
+void bench_tick(void)
+{
+    static uint32_t n;
+    static const int16_t M[6][4] = { { 1, 0, 600, 900 }, { 3, 1, 450, 800 }, { 10, 2, 700, 700 }, { 0, 0, 300, 900 }, { 0, 0, 500, 700 }, { 5, 0, 800, 600 } };
+    int t, s;
+    if (!n) {
+        for (s = 0; s < 6; s++) {
+            int b = LFO_BASE[s], dst = M[s][0];
+            if (s == 3) dst = 17 + (P_F6SIZE - P_F0DRIVE);              /* LFO 4 -> reverb size on every track */
+            if (s == 4) dst = 17 + (P_F1RATE - P_F0DRIVE);              /* S&H 1 -> phaser rate */
+            PV[b] = (int16_t)dst; PV[b + 1] = M[s][1]; PV[b + 2] = M[s][2]; PV[b + 3] = M[s][3]; PV[b + 4] = 0;
+        }
+        for (t = 0; t < 4; t++) voices_note(t, 53 + 3 * t, 1);
+    }
+    if ((n++ & 127) == 64) for (t = 0; t < 4; t++) voices_note(t, 53 + 3 * t + (int)((n >> 7) & 3), 1);
+}
+#endif

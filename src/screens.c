@@ -149,7 +149,7 @@ static int rnd16(int32_t v16) { return (v16 + 8) >> 4; }              /* 1/16 px
 static void fxo_draw(void)
 {
     int i;
-    for (i = 0; i < 6; i++) {
+    for (i = 0; i < FX_NSLOT; i++) {
         int col = i & 1, row = i >> 1, sel = i == fxo;
         int32_t L16 = col ? 1997 : 153;                              /* the tile's layout x (9.58 / 124.8 px), 1/16 */
         int x0 = col ? 125 : 10, x1 = x0 + 105, T = 32 + 60 * row;
@@ -160,7 +160,7 @@ static void fxo_draw(void)
         int32_t wi = 3 * (FONTS[F_MBI].adv64 + 31) + 307;
         int32_t cx64 = L16 * 4 + 3380;                               /* tile centre (52.815 px) in 1/64 px */
         int ib0, ib1, bb0, bb1, dy = 0, y;
-        uint32_t tcol = sel ? 0xffffffu : 0xbebbb4u;
+        uint32_t tcol = fx_slot_off(fx_view, i) ? 0x77736cu : sel ? 0xffffffu : 0xbebbb4u;      /* a slot the CPU budget bypasses is dimmed */
         if (!sel) {
             gfx_rect(x0 + 3, T + 3, 105, 53, 0x000000u, 256);
             gfx_rect(x0, T, 105, 53, COL_TEXT, 256);
@@ -200,7 +200,7 @@ static void fxo_draw(void)
             gfx_rect(bb0, y + 24, bb1 - bb0, 23, MB_BG, 256);
         }
         gfx_text(F_MBI, lab, cx64 - (wi >> 1) + 141, y + 17, tcol, 31, x0 + 2, x1 - 2);
-        gfx_text(F_MBB, fx, cx64 - (wb >> 1) + 141, y + 39, sel ? 0xffffffu : COL_TEXT, 31, x0 + 2, x1 - 2);
+        gfx_text(F_MBB, fx, cx64 - (wb >> 1) + 141, y + 39, fx_slot_off(fx_view, i) ? 0x77736cu : sel ? 0xffffffu : COL_TEXT, 31, x0 + 2, x1 - 2);
     }
 }
 
