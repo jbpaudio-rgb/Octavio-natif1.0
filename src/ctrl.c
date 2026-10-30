@@ -7,7 +7,7 @@
 #define LATCH_MS 350u            /* a second press this soon after a release latches the button */
 #define LIST_MS 1800u
 #define SCMODE_MS 8000u
-#define Q 24                     /* knob positions: Q24, 0..1 */
+#define Q 16                     /* knob positions: Q16, 0..1 */
 #define ONE (1 << Q)
 
 static const char NCH[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 -";   /* the name editor's alphabet (39) */
@@ -24,7 +24,7 @@ static uint32_t ver;
 typedef struct { char n[NAME_LEN + 1]; uint8_t type; uint16_t k; int16_t v[P_COUNT]; } preset_t;
 static preset_t bank[BANK_MAX];
 static int nbank, pi;                              /* pi: 1-based current, 0 = none */
-static int pp_q, ap_q, pp_ws = -1, ap_ws = -1, sel_ws = -1;   /* the knobs' unrounded positions (Q24), -1 = none */
+static int pp_q, ap_q, pp_ws = -1, ap_ws = -1, sel_ws = -1;   /* the knobs' unrounded positions (Q16), -1 = none */
 static int pp_wq, ap_wq, sel_wq;
 /* list overlay */
 static uint32_t list_until;
@@ -41,8 +41,8 @@ static int cur_bank = -1, sc_mode;
 static uint32_t sc_until;
 
 static void bump(void) { ver++; }
-static int clip_q(int64_t n) { return n < 0 ? 0 : n > ONE ? ONE : (int)n; }
-static int round_q(int64_t q, int mul) { return (int)((q * mul + (ONE >> 1)) >> Q); }    /* Math.round for n >= 0 */
+static int clip_q(int32_t n) { return n < 0 ? 0 : n > ONE ? ONE : (int)n; }
+static int round_q(int32_t q, int mul) { return (int)((q * mul + (ONE >> 1)) >> Q); }    /* Math.round for n >= 0 */
 
 static int slen(const char *s) { int n = 0; while (s[n]) n++; return n; }
 static void scopy(char *d, const char *s, int max) { int i = 0; while (s[i] && i < max - 1) { d[i] = s[i]; i++; } d[i] = 0; }
@@ -176,7 +176,7 @@ static void commit_save(uint32_t ms)
     save_bank();
     {   /* showList("PRESETS", plist(), pi, "SAVED · VACT") */
         char nb[24];
-        scopy(nb, "SAVED \xB7 ", sizeof nb); sappend(nb, etag(cur_engine()), sizeof nb);
+        scopy(nb, "SAVED \x02 ", sizeof nb); sappend(nb, etag(cur_engine()), sizeof nb);
         presets_list(nb, ms);
     }
 }
@@ -287,13 +287,13 @@ void ctrl_button(int t, int down, uint32_t ms)
 void ctrl_octave(int d) { oct = oct + d < -2 ? -2 : oct + d > 2 ? 2 : oct + d; bump(); }
 
 /* ---- the side knobs: vk(): wheel steps of the knob's `wstep`, from the unrounded position ---- */
-static void wheel(int steps, int wstep_q, int64_t (*get)(void), void (*set)(int64_t), int *ws, int *wq)
+static void side_wheel(int steps, int wstep_q, int32_t (*get)(void), void (*set)(int32_t), int *ws, int *wq)
 {
     int i, n = steps < 0 ? -steps : steps;
     for (i = 0; i < n; i++) {
-        int64_t g = get();
-        int64_t base = (*ws >= 0 && g == *wq) ? *ws : g;
-        int64_t nv = clip_q(base + (steps < 0 ? -(int64_t)wstep_q : (int64_t)wstep_q));
+        int32_t g = get();
+        int32_t base = (*ws >= 0 && g == *wq) ? *ws : g;
+        int32_t nv = clip_q(base + (steps < 0 ? -(int32_t)wstep_q : (int32_t)wstep_q));
         *ws = (int)nv;
         set(nv);
         *wq = (int)get();
@@ -301,12 +301,12 @@ static void wheel(int steps, int wstep_q, int64_t (*get)(void), void (*set)(int6
 }
 static uint32_t g_ms;
 /* PRESETS: n * bank.length rounds to the entry (0 = none) */
-static int64_t pk_get(void)
+static int32_t pk_get(void)
 {
-    if (round_q(pp_q, nbank) != pi) pp_q = (int)(((int64_t)pi << Q) / (nbank > 1 ? nbank : 1));
+    if (round_q(pp_q, nbank) != pi) pp_q = (int)(((int32_t)pi << Q) / (nbank > 1 ? nbank : 1));
     return pp_q;
 }
-static void pk_set(int64_t n)
+static void pk_set(int32_t n)
 {
     int i = round_q(n, nbank);
     pp_q = (int)n;
@@ -314,25 +314,25 @@ static void pk_set(int64_t n)
     presets_list(nbank ? "" : "PRESS SAVE", g_ms);
 }
 /* ALGORITHM: the engine of the track (one engine so far) */
-static int64_t ak_get(void) { return 0; }
-static void ak_set(int64_t n)
+static int32_t ak_get(void) { return 0; }
+static void ak_set(int32_t n)
 {
     int i = round_q(n, ENG_N > 1 ? ENG_N - 1 : 1);
     char t[20], num[4], nb[24];
     (void)i;
     ap_q = (int)n;
-    scopy(t, "ALGO \xB7 T", sizeof t); itoa2(num, sel + 1, 0); sappend(t, num, sizeof t);
+    scopy(t, "ALGO \x02 T", sizeof t); itoa2(num, sel + 1, 0); sappend(t, num, sizeof t);
     scopy(nb, "TRACK ", sizeof nb); sappend(nb, num, sizeof nb);
     show_list(1, t, cur_engine(), ENG_N, nb, g_ms);
 }
 /* SELECT: the name editor's letter, HOME's track, else the LFO source */
-static int64_t sk_get(void)
+static int32_t sk_get(void)
 {
-    if (pend) { int j, k = 0; for (j = 0; j < NCHN; j++) if (NCH[j] == nmA[nmP]) { k = j; break; } return ((int64_t)k << Q) / (NCHN - 1); }
-    if (pg == PGN_HOME) return ((int64_t)sel << Q) / 3;
-    return ((int64_t)src << Q) / 5;
+    if (pend) { int j, k = 0; for (j = 0; j < NCHN; j++) if (NCH[j] == nmA[nmP]) { k = j; break; } return ((int32_t)k << Q) / (NCHN - 1); }
+    if (pg == PGN_HOME) return ((int32_t)sel << Q) / 3;
+    return ((int32_t)src << Q) / 5;
 }
-static void sk_set(int64_t n)
+static void sk_set(int32_t n)
 {
     if (pend) { nmA[nmP] = NCH[round_q(n, NCHN - 1)]; bump(); return; }
     if (pg == PGN_HOME) { int v = round_q(n, 3); sel = v < 0 ? 0 : v > 3 ? 3 : v; ui_goto(pg); bump(); return; }
@@ -344,11 +344,11 @@ static void sk_set(int64_t n)
 void ctrl_side(int role, int steps, uint32_t ms)
 {
     g_ms = ms;
-    if (role == ROLE_PRESETS) wheel(steps, ONE / 50, pk_get, pk_set, &pp_ws, &pp_wq);
-    else if (role == ROLE_ALGO) wheel(steps, ONE / 50, ak_get, ak_set, &ap_ws, &ap_wq);
+    if (role == ROLE_PRESETS) side_wheel(steps, ONE / 50, pk_get, pk_set, &pp_ws, &pp_wq);
+    else if (role == ROLE_ALGO) side_wheel(steps, ONE / 50, ak_get, ak_set, &ap_ws, &ap_wq);
     else {
         int w = pend ? ONE / (NCHN - 1) : pg == PGN_HOME ? ONE / 3 : ONE / 50;
-        wheel(steps, w, sk_get, sk_set, &sel_ws, &sel_wq);
+        side_wheel(steps, w, sk_get, sk_set, &sel_ws, &sel_wq);
     }
 }
 
@@ -394,7 +394,7 @@ uint32_t ctrl_lit(void)                             /* #bt .on: the page's butto
     if (rec) m |= 1u << CB_REC;
     return m;
 }
-int ctrl_overlay(void) { return pend ? OV_NONE + OV_NAME : list_until ? OV_LIST : OV_NONE; }
+int ctrl_overlay(void) { return pend ? OV_NAME : list_until ? OV_LIST : OV_NONE; }
 
 int ctrl_list_rows(char rows[5][24], char tags[5][8], int cur[1], char *title, char *note)
 {
@@ -405,7 +405,7 @@ int ctrl_list_rows(char rows[5][24], char tags[5][8], int cur[1], char *title, c
     for (i = a; i < n && cnt < 5; i++, cnt++) {
         tags[cnt][0] = 0;
         if (list_kind == 1) scopy(rows[cnt], etag(i), 24);
-        else if (i == 0) scopy(rows[cnt], "+ new", 24);
+        else if (i == 0) scopy(rows[cnt], "+ NEW", 24);
         else { scopy(rows[cnt], bank[i - 1].n, 24); scopy(tags[cnt], etag(bank[i - 1].type), 8); }
     }
     return cnt;
@@ -418,7 +418,7 @@ int ctrl_name(char *text, int *pos, char *engine_line)
     text[NAME_LEN] = 0;
     *pos = nmP;
     scopy(engine_line, "ENGINE: ", 32); sappend(engine_line, etag(cur_engine()), 32);
-    if (pend_ow) sappend(engine_line, " \xB7 OVERWRITE", 32);
+    if (pend_ow) sappend(engine_line, " \x02 OVERWRITE", 32);
     return 1;
 }
 int ctrl_toast(char *a, char *b)

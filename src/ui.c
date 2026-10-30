@@ -4,6 +4,7 @@
 #include "octavio.h"
 #include "params.h"
 #include "ui.h"
+#include "ctrl.h"
 
 enum { PG_GLO, PG_EDIT, PG_ENV, PG_COUNT };
 typedef struct { const char *title; const char *names[4]; uint8_t p[4]; } page_t;
@@ -72,8 +73,17 @@ void ui_tick(uint32_t ms)                      /* the scope scrolls: .25 + 1.5 *
     ed_phase += dt * (uint32_t)(250 + (3 * PV[P_FREQ]) / 2) * 4295u;      /* turns/ms in 2^32 / 1e6 units */
 }
 
+void ui_goto(int p)                            /* the controller's page -> this screen's (pages not drawn yet keep the current one) */
+{
+    int np = p == PGN_GLO ? PG_GLO : p == PGN_EDIT ? PG_EDIT : p == PGN_ENV ? PG_ENV : page;
+    if (np != page) { page = np; dirty_top = 1; }
+}
+
 int ui_scene(int *y0, int *y1)
 {
+    static uint32_t seen;
+    uint32_t v = ctrl_version();
+    if (v != seen || ctrl_overlay() != OV_NONE) { seen = v; dirty_all = 1; }
     if (dirty_all) { dirty_all = 0; dirty_top = 0; *y0 = 0; *y1 = SCR_H; return 1; }
     *y0 = dirty_top ? 0 : 124;
     *y1 = 206;
@@ -210,4 +220,5 @@ void ui_draw(int y0, int y1)                    /* the current band is [y0, y1) 
         draw_cell(k);
     if (y1 > 124 && y0 < 206)
         draw_scope();
+    overlay_draw();
 }

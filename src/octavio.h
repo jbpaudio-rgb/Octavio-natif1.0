@@ -19,7 +19,7 @@
 /* ---- fonts (assets_gen.c: Chrome renders of the prototype's glyphs, 8-bit coverage) ---- */
 typedef struct { uint16_t off; uint8_t w, h; int8_t dx, dy; } glyph_t;
 typedef struct { const glyph_t *g; const uint8_t *d; const uint8_t *map; uint8_t n; uint16_t adv64, size64; } font_t;   /* g: [4 sub-pixel phases][n] */
-enum { F_TITLE, F_LABEL, F_VALUE, F_COUNT };
+enum { F_TITLE, F_LABEL, F_VALUE, F_OV_PT, F_OV_ROW, F_OV_CH, F_OV_HINT, F_OV_PN, F_OV_TST, F_OV_SM, F_COUNT };
 extern const font_t FONTS[F_COUNT];
 extern const uint8_t KNOB_SPR0[], KNOB_SPR1[];
 

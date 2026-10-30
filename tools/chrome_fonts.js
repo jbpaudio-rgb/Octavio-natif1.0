@@ -4,7 +4,8 @@ const {chromium}=require('playwright');const fs=require('fs');
 const STACK='ui-monospace, Menlo, Consolas, monospace';
 const FONTS=JSON.parse(fs.readFileSync(__dirname+'/fonts_spec.json','utf8'));
 const SPECIAL=['\u25CF','\u00B7','\u2014','\u2026','\u25B6','\u25A0'];
-const charset=(set)=>{const a=[];for(let c=32;c<127;c++){const ch=String.fromCharCode(c);if(set==='upper'&&ch>='a'&&ch<='z')continue;a.push(ch)}return a.concat(SPECIAL)};
+const OV=' ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789=_<>&*#-+./:!?()\'%,';
+const charset=(set)=>{if(set==='ov')return Array.from(OV).concat(SPECIAL);const a=[];for(let c=32;c<127;c++){const ch=String.fromCharCode(c);if(set==='upper'&&ch>='a'&&ch<='z')continue;a.push(ch)}return a.concat(SPECIAL)};
 const PH=[0,0.25,0.5,0.75];
 (async()=>{const b=await chromium.launch();const out={};
 for(const F of FONTS){
@@ -15,7 +16,7 @@ for(const F of FONTS){
  for(const ph of PH){
   let html='<body style="margin:0;background:#000">';
   CH.forEach((ch,i)=>{const c=cell(i);
-   html+=`<div style="position:absolute;left:${c.x+4+ph}px;top:${c.y}px;height:0;line-height:0;white-space:pre;font:${F.weight} ${F.size}px ${STACK};color:#fff"><span>${ch.replace('&','&amp;').replace('<','&lt;')}</span><span style="display:inline-block;width:1px;height:1px;background:#f00;margin-left:26px"></span></div>`});
+   html+=`<div style="position:absolute;left:${c.x+4+ph}px;top:${c.y}px;height:0;line-height:0;white-space:pre;font:${F.weight} ${F.size}px ${F.stack||STACK};color:#fff"><span>${ch.replace('&','&amp;').replace('<','&lt;')}</span><span style="display:inline-block;width:1px;height:1px;background:#f00;margin-left:26px"></span></div>`});
   await p.setContent(html);await p.waitForTimeout(150);
   const shot=await p.screenshot({type:'png'});
   const data=await p.evaluate(async(b64)=>{const im=new Image();im.src='data:image/png;base64,'+b64;await im.decode();const c=document.createElement('canvas');c.width=im.width;c.height=im.height;const g=c.getContext('2d');g.drawImage(im,0,0);return Array.from(g.getImageData(0,0,c.width,c.height).data)},shot.toString('base64'));
@@ -32,7 +33,7 @@ for(const F of FONTS){
    const a=[];for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){const k=(y*W+x)*4;a.push(isM(x,y)?0:data[k])}
    glyphs[ch]={w:x1-x0+1,h:y1-y0+1,dx:x0-ox,dy:y0-base,a}});
   phases.push(glyphs)}
- const adv=await p.evaluate(({font})=>{const s=document.createElement('span');s.style.font=font;s.style.position='absolute';s.textContent='0000000000';document.body.append(s);return s.getBoundingClientRect().width/10},{font:`${F.weight} ${F.size}px ${STACK}`});
+ const adv=await p.evaluate(({font})=>{const s=document.createElement('span');s.style.font=font;s.style.position='absolute';s.textContent='0000000000';document.body.append(s);return s.getBoundingClientRect().width/10},{font:`${F.weight} ${F.size}px ${F.stack||STACK}`});
  out[F.name]={size:F.size,weight:F.weight,adv,chars:CH,phases};await p.close()}
 fs.writeFileSync(__dirname+'/../assets/fonts.json',JSON.stringify(out));console.log(Object.keys(out).map(k=>k+' adv='+out[k].adv).join('\n'));
 await b.close()})();
