@@ -132,6 +132,7 @@ static void ctrl_sync(void)                    /* the controller's state -> the 
     lfo_src = ctrl_src();
     fxo = ctrl_fx_slot();
     ui_set_track(ctrl_track());
+    voices_select(ctrl_track());
 }
 void ui_goto(int p)                            /* the controller shows page PGN_p (its state follows through ctrl_sync) */
 {

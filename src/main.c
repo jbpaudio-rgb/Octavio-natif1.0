@@ -29,8 +29,10 @@
 #include "gfx.c"
 #include "params.c"
 #include "vactrol.c"
+#include "voices.c"
 #include "ctrl.c"
 #include "overlay.c"
+#include "leds.c"
 #include "ui.c"
 
 extern uint32_t _data_start[], _data_end[], _data_load[], _bss_start[], _bss_end[];
@@ -46,44 +48,31 @@ static struct { uint32_t magic, pending, failed; } guard __attribute__((section(
 static int32_t abuf[2u * HALF_WORDS] __attribute__((aligned(4)));
 static volatile uint32_t master_q12 = 2800;
 static volatile uint8_t params_dirty = 1;
-static uint32_t keys_prev, keys_down;
 extern void isr_alnk0(void);
 
 void ui_params_changed(void) { params_dirty = 1; }
+static int ctrl_bank_key_cb(int key)                  /* HOME held / SAVE BANK: the white keys (F-based keyboard: key 0 = note 53) pick a bank */
+{
+    static const uint8_t WH[12] = { 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1 };
+    int k, w = 0;
+    if (!ctrl_bank_mode() || !WH[(53 + key) % 12]) return 0;
+    for (k = 0; k < key; k++) w += WH[(53 + k) % 12];
+    return ctrl_bank_key(w, ms);
+}
 
 void fm1_alnk0_irq(void)
 {
     uint8_t p = fm1_audio_pending();
     fm1_audio_ack_aux(p);
     if (p & FM1_AUDIO_HALF) {
-        uint32_t half = fm1_audio_free_half(), i, now = fm1_in.notes, ch;
+        uint32_t half = fm1_audio_free_half(), i, now = fm1_in.notes;
         int32_t *o = &abuf[half * HALF_WORDS], tmp[HALF_FRAMES];
         if (params_dirty) {
             params_dirty = 0;
             vac_update();
         }
-        ch = now ^ keys_prev;                       /* the keys: last note wins, off when none is held */
-        for (i = 0; ch && i < 27u; i++)
-            if ((ch >> i) & 1u) {
-                if ((now >> i) & 1u) {
-                    keys_down |= 1u << i;
-                    vac_note_on(ui_note_of_key((int)i));
-                } else {
-                    keys_down &= ~(1u << i);
-                    if (!keys_down)
-                        vac_note_off();
-                }
-            }
-        keys_prev = now;
-        vac_render(tmp, HALF_FRAMES);
-        {                                       /* HOME's meter: the block's peak of track 1 */
-            int32_t pk = 0;
-            for (i = 0; i < HALF_FRAMES; i++) {
-                int32_t a = tmp[i] < 0 ? -tmp[i] : tmp[i];
-                if (a > pk) pk = a;
-            }
-            ui_peak(0, pk > 32767 ? 32767 : pk);
-        }
+        voices_keys(now);                           /* kOnT / kOffT of the selected track (the bank keys: voices.c) */
+        voices_render(tmp, HALF_FRAMES);
         for (i = 0; i < HALF_FRAMES; i++) {
             int32_t s = (int32_t)(((int64_t)tmp[i] * (int32_t)master_q12) >> 12);
             s = s > 32767 ? 32767 : s < -32768 ? -32768 : s;
@@ -271,7 +260,7 @@ static void fm1_fault(const fm1_crash_t *c)     /* a fault: red screen, then res
 
 static void app_main(void)
 {
-    uint32_t i, last_adc = 0, last_frame = 0, led_b = 0, led_n = 0;
+    uint32_t i, last_adc = 0, last_frame = 0;
     {
         uint32_t f = irq_save();
         flash_ok = FL_FAR(fl_jedec_ram)() == 0x856014u;
@@ -282,6 +271,8 @@ static void app_main(void)
     lcd_init();
     ui_init();
     vac_init();
+    voices_init();
+    ctrl_init(ms);
     fm1_input_init();
     fm1_adc_init();
     for (i = 0; i < 2u * HALF_WORDS; i++)
@@ -348,14 +339,7 @@ static void app_main(void)
                 params_dirty = 1;
             }
         }
-        if (led_b != fm1_in.buttons || led_n != fm1_in.notes) {      /* the LEDs follow the keys (only on a change) */
-            led_b = fm1_in.buttons;
-            led_n = fm1_in.notes;
-            for (i = 0; i < 14u; i++)
-                fm1_led_key(i, (led_b >> i) & 1u);
-            for (i = 0; i < 27u; i++)
-                fm1_led_key(14u + i, (led_n >> i) & 1u);
-        }
+        leds_update();                                               /* key / arpeggiator LEDs, only on a change */
         {
             int y0, y1;
             ui_tick(now);

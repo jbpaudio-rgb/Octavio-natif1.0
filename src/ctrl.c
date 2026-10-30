@@ -7,6 +7,7 @@
 #define LATCH_MS 350u            /* a second press this soon after a release latches the button */
 #define LIST_MS 1800u
 #define SCMODE_MS 8000u
+#undef Q
 #define Q 16                     /* knob positions: Q16, 0..1 */
 #define ONE (1 << Q)
 
@@ -56,9 +57,9 @@ static void itoa2(char *o, int v, int pad)         /* v >= 0, zero padded to `pa
     o[n] = 0;
 }
 
-static const char *const ENG_TAG[ENG_N] = { "VACT" };   /* dn(): the display name of each engine */
-static const char *etag(int t) { return t >= 0 && t < ENG_N ? ENG_TAG[t] : "???"; }
-static int cur_engine(void) { return 0; }
+static const char *const ENG_TAG[CENG_N] = { "VACT", "MOOG", "PROP", "DRUM" };   /* dn(): the display name of each engine */
+static const char *etag(int t) { return t >= 0 && t < CENG_N ? ENG_TAG[t] : "???"; }
+static int cur_engine(void) { return voices_engine(sel); }
 
 /* ---- toast / list ---- */
 static void toast(const char *a, const char *b, uint32_t ms)
@@ -317,13 +318,13 @@ static void pk_set(int32_t n)
 static int32_t ak_get(void) { return 0; }
 static void ak_set(int32_t n)
 {
-    int i = round_q(n, ENG_N > 1 ? ENG_N - 1 : 1);
+    int i = round_q(n, CENG_N > 1 ? CENG_N - 1 : 1);
     char t[20], num[4], nb[24];
     (void)i;
     ap_q = (int)n;
     scopy(t, "ALGO \x02 T", sizeof t); itoa2(num, sel + 1, 0); sappend(t, num, sizeof t);
     scopy(nb, "TRACK ", sizeof nb); sappend(nb, num, sizeof nb);
-    show_list(1, t, cur_engine(), ENG_N, nb, g_ms);
+    show_list(1, t, cur_engine(), CENG_N, nb, g_ms);
 }
 /* SELECT: the name editor's letter, HOME's track, else the LFO source */
 static int32_t sk_get(void)
@@ -438,7 +439,7 @@ void bank_restore(const void *p, uint32_t n)
     nbank = 0;
     for (i = 0; i < cnt; i++) {
         int j;
-        if (s[i].n[0] == (char)0xFF || s[i].type >= ENG_N) continue;   /* erased flash / a foreign record */
+        if (s[i].n[0] == (char)0xFF || s[i].type >= CENG_N) continue;   /* erased flash / a foreign record */
         for (j = 0; j < NAME_LEN && s[i].n[j]; j++) ;
         if (s[i].n[j]) continue;
         bank[nbank++] = s[i];

@@ -13,7 +13,7 @@ enum { ROLE_SELECT, ROLE_ALGO, ROLE_PRESETS };      /* the left cluster's encode
 
 #define NAME_LEN 12
 #define BANK_MAX 48
-#define ENG_N 1                                     /* engines the firmware has so far (the prototype lists 4) */
+#define CENG_N 4                                    /* the engines (voices.h ENG_*: Vactrol, Minimoog, Prophet, Drums) */
 
 void ctrl_init(uint32_t ms);
 void ctrl_button(int cb, int down, uint32_t ms);    /* a panel button went down / up (CB_*) */
