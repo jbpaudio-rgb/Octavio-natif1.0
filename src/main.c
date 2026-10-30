@@ -29,6 +29,8 @@
 #include "gfx.c"
 #include "params.c"
 #include "vactrol.c"
+#include "ctrl.c"
+#include "overlay.c"
 #include "ui.c"
 
 extern uint32_t _data_start[], _data_end[], _data_load[], _bss_start[], _bss_end[];
@@ -319,16 +321,26 @@ static void app_main(void)
                 master_q12 = ((uint32_t)k * (uint32_t)k) >> 8;
         }
         pr = fm1_input_edges(&rel);
-        (void)rel;
-        for (i = 0; i < 14u; i++)
+        for (i = 0; i < 14u; i++) {
+            static const int8_t CBOF[14] = { -1, -1, CB_FX, CB_SEL, CB_ENV, CB_LFO, CB_EDIT, CB_GLO, CB_HOME, CB_SAVE, CB_ARP, CB_SEQ, CB_PLAY, CB_REC };
             if ((pr >> i) & 1u) {
                 if (i == BTN_OCTM)
-                    ui_octave(-1);
+                    ui_octave(-1), ctrl_octave(-1);
                 else if (i == BTN_OCTP)
-                    ui_octave(1);
+                    ui_octave(1), ctrl_octave(1);
                 else
-                    ui_button((int)i);
+                    ctrl_button(CBOF[i], 1, now);
             }
+            if (((rel >> i) & 1u) && CBOF[i] >= 0)
+                ctrl_button(CBOF[i], 0, now);
+        }
+        {
+            int32_t s;
+            if ((s = fm1_enc_take(0u)) != 0) ctrl_side(ROLE_SELECT, (int)s, now);
+            if ((s = fm1_enc_take(1u)) != 0) ctrl_side(ROLE_ALGO, (int)s, now);
+            if ((s = fm1_enc_take(6u)) != 0) ctrl_side(ROLE_PRESETS, (int)s, now);
+            ctrl_tick(now);
+        }
         for (i = 0; i < 4u; i++) {
             int32_t s = fm1_enc_take(2u + i);
             if (s) {

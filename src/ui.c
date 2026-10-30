@@ -4,6 +4,7 @@
 #include "octavio.h"
 #include "params.h"
 #include "ui.h"
+#include "ctrl.h"
 
 typedef struct { const char *title; const char *names[4]; uint8_t p[4]; } page_t;
 static const page_t PAGES[PG_COUNT] = {
@@ -118,8 +119,32 @@ void ui_tick(uint32_t ms)                      /* the scope scrolls: .25 + 1.5 *
     ed_phase += dt * (uint32_t)(250 + (3 * PV[P_FREQ]) / 2) * 4295u;      /* turns/ms in 2^32 / 1e6 units */
 }
 
+static int page_of(int pgn)                    /* the controller's PGN_* -> this screen's PG_* */
+{
+    static const int8_t M[PGN_COUNT] = { PG_GLO, PG_EDIT, PG_ENV, PG_LFO, PG_FX, PG_FXO, PG_ARP, PG_SEQ, PG_HOME, PG_MENU, PG_MENU2, PG_TEMPO };
+    return pgn >= 0 && pgn < PGN_COUNT ? M[pgn] : page;
+}
+static void ctrl_sync(void)                    /* the controller's state -> the pages' (page, LFO source, FX slot, HOME's track) */
+{
+    int np = page_of(ctrl_page());
+    if (page == PG_ARP2 || page == PG_ARP3) { if (ctrl_page() != PGN_ARP) page = np; }   /* (ARP 2 / 3: the keys', ui_set_page) */
+    else page = np;
+    lfo_src = ctrl_src();
+    fxo = ctrl_fx_slot();
+    ui_set_track(ctrl_track());
+}
+void ui_goto(int p)                            /* the controller shows page PGN_p (its state follows through ctrl_sync) */
+{
+    (void)p;
+    ctrl_sync();
+    dirty_all = 1;
+}
+
 int ui_scene(int *y0, int *y1)
 {
+    static uint32_t seen;
+    uint32_t v = ctrl_version();
+    if (v != seen || ctrl_overlay() != OV_NONE) { if (v != seen) ctrl_sync(); seen = v; dirty_all = 1; }
     if (dirty_all) { dirty_all = 0; dirty_top = 0; *y0 = 0; *y1 = SCR_H; return 1; }
     *y0 = dirty_top || page == PG_HOME ? 0 : 124;
     *y1 = 206;
@@ -263,7 +288,13 @@ void ui_prepare(void)
     else scope_prepare();
 }
 
+static void ui_draw_page(int y0, int y1);
 void ui_draw(int y0, int y1)                    /* the current band is [y0, y1) */
+{
+    ui_draw_page(y0, y1);
+    overlay_draw();                            /* the preset list, the name editor, the toast: over any page */
+}
+static void ui_draw_page(int y0, int y1)
 {
     int k;
     gfx_bg();
