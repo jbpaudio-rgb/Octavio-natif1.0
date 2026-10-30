@@ -156,7 +156,7 @@ void mod_apply(int n)
             for (s = 0; s < 6; s++) {
                 int d = QL[4 * s] - 3;
                 if (d <= 0 || !QL[4 * s + 2]) continue;
-                mod_dest(t, eng, d, (int32_t)(((int64_t)ui_seq_get(s, voices_seq_cur()) * 32768 / 1000) * QL[4 * s + 2] / 1000), lvl, sqg, &vac);
+                mod_dest(t, eng, d, (int32_t)(((int64_t)ui_seq_get_t(t, s, voices_seq_cur()) * 32768 / 1000) * QL[4 * s + 2] / 1000), lvl, sqg, &vac);
             }
         }
     }

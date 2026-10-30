@@ -26,7 +26,10 @@ static void leds_update(void)
     held = voices_held_keys(t, base);
     int dq = ctrl_page() == PGN_DSEQ, dcur = dq ? voices_seq_cur() : -1;
     uint32_t dgate = dq ? drum_gates(t, ctrl_drum_voice()) : 0;
-    s = keys * 2654435761u ^ btn * 40503u ^ held * 69069u ^ (uint32_t)(cur + 1) * 977u ^ (uint32_t)voices_arp_get(t, ARP_MODE) * 31u ^ (uint32_t)base << 20 ^ ctrl_lit() * 7919u ^ ctrl_locked() * 104729u ^ dgate * 2246822519u ^ (uint32_t)(dcur + 2) * 3266489917u ^ (uint32_t)dq * 668265263u ^ (uint32_t)(ctrl_bank_mode() ? ctrl_bank_cur() + 2 : 0) * 15485863u;
+    int sq = ctrl_page() == PGN_SEQ, scur = sq ? voices_seq_cur() : -1;
+    uint32_t sqh = 0;                                   /* the pitch sequencer page: the line's 16 step values (hash) and the selected step */
+    if (sq) for (i = 0; i < 16u; i++) sqh = sqh * 31u + (uint32_t)(ui_seq_get(ui_seq_line(), (int)i) + 1001);
+    s = keys * 2654435761u ^ btn * 40503u ^ held * 69069u ^ (uint32_t)(cur + 1) * 977u ^ (uint32_t)voices_arp_get(t, ARP_MODE) * 31u ^ (uint32_t)base << 20 ^ ctrl_lit() * 7919u ^ ctrl_locked() * 104729u ^ dgate * 2246822519u ^ (uint32_t)(dcur + 2) * 3266489917u ^ (uint32_t)dq * 668265263u ^ sqh * 2654435769u ^ (uint32_t)(scur + 3) * 40503u ^ (uint32_t)sq * 7u ^ (uint32_t)(ctrl_bank_mode() ? ctrl_bank_cur() + 2 : 0) * 15485863u;
     if (s == sig) return;                               /* only on a change */
     sig = s;
     for (i = 0; i < 14u; i++)
@@ -48,6 +51,16 @@ static void leds_update(void)
         for (i = 0; i < 27u; i++) {
             int white = WH[(uint32_t)(base + (int)i) % 12u], lit = white && w < 16 && (dgate >> w) & 1u, ph = white && w == dcur;
             leds_set(14u + i, ph ? LV_BREATH : lit ? LV_ON : LV_OFF);
+            w += white;
+        }
+        return;
+    }
+    if (sq) {                                           /* the pitch sequencer: each white key shows its step of the line (leds(): |v| < .04 off; positive lit, negative dim), the playing step breathes */
+        static const uint8_t WH[12] = { 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1 };
+        int w = 0;
+        for (i = 0; i < 27u; i++) {
+            int white = WH[(uint32_t)(base + (int)i) % 12u], v = white && w < 16 ? ui_seq_get(ui_seq_line(), w) : 0;
+            leds_set(14u + i, white && w == scur ? LV_BREATH : (v >= 40) ? LV_ON : (v <= -40) ? LV_DIM : LV_OFF);
             w += white;
         }
         return;

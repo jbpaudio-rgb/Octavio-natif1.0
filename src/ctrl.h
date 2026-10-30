@@ -33,6 +33,10 @@ int  ctrl_octave_val(void);
 int  ctrl_drum_voice(void);                         /* the drum voice 0..5 the EDIT / ENV pages show (ENV / EDIT held + an OP key) */
 void ctrl_cpu_full(uint32_t ms);                    /* toast: an effect did not fit the CPU budget */
 int  ctrl_fx_key(int w, uint32_t ms);                 /* a white key (0..15) with FX held on the FX page: that effect into the slot; 1 = used */
+int  ctrl_seq_key(int w, uint32_t ms);              /* a white key (0..15) on the SEQ (pitch) page: step select / set; 1 = used */
+void ctrl_seq_release(int w, uint32_t ms);          /* ... and its release (tap or hold) */
+void ctrl_fxo_knob(int steps);                      /* K1 on FX ORDER: move the selection (SEL held: move the effect) */
+int  ctrl_arp_sub(void);                            /* the ARP page of a synth: 0 ARP, 1 ARP 2, 2 ARP 3 */
 int  ctrl_dseq_key(int w);                          /* a white key (0..15) on the drum sequencer page: toggles that step of the selected lane; 1 = used */
 void ctrl_op_release(int o);                        /* a black key was released (the held lane of the drum sequencer) */
 int  ctrl_dseq_held(void);                          /* the lane held / latched with its OP key on the DSEQ page, -1 none */
@@ -63,4 +67,5 @@ void bank_restore_v1(const void *preset), scene_restore_v1(int slot, const int16
 
 /* hooks the rest of the firmware provides */
 void ui_goto(int pgn);                              /* ui.c: show page PGN_* (the ones it has) */
-void ui_params_changed(void);                       /* main.c: re-run vac_update() */
+void ui_params_changed(void);
+void ui_lfo_sync_toggle(void);                      /* ui.c: the selected LFO's tempo sync switch */

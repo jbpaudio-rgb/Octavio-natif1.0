@@ -205,11 +205,16 @@ static void fxo_draw(void)
 }
 
 /* ---- SEQ: the sequencer's pitch editor (line sl, 16 steps) ---- */
-static int16_t sq_v[6][16] = { { 0, 260, 600, 850, 1000, 850, 600, 260, 0, 260, 600, 850, 1000, 850, 600, 260 } };    /* thousandths */
+static int16_t sq_vt[4][6][16] = { { { 0, 260, 600, 850, 1000, 850, 600, 260, 0, 260, 600, 850, 1000, 850, 600, 260 } } };    /* thousandths, per track (TRX[t].SQ: track 1 starts with the triangle, the others with zeros) */
+#define sq_v sq_vt[mod_view]                     /* the selected track's (dst.c: the track whose matrix is in PV[]) */
 static int sq_step, sq_cur = -1;                       /* selected line / step, the playing step (-1: stopped) */
 static int sq_snap(int v) { return v >= 0 ? (v + 25) / 50 * 50 : -((-v + 25) / 50 * 50); }       /* an <input type=range step=.05> */
 static void seq_sync(void) { PV[P_STEPV] = (int16_t)sq_snap(sq_v[sq_line][sq_step]); }
-static void seq_commit(void) { sq_v[sq_line][sq_step] = PV[P_STEPV]; }       /* the STEP VALUE knob moved */
+static void seq_commit(void)                   /* the STEP VALUE knob moved: REC while playing writes the playing step ("Turn KNOB3 while playing"), else the selected one */
+{
+    int i = (ctrl_rec() && ctrl_playing() && sq_cur >= 0) ? sq_cur : sq_step;
+    sq_v[sq_line][i] = PV[P_STEPV];
+}
 void ui_seq_select(int line, int step)
 {
     if (line >= 0 && line < 6) sq_line = line;
@@ -220,12 +225,14 @@ int  ui_seq_line(void) { return sq_line; }
 int  ui_seq_step(void) { return sq_step; }
 void ui_seq_set(int line, int step, int v) { if (line >= 0 && line < 6 && step >= 0 && step < 16) { sq_v[line][step] = (int16_t)v; seq_sync(); dirty_all = 1; } }
 int  ui_seq_get(int line, int step) { return sq_v[line][step]; }
+int  ui_seq_get_t(int t, int line, int step) { return sq_vt[t & 3][line][step]; }
+void ui_seq_set_t(int t, int line, int step, int v) { if (line >= 0 && line < 6 && step >= 0 && step < 16) { sq_vt[t & 3][line][step] = (int16_t)v; seq_sync(); dirty_all = 1; } }
 void ui_seq_gate_toggle(int step) { if (step >= 0 && step < 16) { SQG[mod_view] ^= (uint16_t)(1u << step); dirty_all = 1; } }
 int  ui_seq_gate(int step) { return (SQG[mod_view] >> step) & 1; }
 void ui_seq_cur(int step) { if (step != sq_cur) { sq_cur = step; dirty_all = 1; } }
 
 /* one knob: svg origin (ox8, oy8) in Q8 px, u = px per svg unit (Q16); the body is a sprite */
-static void knob_g(int32_t ox8, int32_t oy8, const uint8_t *spr, int n, int32_t u16, int32_t n_q16, uint32_t am)
+static void knob_g(int32_t ox8, int32_t oy8, const uint8_t *spr, int n, int32_t u16, int32_t n_q16, uint32_t am, int skin)
 {
     int32_t cxq = ox8 + ((30 * u16) >> 8), cyq = oy8 + ((30 * u16) >> 8);
     int i;
@@ -242,6 +249,18 @@ static void knob_g(int32_t ox8, int32_t oy8, const uint8_t *spr, int n, int32_t 
         int32_t s, c, deg = -135 * 256 + (int32_t)(((int64_t)n_q16 * 270 * 256) >> 16);
         int32_t a = (25 * u16) >> 9, b = (2 * u16) >> 8;                       /* (30,17.5)-(30,28): 12.5 and 2 units from the centre */
         sin_cos_deg(deg, &s, &c);
+#define UNITS(u100) ((int32_t)(((int64_t)(u100) * u16) >> 8) / 100)             /* svg units (x100) -> Q8 px */
+        if (skin == ENG_MOOG) {                                                 /* a cream dot on the rim: circle (30, 11) r 3, stroke .5 */
+            int32_t dx = cxq + (int32_t)(((int64_t)s * UNITS(1900)) >> 15), dy = cyq - (int32_t)(((int64_t)c * UNITS(1900)) >> 15);
+            gfx_disc(dx, dy, UNITS(325), UNITS(325), 0x000000u);
+            gfx_disc(dx, dy, UNITS(275), UNITS(275), 0xf4f1e6u);
+            return;
+        }
+        if (skin == ENG_PROPH) {                                                /* a thin light line from 3.5 to 14.5 units out */
+            gfx_capsule(cxq + (int32_t)(((int64_t)s * UNITS(1450)) >> 15), cyq - (int32_t)(((int64_t)c * UNITS(1450)) >> 15),
+                        cxq + (int32_t)(((int64_t)s * UNITS(350)) >> 15), cyq - (int32_t)(((int64_t)c * UNITS(350)) >> 15), UNITS(90), 0xf4f4f0u, am);
+            return;
+        }
         gfx_capsule(cxq + (int32_t)(((int64_t)s * a) >> 15), cyq - (int32_t)(((int64_t)c * a) >> 15),
                     cxq + (int32_t)(((int64_t)s * b) >> 15), cyq - (int32_t)(((int64_t)c * b) >> 15), (11 * u16 / 10) >> 8, 0x15181bu, am);
     }
@@ -300,7 +319,10 @@ static void seq_draw(void)
         int kl = (kl8 + 128) >> 8, kr = ((kl8 + 18844) + 128) >> 8, nl;
         int id = ids[k];
         char lab[16];
-        knob_g(kl8 + 2662, 29212, KNOB_BIG, 54, 57672, param_n_q16(id), 256);
+        {   /* the knob follows the engine of the track: Minimoog / Prophet sprites (the drums' SEQ is the lane grid: its pitch sequencer keeps the Vactrol one) */
+            int skin = voices_engine(voices_sel());
+            knob_g(kl8 + 2662, 29212, skin == ENG_MOOG ? KNOB_BIGM : skin == ENG_PROPH ? KNOB_BIGP : KNOB_BIG, 54, 57672, param_n_q16(id), 256, skin);
+        }
         upcase(lab, SQLAB[k]);
         nl = ui_strlen(lab);
         {

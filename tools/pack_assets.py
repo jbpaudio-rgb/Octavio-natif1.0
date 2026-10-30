@@ -48,11 +48,12 @@ for kfile,tag in (('knob',''),('knob_moog','M'),('knob_pro','P'),('knob_drum','D
         o.append(f'const uint8_t KNOB_SPR{tag}{i}[{len(flat)}] = {{')
         for j in range(0,len(flat),32):o.append(','.join(map(str,flat[j:j+32]))+',')
         o.append('};')
-kb=json.load(open(f'{root}/assets/knob_big.json'))      # the SEQ page's larger knob (52.8 px svg)
-for i,sp in enumerate(kb):
-    flat=[v for pxl in sp['px'] for v in pxl]
-    o.append(f'const uint8_t KNOB_BIG[{len(flat)}] = {{')
-    for j in range(0,len(flat),32):o.append(','.join(map(str,flat[j:j+32]))+',')
-    o.append('};')
+for bfile,btag in (('knob_big',''),('knob_big_moog','M'),('knob_big_pro','P')):      # the SEQ page's larger knob (52.8 px svg), Vactrol / Minimoog / Prophet skins
+    kb=json.load(open(f'{root}/assets/{bfile}.json'))
+    for i,sp in enumerate(kb):
+        flat=[v for pxl in sp['px'] for v in pxl]
+        o.append(f'const uint8_t KNOB_BIG{btag}[{len(flat)}] = {{')
+        for j in range(0,len(flat),32):o.append(','.join(map(str,flat[j:j+32]))+',')
+        o.append('};')
 open(f'{root}/src/assets_gen.c','w').write('\n'.join(o)+'\n')
 print('assets_gen.c',sum(len(l) for l in o)//1024,'KB text')

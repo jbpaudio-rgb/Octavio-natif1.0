@@ -193,7 +193,7 @@ static void ep_text(int id, char *out)          /* what the cell prints */
         *out++ = ' '; *out++ = '%'; *out = 0;
     }
 }
-static int32_t ep_wheel[4];
+static int32_t ep_wheel[4], ep_wg[4];
 static int ep_wheel_id[4] = { -1, -1, -1, -1 };
 static void ep_encoder(int k, int steps)        /* one detent = 1/50 of the range, from the knob's unrounded position */
 {
@@ -204,12 +204,13 @@ static void ep_encoder(int k, int steps)        /* one detent = 1/50 of the rang
         int32_t g, base, nv;
         if (id < 0) return;
         g = ep_n_q16(id);
-        base = (ep_wheel_id[k] == id + 1000 * EP.eng && ep_wheel[k] >= g - 1 && ep_wheel[k] <= g + 1) ? ep_wheel[k] : g;
+        base = (ep_wheel_id[k] == id + 1000 * EP.eng && g == ep_wg[k]) ? ep_wheel[k] : g;
         nv = base + (steps < 0 ? -1 : 1) * (65536 / 50);
         if (nv < 0) nv = 0;
         if (nv > 65536) nv = 65536;
         ep_set_n(id, nv);
         ep_wheel[k] = nv;
+        ep_wg[k] = ep_n_q16(id);
         ep_wheel_id[k] = id + 1000 * EP.eng;
     }
 }

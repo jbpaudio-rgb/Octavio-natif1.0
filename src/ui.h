@@ -26,7 +26,9 @@ void ui_seq_select(int line, int step);
 int  ui_seq_line(void);
 int  ui_seq_step(void);
 void ui_seq_set(int line, int step, int v);
-int  ui_seq_get(int line, int step);
+int  ui_seq_get(int line, int step);                 /* the selected track's */
+int  ui_seq_get_t(int t, int line, int step);          /* track t's step values (the prototype's TRX[t].SQ) */
+void ui_seq_set_t(int t, int line, int step, int v);
 void ui_seq_gate_toggle(int step);
 int  ui_seq_gate(int step);
 void ui_seq_cur(int step);                   /* -1: stopped */

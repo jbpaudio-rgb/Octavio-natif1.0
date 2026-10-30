@@ -19,7 +19,7 @@ enum { DK_NONE, DK_PV, DK_ENV, DK_LVL, DK_ARP, DK_FX, DK_ENG, DK_DRUM, DK_SQG };
 #define MODQ_N 24                                      /* PV[P_M4T..P_M9G]: 6 lines x (dest, key, amount, glide) */
 #define MODT_N (MODM_N + MODQ_N + 1)                   /* + the track's sequencer gate bits (16 steps) */
 static struct { int16_t m[MODM_N], q[MODQ_N]; } MODT[4];
-static uint16_t SQG[4] = { 0x5555u, 0x5555u, 0x5555u, 0x5555u };     /* the synth sequencer's gate steps of each track (the prototype's TRX[t].GT) */
+static uint16_t SQG[4] = { 0x5555u, 0, 0, 0 };     /* the synth sequencer's gate steps of each track (the prototype's TRX[t].GT) */
 static uint8_t mod_view;                               /* the track whose matrix is in PV[] */
 
 static int dst_count(int eng, int sq) { return DSTLN[eng & 3] + (sq ? 3 : 0); }
@@ -80,7 +80,7 @@ static void mod_defaults(void)
         for (i = 0; i < MODM_N; i++) MODT[t].m[i] = PD[P_M0T + i].def;
         for (i = 0; i < MODQ_N; i++) MODT[t].q[i] = PD[P_M4T + i].def;
     }
-    for (t = 0; t < 4; t++) SQG[t] = 0x5555u;
+    for (t = 0; t < 4; t++) SQG[t] = t ? 0u : 0x5555u;          /* TRX[t].GT: track 1 triggers every other step, the others none */
     mod_view = 0;
 }
 void mod_select(int t)                                 /* the selected track changed: its matrix into PV[] */
@@ -100,7 +100,7 @@ static void mod_post_load(int have_modt)               /* after a preset / scene
 }
 /* the record section (state.c SK_MODT): index i = track * MODT_N + (0..29 matrix, 30..53 lines) */
 static int modt_get(int i) { int t = i / MODT_N, r = i % MODT_N; return r == MODM_N + MODQ_N ? (int16_t)SQG[t] : r < MODM_N ? MODT[t].m[r] : MODT[t].q[r - MODM_N]; }
-static int modt_def(int i) { int r = i % MODT_N; return r == MODM_N + MODQ_N ? 0x5555 : r < MODM_N ? PD[P_M0T + r].def : PD[P_M4T + r - MODM_N].def; }
+static int modt_def(int i) { int r = i % MODT_N; return r == MODM_N + MODQ_N ? (i / MODT_N ? 0 : 0x5555) : r < MODM_N ? PD[P_M0T + r].def : PD[P_M4T + r - MODM_N].def; }
 static void modt_put(int i, int v)
 {
     int t = i / MODT_N, r = i % MODT_N;
