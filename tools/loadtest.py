@@ -1,0 +1,212 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: MPL-2.0
+"""octavio-J worst-case load test driver (NOTES-J).
+
+    python3 tools/loadtest.py list                 the variants
+    python3 tools/loadtest.py run NAME [NAME..]    build + run in the emulator + report (up to 3 emulators at once)
+    python3 tools/loadtest.py report NAME [..]     only (re)print the report of finished runs
+    python3 tools/loadtest.py table                the summary table of every finished run
+
+Environment: JIELI_TOOLCHAIN, AC79_SDK (as build.sh), FM1_EMU (default /home/claude/fw/fm1-emu/target/release/fm1-emu),
+LT_OUT (default <repo>/build/loadtest).  Each variant is a firmware built with -DLOADTEST (src/loadtest.c) plus XCFLAGS,
+run for MS ms of emulated time with a --keys script; the firmware's `perf` struct (src/fxstate.c) is read back with --dump.
+Ticks are the emulator's TIMER4 ticks (24 MHz, instruction-count based): NOT silicon ticks (see NOTES-J)."""
+import os, re, subprocess, sys, json, struct, time, wave
+
+HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+OUT = os.environ.get("LT_OUT", os.path.join(HERE, "build", "loadtest"))
+EMU = os.environ.get("FM1_EMU", "/home/claude/fw/fm1-emu/target/release/fm1-emu")
+P = 69632                                  # one audio block in ticks (128 frames x 544 in the emulator)
+ENG = "ENG_VAC,ENG_MOOG,ENG_PROPH,ENG_DRUM"
+
+# --keys scripts (ms from boot; the audio runs from ~0.45 s and the statistics start 200 blocks, ~0.6 s, later).
+# Every page is visited, every knob turned, two note keys held, HOME+SELECT changes the selected track, the master pot moves.
+UI = ",".join([
+    "1300:FX", "1400:K1:+8", "1450:K2:-6", "1500:K3:+10", "1550:K4:+3",
+    "1700:LFO", "1800:K1:+5", "1850:K2:+5", "1900:K3:+7", "1950:K4:-3",
+    "2100:ENV", "2200:K1:+5", "2250:K2:+5", "2300:K3:+5", "2350:K4:+5",
+    "2500:ARP", "2600:K1:+2", "2650:K2:+1", "2700:K3:+9", "2750:K4:+9",
+    "2900:SEQ", "3000-3300:n7", "3100-3400:n12", "3150:K1:+4", "3200:K2:+6",
+    "3600:EDIT", "3700:K1:+6", "3750:K2:-6", "3800:K3:+6", "3850:K4:-6",
+    "4000:GLO", "4100:K1:+4", "4150:K2:+4", "4200:K3:+4",
+    "4400-4900:HOME", "4600:enc0:+1", "4750:enc0:+1",
+    "5000-5100:FX", "5150:K1:+8", "5200:K2:-6", "5250:K3:+10", "5300:K4:+3",
+    "5500-6100:FX", "5530-5630:n2", "5900-6000:n9",              # FX held + a white key: effect 1 (phaser) into the slot 30 ms after FX went down, effect 5 (delay) 400 ms after
+    "6200:pot:300", "6300-6600:n5", "6400-6700:n9", "6500-6800:n14", "6600:pot:700",
+    "6900:LFO", "6950:K1:-5", "7000:K2:-5", "7050:K3:-7", "7100:K4:+3",
+    "7250:ENV", "7300:K1:-5", "7350:K2:-5",
+    "7500:HOME", "7600:SCL",
+])
+UI_MS = 8000
+# what the script injects (compared with what the main loop took): encoder clicks, button presses (note keys and the master pot are not buttons)
+def injected(keys):
+    enc = btn = notes = 0
+    for it in keys.split(","):
+        p = it.split(":")
+        w = p[1].upper()
+        if w == "POT": continue
+        if w.startswith("K") and len(p) > 2 or w.startswith("ENC") and len(p) > 2: enc += abs(int(p[2])); continue
+        if w.startswith("N") and w[1:].isdigit(): notes += 1; continue
+        btn += 1
+    return dict(enc=enc, btn=btn, notes=notes)
+
+def V(xc="", ms=3800, keys="", snap="", eng=None, fx=None):
+    f = ["-DLOADTEST"]
+    if eng: f.append("-DLT_ENG={%s}" % eng)
+    if fx: f.append("-DLT_FX=%s" % fx)
+    return dict(xcflags=" ".join(f) + " " + xc, ms=ms, keys=keys, snap=snap)
+
+def E(*e): return ",".join("ENG_" + x for x in e)
+
+NOGOV = "-DNO_GOV "
+SAVE = "3000:SAVE,3700:SAVE"
+VARIANTS = {
+    # idle reference: the normal firmware (no LOADTEST), same key script -> UI cost without audio load
+    "idle_ui":     dict(xcflags="", ms=UI_MS, keys=UI, snap="1500,3000,4500"),
+    "fxgest_idle": dict(xcflags="", ms=6300, keys=UI, snap="5450,5750,6150"),                              # does FX held + a white key reassign a slot (the fx_alloc spike)? idle firmware, fast
+    "gov_fxgest":  V(ms=6300, keys=UI, snap="5450,5750,6150"),                                            # the same gesture under load: does it take?
+    "lat_idle":    dict(xcflags="", ms=2800, keys="900-1400:HOME,1000:enc0:+3,1700-1900:n7,2200-2400:n12", snap=""),      # HOME + SELECT picks track 4 (drums): a key hits a drum voice at once
+    # -- raw (governor off, -DNO_GOV = the firmware as it was): what the machine costs --
+    "eng_only":    V(NOGOV + "-DLT_FXMASK=0 -DLT_NOMOD"),                 # engines only (no chain, no mod): VAC MOOG PROPH DRUM, arp + step clock
+    "eng_mod":     V(NOGOV + "-DLT_FXMASK=0"),                            # + the 24 mod routes
+    "fx_budget":   V(NOGOV),                                              # + the chains, admitted by the static FX_BUDGET of NOTES-H
+    "fx_nobudget": V(NOGOV + "-DFX_BUDGET=1000000"),                      # all 16 slots running
+    "drum4":       V(NOGOV, eng=E("DRUM", "DRUM", "DRUM", "DRUM")),
+    "moog4":       V(NOGOV, eng=E("MOOG", "MOOG", "MOOG", "MOOG")),
+    "proph4":      V(NOGOV, eng=E("PROPH", "PROPH", "PROPH", "PROPH")),
+    "full_ui":     V(NOGOV, ms=UI_MS, keys=UI, snap="1500,3000,4500"),    # the worst case measured, front panel driven
+    # -- with the governor (the shipped firmware) --
+    "gov_fx_budget":   V(),
+    "gov_fx_nobudget": V("-DFX_BUDGET=1000000"),
+    "gov_drum4":       V(eng=E("DRUM", "DRUM", "DRUM", "DRUM")),
+    "gov_moog4":       V(eng=E("MOOG", "MOOG", "MOOG", "MOOG")),
+    "gov_full_ui":     V(ms=UI_MS, keys=UI, snap="1500,3000,4500"),
+    "gov_drum4_ui":    V(ms=UI_MS, keys=UI, eng=E("DRUM", "DRUM", "DRUM", "DRUM")),
+    "gov_nobudget_ui": V("-DFX_BUDGET=1000000", ms=UI_MS, keys=UI),
+    "gov_save_ui":     V(ms=6500, keys=SAVE),                              # a preset SAVE (flash erase + program with the interrupts off) under load
+    "raw_save_ui":     V(NOGOV, ms=6500, keys=SAVE),
+}
+
+def sh(cmd, **kw):
+    return subprocess.run(cmd, shell=True, check=True, capture_output=True, text=True, **kw)
+
+def build(name):
+    v = VARIANTS[name]
+    d = os.path.join(OUT, name); os.makedirs(os.path.join(d, "work"), exist_ok=True)
+    tc = os.environ["JIELI_TOOLCHAIN"]
+    env = dict(os.environ, XCFLAGS=v["xcflags"])
+    subprocess.run([os.path.join(HERE, "build.sh")], cwd=HERE, env=env, check=True, capture_output=True)
+    sh(f"python3 {HERE}/tools/mkpkg.py --bin {HERE}/build/octavio.bin --out {d}/fw.fwsc")
+    syms = sh(f"{tc}/common/bin/objdump -t {HERE}/build/octavio.elf").stdout
+    addr = re.search(r"^([0-9a-f]+) .*\sperf$", syms, re.M).group(1)
+    bss_end = re.search(r"^([0-9a-f]+) .*\s_bss_end$", syms, re.M).group(1)
+    json.dump(dict(perf=addr, bss_end=bss_end), open(os.path.join(d, "syms.json"), "w"))
+    return d, addr
+
+def start(name):
+    v = VARIANTS[name]
+    d, addr = build(name)
+    cmd = [EMU, "--fwsc", "fw.fwsc", "--ms", str(v["ms"]), "--wav", "out.wav", "--dump", addr, "103"]
+    if v["keys"]: cmd += ["--keys", v["keys"]]
+    if v["snap"]: cmd += ["--snap", v["snap"]]
+    t0 = time.time()
+    p = subprocess.Popen(["timeout", os.environ.get("LT_TIMEOUT", "590")] + cmd, cwd=d, stdout=open(os.path.join(d, "emu.txt"), "w"), stderr=subprocess.STDOUT)
+    return p, t0, d
+
+NAMES = ["audio_max", "audio_last", "audio_sum", "blocks", "audio_max_w", "fx_max", "fx_last", "mod_max", "magic", "nw", "sum_w", "n75", "n90", "n100",
+         "uf", "uf_first", "gap_min", "gap_max", "last_in", "fx_sum", "mod_sum", "mod_last", "mod_n", "loop_n", "loop_gap_max", "last_loop",
+         "frame_n", "frame_sum", "frame_max", "full_n", "full_max", "frame_gap_max", "last_frame", "rows_sum", "key_n", "key_sum", "key_max", "key_blk_max",
+         "enc_steps", "btn_n", "ustack_free", "sstack_free", "bss_end", "ram_free"]
+
+def parse(d):
+    txt = open(os.path.join(d, "emu.txt")).read()
+    w = []
+    for line in txt.splitlines():
+        m = re.match(r"\s+0x[0-9a-f]+:((?: [0-9a-f]{8})+)", line)
+        if m: w += [int(x, 16) for x in m.group(1).split()]
+    if len(w) < 103 or w[8] != 0x4A504552: return None
+    r = dict(zip(NAMES, w))
+    r["hist"] = w[44:68]; r["lt"] = w[68:76]
+    r["te_sum"] = w[76:80]; r["te_max"] = w[80:84]; r["tf_sum"] = w[84:88]; r["tf_max"] = w[88:92]; r["gov"] = w[92:100]; r["alloc"] = w[100:103]
+    return r
+
+def wav_stats(d):
+    import numpy as np
+    fn = os.path.join(d, "out.wav")
+    if not os.path.exists(fn): return {}
+    w = wave.open(fn); n = w.getnframes(); a = np.frombuffer(w.readframes(n), dtype="<i2").reshape(-1, 2).astype(np.int32)
+    nb = n // 128
+    b = a[:nb * 128].reshape(nb, 128 * 2)
+    rep = 0
+    for k in range(3, nb):                        # a half played twice (never refilled) = block k identical to block k-2 and not silent
+        if b[k].any() and (b[k] == b[k - 2]).all(): rep += 1
+    nz = np.nonzero(b.any(axis=1))[0]
+    onset = int(nz[0]) if len(nz) else -1
+    peak = int(np.abs(a).max()); rms = float(np.sqrt((a[nb // 4 * 128:].astype(float) ** 2).mean()))
+    return dict(frames=n, blocks=nb, repeated=rep, peak=peak, rms=round(rms, 1), first_nonzero_block=onset)
+
+def report(name, wall=None):
+    d = os.path.join(OUT, name)
+    r = parse(d)
+    if not r:
+        print(f"[{name}] no perf dump (see {d}/emu.txt)"); return None
+    v = VARIANTS[name]
+    nw = max(r["nw"], 1)
+    avg = r["sum_w"] / nw
+    r.update(name=name, avg=avg, avg_pct=100 * avg / P, max_pct=100 * r["audio_max_w"] / P,
+             fx_avg=r["fx_sum"] / nw, mod_avg=r["mod_sum"] / nw)
+    r["eng_avg"] = [s / nw for s in r["te_sum"]]; r["fxt_avg"] = [s / nw for s in r["tf_sum"]]
+    r["wav"] = wav_stats(d)
+    r["inj"] = injected(v["keys"]) if v["keys"] else None
+    if wall: r["wall_s"] = round(wall)
+    json.dump(r, open(os.path.join(d, "result.json"), "w"), indent=1)
+    h = r["hist"]
+    print(f"== {name}  ({v['ms']} ms emulated; {nw} warm blocks)")
+    print(f"   block ticks: avg {avg:,.0f} ({r['avg_pct']:.1f} %)  worst {r['audio_max_w']:,} ({r['max_pct']:.1f} %)  [first-block spike, whole run: {r['audio_max']:,}]")
+    print(f"   > 75 %: {r['n75']}  > 90 %: {r['n90']}  > 100 %: {r['n100']}   lost audio boundaries: {r['uf']} (first at block {r['uf_first']})   ISR spacing {r['gap_min']:,}..{r['gap_max']:,} (block = {P:,})")
+    print("   histogram (5 % bins): " + " ".join(f"{5*i}:{c}" for i, c in enumerate(h[:23]) if c) + (f" 115+:{h[23]}" if h[23] else ""))
+    print(f"   parts (avg ticks/block): engines " + "/".join(f"{x:,.0f}" for x in r["eng_avg"]) + f" = {sum(r['eng_avg']):,.0f};  chains " + "/".join(f"{x:,.0f}" for x in r["fxt_avg"]) + f" = {sum(r['fxt_avg']):,.0f};  mod apply+restore {r['mod_avg']:,.0f}")
+    print(f"   worst per track: engine " + "/".join(f"{x:,}" for x in r["te_max"]) + "  chain " + "/".join(f"{x:,}" for x in r["tf_max"]))
+    fr = r["frame_n"]
+    print(f"   UI: main-loop passes {r['loop_n']}, longest gap {r['loop_gap_max']/24000:.1f} ms; frames {fr} ({r['full_n']} full-screen), avg {r['frame_sum']/max(fr,1)/24000:.1f} ms, worst {r['frame_max']/24000:.1f} ms (full {r['full_max']/24000:.1f} ms), longest gap between frames {r['frame_gap_max']/24000:.1f} ms, rows/frame {r['rows_sum']/max(fr,1):.0f}")
+    if r["key_n"]: print(f"   note key -> start of the block that plays it: {r['key_n']} keys, avg {r['key_sum']/r['key_n']/24:.0f} us, worst {r['key_max']/24:.0f} us")
+    if r["inj"]: print(f"   injected {r['inj']}  taken: encoder clicks {r['enc_steps']}, button presses {r['btn_n']}")
+    print(f"   memory: bss_end 0x{r['bss_end']:08x}, {r['ram_free']:,} B to the 0x01C74000 guard; user stack never touched {r['ustack_free']:,} of 24,320 B (used {24320-r['ustack_free']:,}); interrupt stack never touched {r['sstack_free']:,} of 7,936 B (used {7936-r['sstack_free']:,})")
+    if r["wav"]: print(f"   wav: {r['wav']}")
+    if r["gov"][6] and r["wav"] and name == "lat_idle": print(f"   latency check (silent firmware, drums selected, first note): the key was taken by ISR run {r['gov'][6]} ({r['gov'][7]/24:.0f} us after the scan saw it); the first non-silent block of the wav is block {r['wav']['first_nonzero_block']} (run R fills wav block R+1 if the half-buffer chain is as described)")
+    if r.get("gov"): print(f"   governor: slots bypassed {r['gov'][0]}, drum-cap steps {r['gov'][1]}, voices stolen {r['gov'][2]}, lowest cap {r['gov'][3]}, cap at the end {r['gov'][4]}")
+    if r["alloc"][0]: print(f"   fx_alloc (a chain's effects changed while playing): {r['alloc'][0]} calls, worst {r['alloc'][1]:,} ticks ({100*r['alloc'][1]/P:.0f} % of a block), avg {r['alloc'][2]//r['alloc'][0]:,}")
+    print(f"   setup: routes {r['lt'][0]}, bpm {r['lt'][1]}, engines 0x{r['lt'][2]:04x}")
+    return r
+
+def table():
+    rows = []
+    for name in VARIANTS:
+        fn = os.path.join(OUT, name, "result.json")
+        if os.path.exists(fn): rows.append(json.load(open(fn)))
+    print("| run | avg | worst | >75 % | >90 % | >100 % | lost | UI frame avg / worst | longest loop gap |")
+    print("|---|---|---|---|---|---|---|---|---|")
+    for r in rows:
+        fr = max(r["frame_n"], 1)
+        print(f"| {r['name']} | {r['avg_pct']:.1f} % | {r['max_pct']:.1f} % | {r['n75']} | {r['n90']} | {r['n100']} | {r['uf']} | {r['frame_sum']/fr/24000:.0f} / {r['frame_max']/24000:.0f} ms | {r['loop_gap_max']/24000:.0f} ms |")
+
+def main():
+    a = sys.argv[1:]
+    if not a or a[0] == "list":
+        for k, v in VARIANTS.items(): print(f"{k:14s} {v['ms']:5d} ms  {v['xcflags']}")
+    elif a[0] == "run":
+        todo = list(a[1:]); running = []
+        while todo or running:
+            while todo and len(running) < int(os.environ.get("LT_JOBS", "3")):
+                n = todo.pop(0); p, t0, d = start(n); running.append((n, p, t0)); print(f"started {n}", flush=True)
+            time.sleep(2)
+            for x in list(running):
+                if x[1].poll() is not None:
+                    running.remove(x); report(x[0], time.time() - x[2]); sys.stdout.flush()
+    elif a[0] == "report":
+        for n in a[1:]: report(n)
+    elif a[0] == "table":
+        table()
+
+if __name__ == "__main__":
+    main()

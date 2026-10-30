@@ -39,7 +39,13 @@
 #include "ui.c"
 #include "fxdsp.c"
 #include "lfo.c"
+#include "loadtest.c"
 
+#ifndef NO_PERF
+#define PERF_ENC(s) (perf.enc_steps += (uint32_t)((s) < 0 ? -(s) : (s)))
+#else
+#define PERF_ENC(s) ((void)0)
+#endif
 extern uint32_t _data_start[], _data_end[], _data_load[], _bss_start[], _bss_end[];
 extern uint32_t _rt_start[], _rt_end[], _rt_load[];
 
@@ -56,10 +62,16 @@ static volatile uint8_t params_dirty = 1;
 extern void isr_alnk0(void);
 
 void ui_params_changed(void) { params_dirty = 1; }
+static const int8_t CBOF[14] = { -1, -1, CB_FX, CB_SEL, CB_ENV, CB_LFO, CB_EDIT, CB_GLO, CB_HOME, CB_SAVE, CB_ARP, CB_SEQ, CB_PLAY, CB_REC };      /* button id -> controller button */
 static int ctrl_bank_key_cb(int key)                  /* HOME held / SAVE BANK: the white keys (F-based keyboard: key 0 = note 53) pick a bank */
 {
     static const uint8_t WH[12] = { 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1 };
     int k, w = 0;
+    {                                                     /* chords: the buttons physically down now count as held even if the main loop (busy redrawing under load) has not taken their press yet */
+        uint32_t b = fm1_in.buttons, m = 0, i;
+        for (i = 2; i < 14u; i++) if ((b >> i) & 1u) m |= 1u << CBOF[i];
+        ctrl_hw_held(m);
+    }
     if (!WH[(53 + key) % 12]) {                           /* a black key: the OP key o (chords with EDIT / GLO / ENV held) */
         int o = 0;
         for (k = 0; k < key; k++) o += !WH[(53 + k) % 12];
@@ -68,7 +80,7 @@ static int ctrl_bank_key_cb(int key)                  /* HOME held / SAVE BANK: 
     for (k = 0; k < key; k++) w += WH[(53 + k) % 12];
     if (ctrl_fx_key(w, ms)) return 1;
     if (ctrl_dseq_key(w)) return 1;                       /* the drum sequencer: the white key toggles a step of the selected lane */
-    if (!ctrl_bank_mode()) return 0;
+    if (!ctrl_bank_mode_key()) return 0;
     return ctrl_bank_key(w, ms);
 }
 
@@ -92,6 +104,12 @@ void fm1_alnk0_irq(void)
             params_dirty = 0;
             vac_update();
         }
+#ifndef NO_PERF
+        if (perf.blocks > PERF_WARM) {              /* note keys closed since the last block: ticks from the first scan that saw them closed to the start of this block (NOTES-J) */
+            uint32_t pr = now & ~keys_prev_v, k;
+            for (k = 0; pr && k < 27u; k++, pr >>= 1) if (pr & 1u) { uint32_t l = t_blk - fm1_in.note_t0[k]; perf.key_n++; perf.key_sum += l; if (l > perf.key_max) perf.key_max = l; if (!perf.gov[6]) { perf.gov[6] = perf.blocks + 1u; perf.gov[7] = l; } }
+        }
+#endif
         voices_keys(now);                           /* kOnT / kOffT of the selected track (the bank keys: voices.c) */
 #ifdef BENCH
         bench_tick();
@@ -116,6 +134,11 @@ void fm1_alnk0_irq(void)
         perf.audio_sum += perf.audio_last;
         if (perf.audio_last > perf.audio_max) perf.audio_max = perf.audio_last;
         if (++perf.blocks > 200 && perf.audio_last > perf.audio_max_w) perf.audio_max_w = perf.audio_last;      /* worst block after the first 0.6 s (allocation and start-up excluded) */
+        gov_block(perf.audio_last);                             /* the CPU governor (fxstate.c) */
+#ifndef NO_PERF
+        perf.gov[0] = gov.fx; perf.gov[1] = gov.voices; perf.gov[2] = gov.steals; perf.gov[3] = gov.cap_min; perf.gov[4] = (uint32_t)dv_cap; perf.gov[5] = gov_cool;
+        perf_audio(t_blk, perf.audio_last, fx_blk_ticks);       /* histogram, lost boundaries (entry gap >= 2 blocks), ISR spacing */
+#endif
     }
 }
 
@@ -296,6 +319,31 @@ static void fm1_fault(const fm1_crash_t *c)     /* a fault: red screen, then res
     fm1_reboot();
 }
 
+#ifndef NO_PERF
+extern char _ustack_lo[], _ustack_top[], _sstack_lo[], _sstack_top[];
+#define STACK_PAINT 0xA5C3A5C3u
+static void perf_stack_paint(void)                   /* boot: both stacks filled with a pattern below the current sp / the interrupt stack's top 256 bytes */
+{
+    uint32_t *p, *e;
+    volatile uint32_t here;
+    e = (uint32_t *)((uintptr_t)&here - 256u);
+    for (p = (uint32_t *)_ustack_lo; p < e; p++) *p = STACK_PAINT;
+    e = (uint32_t *)(_sstack_top - 256);
+    for (p = (uint32_t *)_sstack_lo; p < e; p++) *p = STACK_PAINT;
+}
+static void perf_stack_scan(void)                    /* bytes below the deepest write of each stack that still hold the pattern (the first word that differs from the bottom up) */
+{
+    uint32_t *p = (uint32_t *)_ustack_lo;
+    while (p < (uint32_t *)_ustack_top && *p == STACK_PAINT) p++;
+    perf.ustack_free = (uint32_t)((char *)p - _ustack_lo);
+    p = (uint32_t *)_sstack_lo;
+    while (p < (uint32_t *)_sstack_top && *p == STACK_PAINT) p++;
+    perf.sstack_free = (uint32_t)((char *)p - _sstack_lo);
+    perf.bss_end = (uint32_t)(uintptr_t)_bss_end;
+    perf.ram_free = 0x01C74000u - perf.bss_end;
+}
+#endif
+
 static void app_main(void)
 {
     uint32_t i, last_adc = 0, last_frame = 0;
@@ -312,6 +360,9 @@ static void app_main(void)
     voices_init();
     ctrl_init(ms);
     persist_boot();
+#ifdef LOADTEST
+    lt_setup();                                 /* the worst-case state of NOTES-J */
+#endif
     fm1_input_init();
     fm1_adc_init();
     for (i = 0; i < 2u * HALF_WORDS; i++)
@@ -326,6 +377,15 @@ static void app_main(void)
     for (;;) {
         uint32_t now = ms, pr, rel;
         fm1_wdt_feed();
+#ifndef NO_PERF
+        {                                           /* main-loop pass: the longest time between two passes is how long a key or an encoder click can wait */
+            uint32_t tl = fm1_ticks();
+            perf.loop_n++;
+            if (perf.last_loop && perf.blocks > PERF_WARM && tl - perf.last_loop > perf.loop_gap_max) perf.loop_gap_max = tl - perf.last_loop;
+            perf.last_loop = tl;
+            if ((perf.loop_n & 0x3FFu) == 1u) perf_stack_scan();
+        }
+#endif
         usb_retry(now);
         if (usb.uboot_req) {
             fm1_delay_ms(30);
@@ -352,8 +412,10 @@ static void app_main(void)
         }
         pr = fm1_input_edges(&rel);
         for (i = 0; i < 14u; i++) {
-            static const int8_t CBOF[14] = { -1, -1, CB_FX, CB_SEL, CB_ENV, CB_LFO, CB_EDIT, CB_GLO, CB_HOME, CB_SAVE, CB_ARP, CB_SEQ, CB_PLAY, CB_REC };
             if ((pr >> i) & 1u) {
+#ifndef NO_PERF
+                perf.btn_n++;
+#endif
                 if (i == BTN_OCTM)
                     ui_octave(-1), ctrl_octave(-1);
                 else if (i == BTN_OCTP)
@@ -366,15 +428,16 @@ static void app_main(void)
         }
         {
             int32_t s;
-            if ((s = fm1_enc_take(0u)) != 0) ctrl_side(ROLE_SELECT, (int)s, now);
-            if ((s = fm1_enc_take(1u)) != 0) ctrl_side(ROLE_ALGO, (int)s, now);
-            if ((s = fm1_enc_take(6u)) != 0) ctrl_side(ROLE_PRESETS, (int)s, now);
+            if ((s = fm1_enc_take(0u)) != 0) { PERF_ENC(s); ctrl_side(ROLE_SELECT, (int)s, now); }
+            if ((s = fm1_enc_take(1u)) != 0) { PERF_ENC(s); ctrl_side(ROLE_ALGO, (int)s, now); }
+            if ((s = fm1_enc_take(6u)) != 0) { PERF_ENC(s); ctrl_side(ROLE_PRESETS, (int)s, now); }
             ctrl_tick(now);
             { static uint32_t seen; if (fx_refused != seen) { seen = fx_refused; ctrl_cpu_full(now); } }      /* an effect did not fit the CPU budget */
         }
         for (i = 0; i < 4u; i++) {
             int32_t s = fm1_enc_take(2u + i);
             if (s) {
+                PERF_ENC(s);
                 ui_encoder((int)i, (int)s);
                 params_dirty = 1;
             }
@@ -386,7 +449,22 @@ static void app_main(void)
             if (now - last_frame >= 20u) {
                 last_frame = now;
                 ui_scene(&y0, &y1);
+#ifndef NO_PERF
+                {
+                    uint32_t tf = fm1_ticks(), d;
+                    lcd_frame(y0, y1);
+                    d = fm1_ticks() - tf;
+                    if (perf.blocks > PERF_WARM) {
+                        perf.frame_n++; perf.frame_sum += d; perf.rows_sum += (uint32_t)(y1 - y0);
+                        if (d > perf.frame_max) perf.frame_max = d;
+                        if (y1 - y0 >= SCR_H) { perf.full_n++; if (d > perf.full_max) perf.full_max = d; }
+                        if (perf.last_frame && tf - perf.last_frame > perf.frame_gap_max) perf.frame_gap_max = tf - perf.last_frame;
+                    }
+                    perf.last_frame = tf;
+                }
+#else
                 lcd_frame(y0, y1);
+#endif
             }
         }
     }
@@ -417,6 +495,10 @@ void fm1_cstart(void)
         *d = *s;
     for (s = _rt_load, d = _rt_start; d < _rt_end; s++, d++)
         *d = *s;
+#ifndef NO_PERF
+    perf_stack_paint();
+    perf.magic = 0x4A504552u;
+#endif
     fm1_guard_enable(FM1_GUARD_STACK | FM1_GUARD_WRITE | FM1_GUARD_BUS | FM1_GUARD_PC);
     app_main();
     for (;;)

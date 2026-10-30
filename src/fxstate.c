@@ -15,7 +15,55 @@ typedef struct { uint8_t ord[FX_NSLOT]; int16_t p[FX_NP]; } fxt_t;   /* ord: eff
 typedef char fx_np_check[(P_F5SYNC - P_F0DRIVE == FX_NP - 1 && P_F15MIX - P_F0DRIVE == FX_NP - 2) ? 1 : -1];
 
 /* CPU measures (timer ticks, 24 MHz; one audio half-block of 128 samples = 69,660 ticks), one struct so a single --dump reads them all */
-struct { uint32_t audio_max, audio_last, audio_sum, blocks, audio_max_w, fx_max, fx_last, mod_max; } perf;
+struct {
+    uint32_t audio_max, audio_last, audio_sum, blocks, audio_max_w, fx_max, fx_last, mod_max;       /* words 0..7: NOTES-H */
+#ifndef NO_PERF                                          /* octavio-J load test (NOTES-J): -DNO_PERF removes everything below and its hooks */
+    uint32_t magic;                                      /*  8: 0x4A504552 */
+    uint32_t nw, sum_w;                                  /*  9..10: blocks and block ticks after the warm-up (PERF_WARM blocks) */
+    uint32_t n75, n90, n100;                             /* 11..13: warm blocks above 75 / 90 / 100 % of a block */
+    uint32_t uf, uf_first;                               /* 14..15: lost audio boundaries (an ISR entry gap of 2 blocks or more) and the block index of the first */
+    uint32_t gap_min, gap_max, last_in;                  /* 16..18: spacing of the audio ISR entries (a block = PERF_P) */
+    uint32_t fx_sum, mod_sum, mod_last, mod_n;           /* 19..22: ticks of the chains / the mod matrix, summed over the warm blocks */
+    uint32_t loop_n, loop_gap_max, last_loop;            /* 23..25: main-loop passes; the longest time between two passes (ticks) */
+    uint32_t frame_n, frame_sum, frame_max, full_n, full_max, frame_gap_max, last_frame, rows_sum;       /* 26..33: lcd_frame calls: count, total / worst ticks, full-screen frames, longest gap between two frames */
+    uint32_t key_n, key_sum, key_max, key_blk_max;       /* 34..37: note keys: ticks from the first scan that saw the key closed to the audio block that plays it; the block's own length */
+    uint32_t enc_steps, btn_n;                           /* 38..39: encoder clicks and button presses taken by the main loop */
+    uint32_t ustack_free, sstack_free, bss_end, ram_free;       /* 40..43: stack bytes never touched (painted at boot), end of .bss, bytes from there to the 0x01C74000 guard */
+    uint32_t hist[24];                                   /* 44..67: warm blocks by length, bin = ticks / (PERF_P / 20): 5 % each, bin 20+ = over a block */
+    uint32_t lt[8];                                      /* 68..75: what the load test set up (loadtest.c): routes, bpm, engines */
+    uint32_t te_sum[4], te_max[4], tf_sum[4], tf_max[4]; /* 76..91: per track, warm blocks: ticks of the engine's render / of the track's effect chain (sum, worst) */
+    uint32_t gov[8];                                     /* 92..99: governor: slots bypassed, drum-cap steps, voices stolen, lowest cap, cap now, blocks of cool-down left, ISR run (perf.blocks) that took the first note key, its scan-to-block ticks */
+    uint32_t alloc_n, alloc_max, alloc_sum;              /* 100..102: fx_alloc calls (a chain's order changed) after the warm-up, worst and total ticks */
+#endif
+} perf;
+#ifdef FM1_TICKS_PER_US
+#define PERF_NOW() fm1_ticks()
+#else
+#define PERF_NOW() 0u                                    /* host tests (tests/state_test.c): no timer */
+#endif
+#ifndef NO_PERF
+#define PERF_P 69632u                                    /* one audio half-block in timer ticks (fm1-emu: 128 frames x 544; 69,660 at exactly 44.1 kHz) */
+#define PERF_WARM 200u                                   /* blocks left out of the statistics (allocation, start-up) */
+static void perf_audio(uint32_t t_in, uint32_t d, uint32_t fxt)       /* end of an audio block: entry tick, length, ticks of the chains */
+{
+    uint32_t gap = t_in - perf.last_in, b = d / (PERF_P / 20u);
+    if (perf.blocks > 1u) {
+        if (gap > 3u * PERF_P / 2u) { if (!perf.uf) perf.uf_first = perf.blocks; perf.uf += (gap + PERF_P / 2u) / PERF_P - 1u; }
+        if (perf.blocks > PERF_WARM) {
+            if (!perf.gap_min || gap < perf.gap_min) perf.gap_min = gap;
+            if (gap > perf.gap_max) perf.gap_max = gap;
+        }
+    }
+    perf.last_in = t_in;
+    if (perf.blocks > PERF_WARM) {
+        perf.nw++; perf.sum_w += d; perf.fx_sum += fxt; perf.mod_sum += perf.mod_last;
+        perf.hist[b > 23u ? 23u : b]++;
+        if (d > PERF_P * 3u / 4u) perf.n75++;
+        if (d > PERF_P * 9u / 10u) perf.n90++;
+        if (d > PERF_P) perf.n100++;
+    }
+}
+#endif
 #define fx_ticks_max perf.fx_max
 #define fx_ticks_last perf.fx_last
 #define mod_ticks_max perf.mod_max
@@ -35,6 +83,48 @@ void ui_params_changed(void);
 
 static uint8_t fx_run[FX_NTRK];                      /* bit s: the active slot (Mix > 0) was admitted by the CPU budget and runs (fxdsp.c fx_begin) */
 uint32_t fx_refused;                                 /* counts the slots the budget just refused (the main loop shows a toast) */
+/* ---- CPU governor (octavio-J, NOTES-J): the ISR measures its own length with TIMER4 on the device, so the ceiling holds whatever the silicon's real speed is.
+ * gov_peak = the second longest of the last 4 audio blocks (a single start-up / reallocation spike is ignored).  Above GOV_SHED the last-priority running effect
+ * slot (track 4 slot 4 first) is bypassed, one every GOV_WAIT blocks; with no effect left running the number of drum voices sounding in all is capped (the quietest
+ * tail is stolen).  Slots / voices come back only after GOV_COOL blocks, and only while the load stays under GOV_ADMIT.  -DNO_GOV: off (the NOTES-H behaviour). */
+#ifndef GOV_P
+#define GOV_P 69660u                                 /* one audio block in TIMER4 ticks */
+#endif
+#ifndef GOV_SHED
+#define GOV_SHED (GOV_P / 100u * 74u)
+#endif
+#ifndef GOV_ADMIT
+#define GOV_ADMIT (GOV_P / 100u * 68u)
+#endif
+#ifndef GOV_AIM
+#define GOV_AIM (GOV_P / 100u * 71u)                 /* a shed removes enough to land about here */
+#endif
+#define GOV_WAIT 12u                                 /* blocks between two sheds: the 4-block window must show the effect of the last one */
+#define GOV_COOL 480u                                /* blocks (1.4 s) after a shed before anything comes back */
+#define GOV_DRUMS 24                                 /* drum voices in all: 4 tracks x 6 */
+#define GOV_UNIT(c) (((c) * 7u) >> 3)                /* ticks per FX_COST unit: measured 0.66..0.86 (NOTES-J) */
+static uint32_t gov_w[4], gov_peak, gov_wait, gov_cool, gov_n;          /* gov_n: blocks measured so far (once the ISR reports, nothing is admitted before 4) */
+static uint8_t gov_on;                               /* the audio ISR reports (not in the host tests) */
+static uint32_t dv_cost = 4400;                      /* ticks of one drum voice in a block (measured while drums sound: voices.c; this is the emulator's figure) */
+static uint8_t gov_wi;
+static int dv_cap = GOV_DRUMS;                       /* drum voices allowed to sound at once, all drum tracks together */
+struct { uint32_t fx, voices, steals, cap_min, unload; } gov;      /* activity counters (perf dump, loadtest) */
+static void gov_block(uint32_t d)                    /* end of an audio block: its length in ticks */
+{
+#ifndef NO_GOV
+    uint32_t m1 = 0, m2 = 0, v;
+    int i;
+    gov_w[gov_wi++ & 3u] = d;
+    for (i = 0; i < 4; i++) { v = gov_w[i]; if (v > m1) { m2 = m1; m1 = v; } else if (v > m2) m2 = v; }
+    gov_peak = m2;
+    if (gov_n < 1000u) gov_n++;
+    gov_on = 1;
+    if (gov_wait) gov_wait--;
+    if (gov_cool) gov_cool--;
+#else
+    (void)d;
+#endif
+}
 static void fx_check(void) { memset(fx_run, 0, sizeof fx_run); }      /* after a load: every active slot is admitted again, in the order track 1 slot 1 ... track 4 slot 4 */
 
 static void fx_defaults(void)

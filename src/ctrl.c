@@ -19,6 +19,8 @@ static const char NCH[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 -";   /* the nam
 /* ---- state ---- */
 static int pg = PGN_GLO, src, sel, fxo, oct, auto_play, rec;
 static uint16_t lt, bdn, dn_;                      /* locked (lk), held (bdn), physically down (b.dn): bit CB_* */
+static uint16_t hw;                                /* octavio-J: buttons physically down seen by the audio ISR when a note key arrives, bit CB_*; the main loop may not have taken their press yet (a full redraw under load takes up to ~0.2 s) */
+#define HELD(b) ((((bdn | hw) >> (b)) & 1))        /* held for the chords of a note key (ctrl_op_key / ctrl_fx_key / ctrl_dseq_key / ctrl_bank_mode_key) */
 static uint32_t lu[CB_COUNT];                      /* each button's last release (0 after a chord) */
 static int chord, sel_down, sel_mv;
 static uint8_t dv[4];                              /* each track's selected drum voice (the prototype's eng.dv) */
@@ -289,6 +291,8 @@ static void sc_load(int w, uint32_t ms)             /* scLoad(): an empty bank r
     bump();
 }
 int ctrl_bank_mode(void) { return ((bdn >> CB_HOME) & 1) || sc_mode; }
+int ctrl_bank_mode_key(void) { return HELD(CB_HOME) || sc_mode; }        /* the same for a note key in the ISR */
+void ctrl_hw_held(uint32_t cb_mask) { hw = (uint16_t)cb_mask; }
 int ctrl_bank_cur(void) { return cur_bank; }
 int ctrl_bank_key(int w, uint32_t ms)
 {
@@ -537,15 +541,15 @@ int ctrl_page(void) { norm_pg(); return pg; }
 int ctrl_drum_voice(void) { return dv[sel & 3]; }
 int ctrl_op_key(int o)                              /* the prototype's black-key chords: EDIT / GLO + OP1..4 = OSC pages, ENV + OP1/2 = ENV / ENV2, drums: ENV / EDIT + OP1..6 = voice */
 {
-    int e = cur_engine(), h_edit = (bdn >> CB_EDIT) & 1, h_glo = (bdn >> CB_GLO) & 1, h_env = (bdn >> CB_ENV) & 1;
+    int e = cur_engine(), h_edit = HELD(CB_EDIT), h_glo = HELD(CB_GLO), h_env = HELD(CB_ENV);
     if (e == ENG_DRUM && pg == PGN_DSEQ && o < 6) {                                      /* the lane: held (the ALGORITHM / SELECT knobs edit its kit / type), a double tap latches it */
         if (dq_l == o && now_ms - dq_t < LATCH_MS) dq_latch = dq_latch == o ? -1 : o;
         dq_l = o; dq_t = now_ms; dq_held = o;
         dv[sel & 3] = (uint8_t)o;
         if (rec && auto_play) voices_seq_rec(sel, o);                                    /* REC while playing: the voice is hit and the current step set */
-    } else if (((bdn >> CB_FX) & 1) && (pg == PGN_FX || pg == PGN_FXO) && o < FX_NSLOT) {       /* FX held + OP1..: the slot of the selected track (the prototype has six, native FX_NSLOT) */
+    } else if (HELD(CB_FX) && (pg == PGN_FX || pg == PGN_FXO) && o < FX_NSLOT) {       /* FX held + OP1..: the slot of the selected track (the prototype has six, native FX_NSLOT) */
         chord = 1; fxo = o; pg = PGN_FX;
-    } else if (((bdn >> CB_FX) & 1) && o == 7) {                                       /* FX + OP8: the delay's tempo sync (toggleSync("FX")) */
+    } else if (HELD(CB_FX) && o == 7) {                                       /* FX + OP8: the delay's tempo sync (toggleSync("FX")) */
         chord = 1; PV[P_F5SYNC] = !PV[P_F5SYNC]; ui_params_changed();
     } else if (o == 7 && (pg == PGN_FX || pg == PGN_FXO) && !h_edit && !h_glo && !h_env) {       /* OP8: FX ORDER, only from the effects menu (the prototype opens it from any page; restricted on request) */
         pg = PGN_FXO;
@@ -554,7 +558,7 @@ int ctrl_op_key(int o)                              /* the prototype's black-key
         chord = 1; pg = pg == np ? PGN_GLO : np;
     } else if ((pg == PGN_ENV || pg == PGN_ENV2) && h_env && o < 2 && (o == 0 || e == ENG_MOOG || e == ENG_PROPH)) {
         chord = 1; pg = o ? PGN_ENV2 : PGN_ENV;
-    } else if (e == ENG_DRUM && ((bdn >> CB_ARP) & 1) && o < 6) {                       /* ARP held + OP1..6: the voice's lane settings (swing, human., chance, accent) */
+    } else if (e == ENG_DRUM && HELD(CB_ARP) && o < 6) {                       /* ARP held + OP1..6: the voice's lane settings (swing, human., chance, accent) */
         chord = 1; dv[sel & 3] = (uint8_t)o; pg = PGN_ARP;
     } else if (e == ENG_DRUM && h_env && o < 6) {
         chord = 1; dv[sel & 3] = (uint8_t)o; pg = PGN_ENV;
@@ -574,7 +578,7 @@ int ctrl_dseq_held(void) { return dq_held >= 0 ? dq_held : dq_latch; }
 int ctrl_dseq_key(int w)
 {
     uint16_t g;
-    if (cur_engine() != ENG_DRUM || pg != PGN_DSEQ || ((bdn >> CB_HOME) & 1) || sc_mode || w < 0 || w > 15) return 0;
+    if (cur_engine() != ENG_DRUM || pg != PGN_DSEQ || HELD(CB_HOME) || sc_mode || w < 0 || w > 15) return 0;
     g = drum_gates(sel, dv[sel & 3]);
     drum_gates_set(sel, dv[sel & 3], (uint16_t)(g ^ (1u << w)));                          /* d[w] = d[w] ? 0 : 1 */
     bump();
@@ -583,7 +587,7 @@ int ctrl_dseq_key(int w)
 void ctrl_cpu_full(uint32_t ms) { toast("CPU FULL", "FX BYPASSED", ms); bump(); }
 int ctrl_fx_key(int w, uint32_t ms)                 /* a white key with FX held on the FX page: effect w (0..15) into the selected slot of the selected track; 1 = used */
 {
-    if (!((bdn >> CB_FX) & 1) || pg != PGN_FX || w < 0 || w > 15) return 0;
+    if (!HELD(CB_FX) || pg != PGN_FX || w < 0 || w > 15) return 0;
     chord = 1;
     fx_assign(fxo, w);
     bump(); ui_goto(pg);

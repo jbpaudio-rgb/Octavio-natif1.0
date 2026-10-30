@@ -396,6 +396,35 @@ uint32_t voices_gate_mask(void)
     return m;
 }
 
+#ifndef NO_GOV
+static int gov_drum_count(void)
+{
+    int t, v, n = 0;
+    for (t = 0; t < NTRK; t++) if (TK[t].eng == ENG_DRUM) for (v = 0; v < 6; v++) n += DRM[t].V[v].on;
+    return n;
+}
+static void gov_drums(void)                          /* the drum voices sounding in all drum tracks are capped while the load is over the ceiling (fxstate.c governor) */
+{
+    int t, v, n = gov_drum_count();
+    if (gov_peak > GOV_SHED && !gov_wait && !(fx_run[0] | fx_run[1] | fx_run[2] | fx_run[3]) && n > 2) {       /* no effect left to bypass: fewer voices */
+        int cut = (int)((gov_peak - GOV_AIM + dv_cost - 1u) / dv_cost);
+        dv_cap = n - cut < 2 ? 2 : n - cut;
+        gov_wait = GOV_WAIT; gov_cool = GOV_COOL / 4u; gov.voices++;
+        if (!gov.cap_min || (uint32_t)dv_cap < gov.cap_min) gov.cap_min = (uint32_t)dv_cap;
+    } else if (dv_cap < GOV_DRUMS && !gov_cool && gov_peak + dv_cost * 3u / 2u <= GOV_ADMIT && !(perf.blocks & 31u)) dv_cap++;
+    while (n > dv_cap) {                              /* steal the quietest tail (V->e: the peak follower of the voice); among equals the track with most voices sounding, then the oldest */
+        dvoice_t *q = 0;
+        int nt[NTRK], qn = 0;
+        for (t = 0; t < NTRK; t++) { nt[t] = 0; if (TK[t].eng == ENG_DRUM) for (v = 0; v < 6; v++) nt[t] += DRM[t].V[v].on; }
+        for (t = 0; t < NTRK; t++) if (TK[t].eng == ENG_DRUM) for (v = 0; v < 6; v++) {
+            dvoice_t *V = &DRM[t].V[v];
+            if (!V->on) continue;
+            if (!q || V->e < q->e || (V->e == q->e && (nt[t] > qn || (nt[t] == qn && V->t > q->t)))) { q = V; qn = nt[t]; }
+        }
+        q->on = 0; n--; gov.steals++;
+    }
+}
+#endif
 void fx_track(int t, int32_t *x, int n, int act);          /* fxdsp.c: the track's chain, in place */
 int fx_awake(int t);
 void voices_render(int32_t *out, int n)
@@ -406,16 +435,38 @@ void voices_render(int32_t *out, int n)
     for (i = 0; i < n; i++) acc[i] = 0;
     bpm_v = PV[P_BPM] < 20 ? 20 : PV[P_BPM] > 300 ? 300 : PV[P_BPM];      /* the TEMPO page */
     seq_tick(n);
+#ifndef NO_GOV
+    gov_drums();                                /* after the step clock: this block's hits count */
+#endif
     for (t = 0; t < NTRK; t++) {
         int act = 1;
+#ifndef NO_PERF
+        uint32_t te0;
+#endif
         arp_tick(t, n);
+#ifndef NO_PERF
+        te0 = PERF_NOW();
+#endif
         switch (TK[t].eng) {
         case ENG_VAC: if (t != vac_owner) act = 0; else vac_render(tmp, n); break;
         case ENG_MOOG: if (!moog_active(t)) act = 0; else moog_render(t, tmp, n); break;
         case ENG_PROPH: if (!proph_active(t)) act = 0; else proph_render(t, tmp, n); break;
-        case ENG_DRUM: if (!drum_active(t)) act = 0; else drum_render(t, tmp, n); break;
+        case ENG_DRUM: if (!drum_active(t)) act = 0; else {
+#ifndef NO_GOV
+                int nv = 0, vv;
+                uint32_t td = PERF_NOW();
+                for (vv = 0; vv < 6; vv++) nv += DRM[t].V[vv].on;
+                drum_render(t, tmp, n);
+                if (nv > 1 && PERF_NOW() != 0u) { uint32_t c = (PERF_NOW() - td) / (uint32_t)nv; dv_cost = (dv_cost * 7u + c) >> 3; }      /* what a drum voice costs on this device (smoothed) */
+#else
+                drum_render(t, tmp, n);
+#endif
+            } break;
         default: act = 0; break;
         }
+#ifndef NO_PERF
+        if (perf.blocks > PERF_WARM) { uint32_t d = PERF_NOW() - te0; perf.te_sum[t] += d; if (d > perf.te_max[t]) perf.te_max[t] = d; }
+#endif
         if (!act) {                             /* silent engine: only the chain's tail (delay, reverb ...) while it lasts */
             if (!fx_awake(t)) continue;
             for (i = 0; i < n; i++) tmp[i] = 0;
