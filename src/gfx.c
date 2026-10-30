@@ -97,6 +97,25 @@ void gfx_text(int f, const char *s, int32_t x64, int base, uint32_t col, int32_t
     }
 }
 
+/* an 8-bit alpha mask (a pre-rendered piece of static chrome) in one colour */
+void gfx_mask(const uint8_t *m, int x0, int y0, int w, int h, uint32_t col)
+{
+    int r, c;
+    for (r = 0; r < h; r++) {
+        int y = y0 + r;
+        uint16_t *row;
+        if (y < gy0 || y >= gy1)
+            continue;
+        row = gb + (y - gy0) * SCR_W;
+        for (c = 0; c < w; c++) {
+            uint32_t a = m[r * w + c];
+            int x = x0 + c;
+            if (a && x >= 0 && x < SCR_W)
+                row[x] = mix(row[x], col, a + (a >> 7));
+        }
+    }
+}
+
 /* anti-aliased capsule (a line with round caps), coordinates in Q8 pixels, radius Q8 */
 void gfx_capsule(int32_t x0, int32_t y0, int32_t x1, int32_t y1, int32_t r, uint32_t col, uint32_t amul)
 {
