@@ -115,15 +115,7 @@ void param_text(int id, char *out)
         break;
     case FMT_MS:
         if (id == P_DECAY) {                    /* .002 * 1000^s s: "ms" below 100 ms, else seconds, two decimals */
-            uint32_t q = exp2_fx(K_DEC0 + lg(s, K_L1000), 20);                        /* seconds * 2^20 */
-            uint32_t us = (uint32_t)(((uint64_t)q * 1000000u) >> 20);
-            if (us < 100000u) {
-                o = put_u(o, (us + 500u) / 1000u);
-                o = put_s(o, " ms");
-            } else {
-                o = put_fix(o, (us + 5000u) / 10000u);
-                o = put_s(o, " s");
-            }
+            o = put_dur(o, (exp2_fx(K_DEC0 + lg(s, K_L1000), 18) * 1000u + (1u << 17)) >> 18);   /* .002 * 1000^s s, fmt() */
         } else if (id == P_ATK) {               /* .001 * 2000^s s = 2000^s ms */
             o = put_dur(o, (exp2_fx(lg(s, K_L2000), 8) + 128u) >> 8);
         } else {                                /* .005 * 600^s s */
