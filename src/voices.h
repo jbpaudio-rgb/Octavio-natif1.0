@@ -12,7 +12,9 @@ enum { PR_WAVE, PR_RNG, PR_TUNE, PR_PW, PR_BWAVE, PR_BRNG, PR_BTUNE, PR_BPW, PR_
        PR_NTYPE, PR_NTONE, PR_NCRUSH, PR_NLEV, PR_CUT, PR_RES, PR_ENV, PR_PM, PR_ATK, PR_DEC, PR_SUS, PR_REL, PR_FATK,
        PR_FDEC, PR_FSUS, PR_FREL, PR_LVL, PR_COUNT };
 /* drums: per voice v (0..5) the controls of the prototype, id = DR_x + v * DR_STRIDE... see drum_set() */
-enum { DR_KIT, DR_TYPE, DR_KV, DR_TUNE, DR_DECAY, DR_TONE, DR_LEVEL, DR_ATK, DR_PEAK, DR_HOLD, DR_DRIVE, DR_FILT, DR_PER = 12 };
+enum { DR_KIT, DR_TYPE, DR_KV, DR_TUNE, DR_DECAY, DR_TONE, DR_LEVEL, DR_ATK, DR_PEAK, DR_HOLD, DR_DRIVE, DR_FILT,
+       DR_SW, DR_HUM, DR_CHANCE, DR_ACC,            /* the lane (sequencer) settings of the voice: swing, humanize, chance, accent (the prototype's dsw / dhu / dch / dac) */
+       DR_PER = 16 };
 #define DR_ID(v, x) ((v) * DR_PER + (x))              /* parameter id of control x of voice v (DR_KIT = all voices' kit) */
 #define DR_COUNT (6 * DR_PER)
 enum { ARP_MODE, ARP_OCT, ARP_RATE, ARP_GATE, ARP_SW, ARP_LATCH, ARP_ACC, ARP_CHANCE, ARP_TR, ARP_REP, ARP_HUM, ARP_PAT,
@@ -35,6 +37,10 @@ uint32_t voices_gate_mask(void);                     /* bit t: track t is soundi
 int  voices_arp_note(int t);                        /* the note the arpeggiator is playing now (-1: none) */
 uint32_t voices_held_keys(int t, int base);          /* bit k: note base+k is held (keys / arp latch), k = 0..26 */
 void voices_arp_pos(int t, int *cur, int *len);
+void voices_play(int on);                            /* PLAY / STOP: the step clock (16ths at the tempo) starts from step 0 / stops */
+int  voices_seq_cur(void);                           /* the step now playing (0..15), -1 when stopped */
+void voices_seq_rec(int t, int v);                   /* REC while playing: the drum voice v is hit and the current step of its lane set */
+void voices_lvl_mod(int t, int q15);                 /* the Level destination: a gain on the track's engine output (32768 = unity), put back every block */
 #define ARP_STATE_N 17                              /* bytes of one track's arpeggiator position: nheld, held[8], i u16, cur u16, cnt i32 */
 void voices_arp_state_get(int t, uint8_t *o);        /* the held notes (latch only), step, phase: for presets */
 void voices_arp_state_set(int t, const uint8_t *b);
@@ -56,7 +62,10 @@ void proph_render(int t, int32_t *out, int n);
 void drum_init(int t);
 void drum_set(int t, int id, int v);
 int  drum_get(int t, int id);
-void drum_hit(int t, int v, int vel15);              /* voice 0..5 */
+void drum_hit(int t, int v, int vel15);
+uint16_t drum_gates(int t, int v);                   /* the sequencer lane of voice v: bit s = step s hits (the prototype's DG) */
+void drum_gates_set(int t, int v, uint16_t bits);
+              /* voice 0..5 */
 void drum_on(int t, int note, int vel15);            /* the prototype's noteOn: pitch class -> voice */
 int  drum_active(int t);
 void drum_render(int t, int32_t *out, int n);

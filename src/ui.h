@@ -15,7 +15,7 @@ enum { BTN_OCTM = 0, BTN_OCTP = 1, BTN_FX = 2, BTN_SEL = 3, BTN_ENV = 4, BTN_LFO
        BTN_HOME = 8, BTN_SAVE = 9, BTN_ARP = 10, BTN_SEQ = 11, BTN_PLAY = 12, BTN_REC = 13 };
 /* the pages of the prototype (ui_set_page: for the OP keys -> ARP2/ARP3, the HOME+EDIT / HOME+GLO chords -> MENU/MENU2/TEMPO, SEL -> FXO ...) */
 enum { PG_GLO, PG_EDIT, PG_ENV, PG_LFO, PG_FX, PG_ARP, PG_ARP2, PG_ARP3, PG_TEMPO, PG_MENU, PG_MENU2, PG_HOME, PG_SEQ, PG_FXO,
-       PG_OSC1, PG_OSC2, PG_OSC3, PG_OSC4, PG_ENV2, PG_GLO2, PG_COUNT };       /* (the Minimoog / Prophet / drum pages: engine_pages.c) */
+       PG_OSC1, PG_OSC2, PG_OSC3, PG_OSC4, PG_ENV2, PG_GLO2, PG_DSEQ, PG_COUNT };       /* (the Minimoog / Prophet / drum pages: engine_pages.c) */
 void ui_set_page(int page);
 int  ui_get_page(void);
 void ui_set_track(int t);                   /* the selected track 0..3 (HOME's red frame) */

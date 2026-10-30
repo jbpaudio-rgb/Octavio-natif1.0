@@ -557,16 +557,20 @@ void fx_admit(void)                                     /* once per audio block,
         if (!any) fx_idle[t] = FX_IDLE_BLOCKS;
     }
 }
-void fx_mod(int k, int32_t xq)                          /* the mod matrix, destination knob k (0..FX_NP-2), offset xq (Q15 of the knob's range): on every track's own value */
+void fx_mod_t(int t, int k, int32_t xq)                 /* destination knob k (0..FX_NP-2), offset xq (Q15 of the knob's range): on track t's own value */
 {
     const pdesc_t *d = &PD[P_F0DRIVE + k];
-    int mn = d->min, mx = d->max, t;
+    int mn = d->min, mx = d->max;
+    int32_t nn;
     if (mx == mn) return;
-    for (t = 0; t < FX_NTRK; t++) {
-        int32_t nn = (int32_t)(((int64_t)(FEFF[t][k] - mn) << 15) / (mx - mn)) + xq;
-        nn = nn < 0 ? 0 : nn > 32768 ? 32768 : nn;
-        FEFF[t][k] = (int16_t)(mn + (int)(((int64_t)nn * (mx - mn)) >> 15));
-    }
+    nn = (int32_t)(((int64_t)(FEFF[t][k] - mn) << 15) / (mx - mn)) + xq;
+    nn = nn < 0 ? 0 : nn > 32768 ? 32768 : nn;
+    FEFF[t][k] = (int16_t)(mn + (int)(((int64_t)nn * (mx - mn)) >> 15));
+}
+void fx_mod(int k, int32_t xq)                          /* on every track */
+{
+    int t;
+    for (t = 0; t < FX_NTRK; t++) fx_mod_t(t, k, xq);
 }
 int fx_awake(int t)
 {

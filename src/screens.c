@@ -319,3 +319,52 @@ static void seq_draw(void)
         }
     }
 }
+
+/* ---- DSEQ: the drum sequencer (ddseq()): six lanes (the six drum voices) x 16 steps, on the 330 x 280 canvas the prototype shows at
+ * 225.625 x 187.19 px at (7.19, 35.73) (x scale .68371, y scale .66852); canvas lengths in 1/16 canvas px -> screen 1/16 px ---- */
+#define DQ_X16(c16) (115 + (int32_t)(((int64_t)(c16) * 44808) >> 16))
+#define DQ_Y16(c16) (572 + (int32_t)(((int64_t)(c16) * 43811) >> 16))
+static void dq_rect(int32_t xa, int32_t ya, int32_t xb, int32_t yb, uint32_t col)        /* canvas 1/16 px rectangle */
+{
+    gfx_frect16(DQ_X16(xa), DQ_Y16(ya), DQ_X16(xb), DQ_Y16(yb), col, 256);
+}
+static void dq_stroke(int32_t x, int32_t y, int32_t w, int32_t h, int32_t lw, uint32_t col)     /* strokeRect, line width lw, centred on the path */
+{
+    int32_t a = lw / 2, b = lw - lw / 2;
+    dq_rect(x - a, y - a, x + w + b, y + b, col);
+    dq_rect(x - a, y + h - a, x + w + b, y + h + b, col);
+    dq_rect(x - a, y + b, x + b, y + h - a, col);
+    dq_rect(x + w - a, y + b, x + w + b, y + h - a, col);
+}
+static void dseq_draw(void)
+{
+    static const char *const KITL[3] = { "808", "909", "ACOUSTIC" };
+    int t = voices_sel(), sv = ctrl_drum_voice(), v, x, k, held = ctrl_dseq_held(), cur = sq_cur;
+    char tt[16];
+    int32_t w;
+    k = voices_param_get(t, ENG_DRUM, DR_ID(sv, DR_KV)); k = k < 0 ? 0 : k > 2 ? 2 : k;
+    { int j = 0; while ((tt[j] = KITL[k][j]) != 0) j++; }
+    if (held >= 0) { int n = ui_strlen(tt); tt[n++] = ' '; tt[n++] = ' '; tt[n++] = ' '; tt[n] = 0; }       /* "  " and the room of the held-lane dot */
+    w = gfx_text_w64(F_TITLE, tt, 65);
+    gfx_text(F_TITLE, tt, 460 + ((14440 - w) >> 1), 23, COL_TEXT, 65, 0, 233);
+    if (held >= 0) {                                                           /* "  ●" after the kit name */
+        int32_t xr = 460 + ((14440 - w) >> 1) + w - ((FONTS[F_TITLE].adv64 + 65) >> 1);      /* the dot's centre: half an advance before the right end, 1/64 px */
+        gfx_disc(xr * 4, 17 * 256, 1100, 1100, COL_TEXT);
+    }
+    for (v = 0; v < 6; v++) {
+        int32_t y = 48 + (v * 2192) / 3, rh = 731;
+        int on = v == sv, kv = voices_param_get(t, ENG_DRUM, DR_ID(v, DR_KV)), ty = voices_param_get(t, ENG_DRUM, DR_ID(v, DR_TYPE));
+        uint16_t g = drum_gates(t, v);
+        int base = (DQ_Y16(y + 365) + 8) >> 4;
+        kv = kv < 0 ? 0 : kv > 2 ? 2 : kv; ty = ty < 0 ? 0 : ty > 7 ? 7 : ty;
+        gfx_text(F_DQL, DVN[kv][ty], 635, base, on ? 0xf2efe6u : 0x7d7a73u, 0, 0, 240);
+        if (on) dq_rect(0, y + 32, 40, y + rh - 32, COL_RED);
+        for (x = 0; x < 16; x++) {
+            int hit = (g >> x) & 1;
+            uint32_t col = hit ? (on ? 0xf2efe6u : 0xa8a59du) : (x % 4 == 0 ? 0x2a2a2au : 0x1a1a1au);
+            dq_rect(944 + x * 268, y + 24, 944 + x * 268 + 236, y + 24 + 683, col);
+        }
+    }
+    if (cur >= 0) dq_stroke(928 + (cur & 15) * 268, 32, 268, 4416, 24, COL_RED);               /* the playing step: 1.5 px red frame */
+    dq_stroke(928 - 16, 48 + (sv * 2192) / 3, 16 * 268 + 32, 731, 16, COL_RED);                 /* the selected lane */
+}

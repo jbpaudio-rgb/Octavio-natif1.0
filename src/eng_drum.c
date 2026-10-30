@@ -19,6 +19,7 @@ typedef struct {
 } dvoice_t;
 typedef struct {
     int16_t p[DR_COUNT];
+    uint16_t gate[6];                                    /* the sequencer lanes (DG): bit s = step s */
     uint8_t dirty, kit_all;
     dpar_t P[6];
     dvoice_t V[6];
@@ -207,6 +208,8 @@ void drum_set(int t, int id, int v)
     d->dirty = 1;
 }
 int drum_get(int t, int id) { return DRM[t].p[id]; }
+uint16_t drum_gates(int t, int v) { return DRM[t & 3].gate[v % 6]; }
+void drum_gates_set(int t, int v, uint16_t bits) { DRM[t & 3].gate[v % 6] = bits; }
 
 void drum_init(int t)
 {
@@ -216,7 +219,7 @@ void drum_init(int t)
     for (v = 0; v < 6; v++) {
         int16_t *p = &d->p[v * DR_PER];
         p[DR_TYPE] = (int16_t)v; p[DR_TUNE] = 500; p[DR_DECAY] = 500; p[DR_TONE] = 500; p[DR_LEVEL] = 800;
-        p[DR_PEAK] = 500; p[DR_FILT] = 500;
+        p[DR_PEAK] = 500; p[DR_FILT] = 500; p[DR_CHANCE] = 1000;
     }
     drum_derive(d);
 }

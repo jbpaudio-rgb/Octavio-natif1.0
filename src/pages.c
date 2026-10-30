@@ -59,7 +59,8 @@ static const char *const DLY_NAME[14] = { "1/32T", "1/32", "1/32.", "1/16T", "1/
 /* what the cell prints for parameter id (the prototype's value rules, page by page) */
 static void cell_text(int id, char *v)
 {
-    param_text(id, v);
+    if (dst_kind_of(id)) { const char *o = PD[id].opts[dst_pos(voices_engine(voices_sel()), dst_kind_of(id) == 2, PV[id]) < 0 ? 0 : PV[id]]; int j; for (j = 0; (v[j] = o[j]) != 0; j++) {} }
+    else param_text(id, v);
     if (page == PG_ENV && id == P_MODE && v[0] == 'L')                         /* ENV: "Low pass" -> "LP" */
         v[1] = 'P', v[2] = 0;
     if (id == P_F5TIME && PV[P_F5SYNC]) {                                      /* synced delay: the note value of the knob's 14 steps */

@@ -24,7 +24,9 @@ static void leds_update(void)
     uint32_t keys = fm1_in.notes, btn = fm1_in.buttons, held, i, s;
     int t = voices_sel(), cur = voices_arp_note(t), base = ui_note_of_key(0);
     held = voices_held_keys(t, base);
-    s = keys * 2654435761u ^ btn * 40503u ^ held * 69069u ^ (uint32_t)(cur + 1) * 977u ^ (uint32_t)voices_arp_get(t, ARP_MODE) * 31u ^ (uint32_t)base << 20 ^ ctrl_lit() * 7919u ^ ctrl_locked() * 104729u ^ (uint32_t)(ctrl_bank_mode() ? ctrl_bank_cur() + 2 : 0) * 15485863u;
+    int dq = ctrl_page() == PGN_DSEQ, dcur = dq ? voices_seq_cur() : -1;
+    uint32_t dgate = dq ? drum_gates(t, ctrl_drum_voice()) : 0;
+    s = keys * 2654435761u ^ btn * 40503u ^ held * 69069u ^ (uint32_t)(cur + 1) * 977u ^ (uint32_t)voices_arp_get(t, ARP_MODE) * 31u ^ (uint32_t)base << 20 ^ ctrl_lit() * 7919u ^ ctrl_locked() * 104729u ^ dgate * 2246822519u ^ (uint32_t)(dcur + 2) * 3266489917u ^ (uint32_t)dq * 668265263u ^ (uint32_t)(ctrl_bank_mode() ? ctrl_bank_cur() + 2 : 0) * 15485863u;
     if (s == sig) return;                               /* only on a change */
     sig = s;
     for (i = 0; i < 14u; i++)
@@ -36,6 +38,16 @@ static void leds_update(void)
         for (i = 0; i < 27u; i++) {
             int white = WH[(uint32_t)(base + (int)i) % 12u];
             leds_set(14u + i, white && w == ctrl_bank_cur() ? LV_ON : LV_OFF);
+            w += white;
+        }
+        return;
+    }
+    if (dq) {                                           /* the drum sequencer: each white key shows its step of the lane (lit), the playing step breathes */
+        static const uint8_t WH[12] = { 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1 };
+        int w = 0;
+        for (i = 0; i < 27u; i++) {
+            int white = WH[(uint32_t)(base + (int)i) % 12u], lit = white && w < 16 && (dgate >> w) & 1u, ph = white && w == dcur;
+            leds_set(14u + i, ph ? LV_BREATH : lit ? LV_ON : LV_OFF);
             w += white;
         }
         return;

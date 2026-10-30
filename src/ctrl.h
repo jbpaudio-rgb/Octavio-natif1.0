@@ -7,7 +7,7 @@
 
 /* the prototype's `pg` names */
 enum { PGN_GLO, PGN_EDIT, PGN_ENV, PGN_LFO, PGN_FX, PGN_FXO, PGN_ARP, PGN_SEQ, PGN_HOME, PGN_MENU, PGN_MENU2, PGN_TEMPO,
-       PGN_OSC1, PGN_OSC2, PGN_OSC3, PGN_OSC4, PGN_ENV2, PGN_GLO2, PGN_COUNT };   /* OSC1..4, ENV2, GLO2: the Minimoog / Prophet / drum pages */
+       PGN_OSC1, PGN_OSC2, PGN_OSC3, PGN_OSC4, PGN_ENV2, PGN_GLO2, PGN_DSEQ, PGN_COUNT };   /* OSC1..4, ENV2, GLO2: the Minimoog / Prophet / drum pages */
 /* the prototype's buttons, in the order of its #bt row (ui.h BTN_*: the panel ids) */
 enum { CB_FX, CB_SEL, CB_ENV, CB_LFO, CB_EDIT, CB_GLO, CB_HOME, CB_SAVE, CB_ARP, CB_SEQ, CB_PLAY, CB_REC, CB_COUNT };
 enum { ROLE_SELECT, ROLE_ALGO, ROLE_PRESETS };      /* the left cluster's encoders */
@@ -33,6 +33,9 @@ int  ctrl_octave_val(void);
 int  ctrl_drum_voice(void);                         /* the drum voice 0..5 the EDIT / ENV pages show (ENV / EDIT held + an OP key) */
 void ctrl_cpu_full(uint32_t ms);                    /* toast: an effect did not fit the CPU budget */
 int  ctrl_fx_key(int w, uint32_t ms);                 /* a white key (0..15) with FX held on the FX page: that effect into the slot; 1 = used */
+int  ctrl_dseq_key(int w);                          /* a white key (0..15) on the drum sequencer page: toggles that step of the selected lane; 1 = used */
+void ctrl_op_release(int o);                        /* a black key was released (the held lane of the drum sequencer) */
+int  ctrl_dseq_held(void);                          /* the lane held / latched with its OP key on the DSEQ page, -1 none */
 int  ctrl_op_key(int o);                            /* a black key (0..) pressed: 1 when a held button made it a chord (no note) */
 int  ctrl_playing(void), ctrl_rec(void);
 uint32_t ctrl_lit(void);                            /* buttons whose LED is on: bit CB_* (current page, PLAY, REC, locks) */

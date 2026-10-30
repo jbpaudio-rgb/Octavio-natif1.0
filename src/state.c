@@ -14,7 +14,10 @@
  *   0x09 TARP   the 4 tracks' arpeggiators (voices_arp: 4 x ARP_COUNT)
  *   0x0A ARPS   (added later, rev 1) each track's arpeggiator position: latched chord in order, step, phase (4 x ARP_STATE_N raw bytes)
  *   0x10 + 3 * track + (engine - 1)   ENGINE  the Minimoog / Prophet / drum parameters of that track (12 sections)
- *   0x40..0x4F  reserved: per-track effects (agent H); a reader skips ids it does not know
+ *   0x40..0x4F  per-track effects (agent H: 0x40 FXB)
+ *   0x41 MODT   (rev 1) the modulation matrix of each track: LFO / S&H (dest, shape, rate, amount, sync) and sequencer lines, 4 x 54 values.
+ *               A destination is an index of the master list (dst.c); 0x02 / 0x05 stay the selected track's view.
+ *   0x42 DSQ    (rev 1) the drum sequencer of each drum track: 6 lanes of 16 step bits, then swing / humanize / chance / accent of the 6 voices
  * Value sections: enc u8 | nvals u8 | body. enc 0: nvals x int16 raw. enc 1: sparse, (index u8, int16) pairs for the values that
  * differ from the factory value, every other value is the factory value. The writer picks the shorter. A section whose rev or
  * nvals is not the one this firmware has is skipped (the layout it describes is gone), a section that is missing leaves
@@ -25,13 +28,17 @@
 #include "params.h"
 
 #define FXP_REV 1                                   /* the layout of the FX section (PV[P_F0DRIVE..P_F5SYNC]) */
-#define ST_DRUM_N (6 * (DR_PER - 1))                /* the drum voices' parameters without the DR_KIT slot (a command, not a value) */
+#define ST_DR_X 11                                  /* drum controls saved per voice: DR_TYPE..DR_FILT (the lane settings DR_SW.. are in the DSQ section) */
+#define ST_DRUM_N (6 * ST_DR_X)                     /* the drum voices' parameters without the DR_KIT slot (a command, not a value) */
 #define ST_SQ_N (6 * 16)
 #define ST_TARP_N (4 * ARP_COUNT)
-#define ST_NSEC 23
-#define ST_MAX 2400u                                /* the largest body state_save() can produce (checked by tests) */
+#define ST_NSEC 25
+#define ST_MAX 3200u                                /* the largest body state_save() can produce (checked by tests) */
 
-enum { SK_PV, SK_ENG, SK_SQ, SK_TARP, SK_TRK, SK_ARPS, SK_FXB };
+enum { SK_PV, SK_ENG, SK_SQ, SK_TARP, SK_TRK, SK_ARPS, SK_FXB, SK_MODT, SK_DSQ };
+#define ST_MODT_N (4 * MODT_N)
+#define ST_DSQ_N (4 * 30)
+static int st_modt_seen;                              /* a MODT section was applied by this state_load */
 uint32_t fxbank_save(uint8_t *b); int fxbank_load(const uint8_t *b, uint32_t n);   /* fxstate.c: the 4 tracks' effect chains (agent H) */
 #define ST_FXB_N 444u                               /* FXBANK_BYTES */
 typedef struct { uint8_t id, rev, kind, n, t, e, scene; int16_t a; } secd_t;
@@ -45,7 +52,8 @@ static const int16_t *st_pv;                        /* encode from this PV image
 static int16_t st_def_mg[MG_COUNT], st_def_pr[PR_COUNT], st_def_dr[ST_DRUM_N], st_def_sq[ST_SQ_N];
 static uint8_t st_ready;
 
-static int st_drum_id(int i) { return DR_ID(i / (DR_PER - 1), 1 + i % (DR_PER - 1)); }
+static int st_drum_id(int i) { return DR_ID(i / ST_DR_X, 1 + i % ST_DR_X); }
+static int st_dsq_id(int r) { return DR_ID((r - 6) / 4, DR_SW + (r - 6) % 4); }
 
 /* the factory values of the engines and of the sequencer, read once at boot (ctrl_init: everything is freshly initialised) */
 static void state_init(void)
@@ -63,7 +71,9 @@ static int st_sec(int i, secd_t *s)                 /* the i-th section this fir
 {
     if (i < 0 || i >= ST_NSEC) return 0;
     s->scene = 0; s->t = s->e = 0; s->a = 0;
-    if (i == 22) { s->id = 0x40; s->rev = 1; s->kind = SK_FXB; s->n = 0; }
+    if (i == 24) { s->id = 0x42; s->rev = 1; s->kind = SK_DSQ; s->n = ST_DSQ_N; }
+    else if (i == 23) { s->id = 0x41; s->rev = 1; s->kind = SK_MODT; s->n = ST_MODT_N; }
+    else if (i == 22) { s->id = 0x40; s->rev = 1; s->kind = SK_FXB; s->n = 0; }
     else if (i == 21) { s->id = 0x0A; s->rev = 1; s->kind = SK_ARPS; s->n = 0; }
     else if (i == 0) { s->id = 0x08; s->rev = 1; s->kind = SK_TRK; s->n = 5; }
     else if (i <= 6) {
@@ -92,6 +102,8 @@ static int st_get(const secd_t *s, int i)
     case SK_PV: return (st_pv ? st_pv : PV)[s->a + i];
     case SK_ENG: return voices_param_get(s->t, s->e, s->e == ENG_DRUM ? st_drum_id(i) : i);
     case SK_SQ: return ui_seq_get(i / 16, i % 16);
+    case SK_MODT: return modt_get(i);
+    case SK_DSQ: { int t = i / 30, r = i % 30; return r < 6 ? (int16_t)drum_gates(t, r) : voices_param_get(t, ENG_DRUM, st_dsq_id(r)); }
     default: return voices_arp_get(i / ARP_COUNT, i % ARP_COUNT);
     }
 }
@@ -101,6 +113,8 @@ static int st_def(const secd_t *s, int i)
     case SK_PV: return PD[s->a + i].def;
     case SK_ENG: return s->e == ENG_MOOG ? st_def_mg[i] : s->e == ENG_PROPH ? st_def_pr[i] : st_def_dr[i];
     case SK_SQ: return st_def_sq[i];
+    case SK_MODT: return modt_def(i);
+    case SK_DSQ: { int r = i % 30; return r < 6 ? 0 : ((r - 6) % 4 == DR_CHANCE - DR_SW) ? 1000 : 0; }
     default: return ARP_DEF[i % ARP_COUNT];
     }
 }
@@ -116,12 +130,14 @@ static void st_put(const secd_t *s, int i, int v)
     }
     case SK_ENG:
         if (s->e == ENG_DRUM) {                      /* kit 0..2, voice type 0..7, the rest 0..1000 */
-            int x = 1 + i % (DR_PER - 1), mx = x == DR_KV ? 2 : x == DR_TYPE ? 7 : 1000;
+            int x = 1 + i % ST_DR_X, mx = x == DR_KV ? 2 : x == DR_TYPE ? 7 : 1000;
             v = v < 0 ? 0 : v > mx ? mx : v;
             voices_param(s->t, s->e, st_drum_id(i), v);
         } else voices_param(s->t, s->e, i, v < 0 ? 0 : v);      /* the engines clamp to their maxima */
         break;
     case SK_SQ: ui_seq_set(i / 16, i % 16, v < -1000 ? -1000 : v > 1000 ? 1000 : v); break;
+    case SK_MODT: modt_put(i, v); st_modt_seen = 1; break;
+    case SK_DSQ: { int t = i / 30, r = i % 30; if (r < 6) drum_gates_set(t, r, (uint16_t)v); else voices_param(t, ENG_DRUM, st_dsq_id(r), v < 0 ? 0 : v > 1000 ? 1000 : v); break; }
     default: voices_arp(i / ARP_COUNT, i % ARP_COUNT, v); break;
     }
 }
@@ -191,6 +207,7 @@ static uint32_t state_save(uint8_t *o, uint32_t cap, int scene)
     uint32_t w = 0, k;
     int i;
     state_init();
+    mod_commit();                                   /* the selected track's matrix (PV) into MODT before it is written */
     for (i = 0; st_sec(i, &s); i++) {
         if (s.scene && !scene) continue;
         if (s.kind == SK_ARPS && !(voices_arp_get(0, ARP_MODE) | voices_arp_get(1, ARP_MODE) | voices_arp_get(2, ARP_MODE) | voices_arp_get(3, ARP_MODE))) continue;   /* no arpeggiator on: no position to keep */
@@ -254,6 +271,7 @@ static int state_load(const uint8_t *p, uint32_t n)
     uint32_t o;
     int pass, cnt = 0;
     state_init();
+    st_modt_seen = 0;
     for (pass = 0; pass < 2; pass++)
         for (o = 0; o + 4 <= n;) {
             uint32_t len = (uint32_t)(p[o + 2] | (p[o + 3] << 8));
@@ -263,6 +281,7 @@ static int state_load(const uint8_t *p, uint32_t n)
                 cnt += st_dec(&s, p + o + 4, len);
             o += 4 + len;
         }
+    mod_post_load(st_modt_seen);                    /* the matrices follow the engines of the tracks (a destination the engine does not have: None) */
     return cnt;
 }
 
@@ -274,6 +293,8 @@ static void state_defaults(void)
     int i, j;
     state_init();
     st_trk_apply(trk);
+    st_modt_seen = 0;
     for (i = 1; st_sec(i, &s); i++)
         for (j = 0; j < s.n; j++) st_put(&s, j, st_def(&s, j));
+    mod_post_load(st_modt_seen);
 }

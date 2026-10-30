@@ -22,6 +22,8 @@ static uint16_t lt, bdn, dn_;                      /* locked (lk), held (bdn), p
 static uint32_t lu[CB_COUNT];                      /* each button's last release (0 after a chord) */
 static int chord, sel_down, sel_mv;
 static uint8_t dv[4];                              /* each track's selected drum voice (the prototype's eng.dv) */
+static int psq, dq_held = -1, dq_latch = -1, dq_l = -1;      /* SEQ on the drums: psq = the pitch sequencer was asked for; the lane held / latched (opHeld / opLatch) */
+static uint32_t dq_t;
 static uint32_t now_ms;
 static uint32_t ver;
 #include "state.c"
@@ -319,8 +321,14 @@ static void btn(int t, uint32_t ms)                /* btn(): a button's action (
     else if (t == CB_FX) { if (pg == PGN_FX) fxo = (fxo + 1) % FX_NSLOT; else pg = PGN_FX; }
     else if (t == CB_LFO) { if (pg == PGN_LFO) src = (src + 1) % 6; else pg = PGN_LFO; }
     else if (t == CB_HOME) pg = PGN_HOME;
-    else if (t == CB_SEQ) pg = PGN_SEQ;
-    else if (t == CB_PLAY) { auto_play = !auto_play; }
+    else if (t == CB_SEQ) {
+        if (cur_engine() == ENG_DRUM) {                 /* drums: SEQ = the lanes (DSEQ); pressed again: the pitch sequencer (psq), again: back */
+            if (pg == PGN_DSEQ) { psq = 1; pg = PGN_SEQ; }
+            else if (pg == PGN_SEQ && psq) { psq = 0; pg = PGN_DSEQ; }
+            else { psq = 0; pg = PGN_DSEQ; }
+        } else pg = PGN_SEQ;
+    }
+    else if (t == CB_PLAY) { auto_play = !auto_play; voices_play(auto_play); }
     else if (t == CB_REC) { rec = !rec; }
     else if (t == CB_ARP) pg = PGN_ARP;
     else if (t == CB_SEL && pg == PGN_FXO) fxo = (fxo + 1) % FX_NSLOT;
@@ -398,12 +406,37 @@ static void pk_set(int32_t n)
     if (i != pi) { pi = i; if (i > 0) load_preset(i - 1); }
     presets_list(nbank ? "" : "PRESS SAVE", g_ms);
 }
-/* ALGORITHM: the engine of the track (one engine so far) */
-static int32_t ak_get(void) { return ((int32_t)cur_engine() << Q) / (CENG_N - 1); }
+/* ALGORITHM: the engine of the track; on the drum sequencer with a lane held (OP1..6), that lane's kit (laneH()) */
+static const char *const KIT_NAME[3] = { "808", "909", "ACOUSTIC" };
+static const uint8_t TYO[8] = { 0, 1, 2, 3, 6, 7, 4, 5 };                       /* the order the prototype's SELECT steps the lane's voice type */
+static int lane_h(void) { return pg == PGN_DSEQ && cur_engine() == ENG_DRUM ? ctrl_dseq_held() : -1; }
+static int type_held(void) { return pg == PGN_DSEQ && cur_engine() == ENG_DRUM && ((bdn >> CB_SEQ) & 1); }       /* tyH() */
+static void lane_toast(int h, uint32_t ms)
+{
+    char a[16], num[4], b[24];
+    int k = voices_param_get(sel, ENG_DRUM, DR_ID(h, DR_KV)), y = voices_param_get(sel, ENG_DRUM, DR_ID(h, DR_TYPE));
+    static const char *const TN[8] = { "KICK", "SNARE", "CLOSED HAT", "OPEN HAT", "CLAP", "COWBELL", "HI TOM", "LOW TOM" };
+    k = k < 0 ? 0 : k > 2 ? 2 : k; y = y < 0 ? 0 : y > 7 ? 7 : y;
+    scopy(a, "LANE ", sizeof a); itoa2(num, h + 1, 0); sappend(a, num, sizeof a);
+    scopy(b, KIT_NAME[k], sizeof b); sappend(b, " ", sizeof b); sappend(b, TN[y], sizeof b);
+    toast(a, b, ms);
+}
+static int32_t ak_get(void)
+{
+    int h = lane_h();
+    if (h >= 0) { int k = voices_param_get(sel, ENG_DRUM, DR_ID(h, DR_KV)); return ((int32_t)(k < 0 ? 0 : k > 2 ? 2 : k) << Q) / 2; }
+    return ((int32_t)cur_engine() << Q) / (CENG_N - 1);
+}
 static void ak_set(int32_t n)
 {
-    int i = round_q(n, CENG_N - 1);
+    int i = round_q(n, CENG_N - 1), h = lane_h();
     char t[20], num[4], nb[24];
+    if (h >= 0) {
+        voices_param(sel, ENG_DRUM, DR_ID(h, DR_KV), round_q(n, 2));
+        ap_q = (int)n;
+        lane_toast(h, g_ms); bump();
+        return;
+    }
     if (i != cur_engine()) { voices_set_engine(sel, i); PV[P_TYP0 + (sel & 3)] = (int16_t)i; ui_params_changed(); }
     ap_q = (int)n;
     scopy(t, "ALGO \x02 T", sizeof t); itoa2(num, sel + 1, 0); sappend(t, num, sizeof t);
@@ -413,6 +446,7 @@ static void ak_set(int32_t n)
 /* SELECT: the name editor's letter, HOME's track, else the LFO source */
 static int32_t sk_get(void)
 {
+    if (type_held()) { int j, y = voices_param_get(sel, ENG_DRUM, DR_ID(dv[sel & 3], DR_TYPE)), k = 0; for (j = 0; j < 8; j++) if (TYO[j] == y) { k = j; break; } return ((int32_t)k << Q) / 7; }
     if (pend) { int j, k = 0; for (j = 0; j < NCHN; j++) if (NCH[j] == nmA[nmP]) { k = j; break; } return ((int32_t)k << Q) / (NCHN - 1); }
     if (pg == PGN_HOME) return ((int32_t)sel << Q) / 3;
     return ((int32_t)src << Q) / 5;
@@ -421,6 +455,12 @@ static void sk_set(int32_t n)
 {
     if (pend) { nmA[nmP] = NCH[round_q(n, NCHN - 1)]; bump(); return; }
     if (pg == PGN_HOME) { int v = round_q(n, 3); sel = v < 0 ? 0 : v > 3 ? 3 : v; ui_goto(pg); bump(); return; }
+    if (type_held()) {                              /* SEQ held + SELECT: the voice type of the selected lane */
+        chord = 1;
+        voices_param(sel, ENG_DRUM, DR_ID(dv[sel & 3], DR_TYPE), TYO[round_q(n, 7) & 7]);
+        lane_toast(dv[sel & 3], g_ms); bump();
+        return;
+    }
     src = round_q(n, 5);
     if (pg == PGN_LFO) ui_goto(pg);
     bump();
@@ -430,9 +470,9 @@ void ctrl_side(int role, int steps, uint32_t ms)
 {
     g_ms = ms;
     if (role == ROLE_PRESETS) side_wheel(steps, ONE / 50, pk_get, pk_set, &pp_ws, &pp_wq);
-    else if (role == ROLE_ALGO) side_wheel(steps, ONE / 50, ak_get, ak_set, &ap_ws, &ap_wq);
+    else if (role == ROLE_ALGO) side_wheel(steps, lane_h() >= 0 ? ONE / 2 : ONE / 50, ak_get, ak_set, &ap_ws, &ap_wq);
     else {
-        int w = pend ? ONE / (NCHN - 1) : pg == PGN_HOME ? ONE / 3 : ONE / 50;
+        int w = pend ? ONE / (NCHN - 1) : pg == PGN_HOME ? ONE / 3 : type_held() ? ONE / 7 : ONE / 50;
         side_wheel(steps, w, sk_get, sk_set, &sel_ws, &sel_wq);
     }
 }
@@ -461,9 +501,14 @@ static void norm_pg(void)                          /* page(): a page the track's
 {
     int e = cur_engine();
     if (pg == PGN_GLO2 && e != ENG_DRUM) pg = PGN_GLO;
+    if (pg != PGN_DSEQ) dq_held = dq_latch = -1;
     if (e == ENG_DRUM) {
+        if (pg == PGN_SEQ && !psq) pg = PGN_DSEQ;
         if (pg == PGN_ENV2 || (pg >= PGN_OSC1 && pg <= PGN_OSC4)) pg = PGN_EDIT;
-    } else if (e == ENG_VAC) {
+    } else {
+        if (pg == PGN_DSEQ) pg = PGN_SEQ;
+    }
+    if (e == ENG_VAC) {
         if (pg == PGN_ENV2) pg = PGN_ENV;
         if (pg >= PGN_OSC1 && pg <= PGN_OSC4) pg = PGN_GLO;
     }
@@ -473,7 +518,12 @@ int ctrl_drum_voice(void) { return dv[sel & 3]; }
 int ctrl_op_key(int o)                              /* the prototype's black-key chords: EDIT / GLO + OP1..4 = OSC pages, ENV + OP1/2 = ENV / ENV2, drums: ENV / EDIT + OP1..6 = voice */
 {
     int e = cur_engine(), h_edit = (bdn >> CB_EDIT) & 1, h_glo = (bdn >> CB_GLO) & 1, h_env = (bdn >> CB_ENV) & 1;
-    if (((bdn >> CB_FX) & 1) && (pg == PGN_FX || pg == PGN_FXO) && o < FX_NSLOT) {       /* FX held + OP1..: the slot of the selected track (the prototype has six, native FX_NSLOT) */
+    if (e == ENG_DRUM && pg == PGN_DSEQ && o < 6) {                                      /* the lane: held (the ALGORITHM / SELECT knobs edit its kit / type), a double tap latches it */
+        if (dq_l == o && now_ms - dq_t < LATCH_MS) dq_latch = dq_latch == o ? -1 : o;
+        dq_l = o; dq_t = now_ms; dq_held = o;
+        dv[sel & 3] = (uint8_t)o;
+        if (rec && auto_play) voices_seq_rec(sel, o);                                    /* REC while playing: the voice is hit and the current step set */
+    } else if (((bdn >> CB_FX) & 1) && (pg == PGN_FX || pg == PGN_FXO) && o < FX_NSLOT) {       /* FX held + OP1..: the slot of the selected track (the prototype has six, native FX_NSLOT) */
         chord = 1; fxo = o; pg = PGN_FX;
     } else if (((bdn >> CB_FX) & 1) && o == 7) {                                       /* FX + OP8: the delay's tempo sync (toggleSync("FX")) */
         chord = 1; PV[P_F5SYNC] = !PV[P_F5SYNC]; ui_params_changed();
@@ -484,6 +534,8 @@ int ctrl_op_key(int o)                              /* the prototype's black-key
         chord = 1; pg = pg == np ? PGN_GLO : np;
     } else if ((pg == PGN_ENV || pg == PGN_ENV2) && h_env && o < 2 && (o == 0 || e == ENG_MOOG || e == ENG_PROPH)) {
         chord = 1; pg = o ? PGN_ENV2 : PGN_ENV;
+    } else if (e == ENG_DRUM && ((bdn >> CB_ARP) & 1) && o < 6) {                       /* ARP held + OP1..6: the voice's lane settings (swing, human., chance, accent) */
+        chord = 1; dv[sel & 3] = (uint8_t)o; pg = PGN_ARP;
     } else if (e == ENG_DRUM && h_env && o < 6) {
         chord = 1; dv[sel & 3] = (uint8_t)o; pg = PGN_ENV;
     } else if (e == ENG_DRUM && h_edit && o < 6) {
@@ -492,6 +544,17 @@ int ctrl_op_key(int o)                              /* the prototype's black-key
         return 0;
     bump();
     ui_goto(pg);
+    return 1;
+}
+void ctrl_op_release(int o) { if (dq_held == o) { dq_held = -1; bump(); } }
+int ctrl_dseq_held(void) { return dq_held >= 0 ? dq_held : dq_latch; }
+int ctrl_dseq_key(int w)
+{
+    uint16_t g;
+    if (cur_engine() != ENG_DRUM || pg != PGN_DSEQ || ((bdn >> CB_HOME) & 1) || sc_mode || w < 0 || w > 15) return 0;
+    g = drum_gates(sel, dv[sel & 3]);
+    drum_gates_set(sel, dv[sel & 3], (uint16_t)(g ^ (1u << w)));                          /* d[w] = d[w] ? 0 : 1 */
+    bump();
     return 1;
 }
 void ctrl_cpu_full(uint32_t ms) { toast("CPU FULL", "FX BYPASSED", ms); bump(); }
@@ -521,7 +584,7 @@ uint32_t ctrl_lit(void)                             /* #bt .on: the page's butto
     else if (pg == PGN_LFO) m |= 1u << CB_LFO;
     else if (pg == PGN_FX) m |= 1u << CB_FX;
     else if (pg == PGN_ARP) m |= 1u << CB_ARP;
-    else if (pg == PGN_SEQ) m |= 1u << CB_SEQ;
+    else if (pg == PGN_SEQ || pg == PGN_DSEQ) m |= 1u << CB_SEQ;
     else if (pg == PGN_HOME) m |= 1u << CB_HOME;
     if (auto_play) m |= 1u << CB_PLAY;
     if (rec) m |= 1u << CB_REC;

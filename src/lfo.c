@@ -9,18 +9,16 @@
  * table) for the length of the block's rendering and put back afterwards: the IRQ is atomic with respect to the main loop, so the
  * pages and presets only ever see the base values.
  *
- * Destinations (OPT_DST, the Vactrol list): 1 Fold 2 Sym 3 Freq 4 FM env 5 FM ratio 6 FM amount 7 Env attack 8 Env decay 9 Vact decay
- * 10 Cutoff, 12..16 arp gate / swing / accent / chance / humanize, 17..68 the 52 effect knobs (FXD order).  11 "Level" (the
- * prototype's per-engine level) is not routed: native has no per-engine level knob (track volume is separate).
- * The sequencer lanes (m4..m9) are not sources here: they need the sequencer's step values. */
+ * Destinations (dst.c, pext_gen.h): each track has its own matrix (PV[] for the selected one, MODT[t] for the others) and acts on its own
+ * engine: a destination is an entry of the master list, valid for the engines whose group bit it carries (DSTM[].grp): Vactrol
+ * parameters (PV), the engines' own parameters (voices_param: Minimoog / Prophet / the 6 drum voices incl. their lane settings), the
+ * envelope times, the arpeggiator (12..16), the 52 effect knobs of the track (fxdsp.c) and Level (a gain on the track's engine).
+ * The sequencer lines (m4..m9) are not sources here: they need the synth sequencer's step values (not played yet). */
 
-enum { MOD_N = 6, MOD_SAVE = 8 };
-static struct { uint32_t ph; int32_t shv, shs; } MS_[MOD_N] = { { 0, 0, 0 }, { 1417339207u, 0, 0 }, { 2834678415u, 0, 0 }, { 644245094u, 0, 0 }, { 0, 0, 0 }, { 0, 0, 0 } };   /* the prototype's start phases .33 / .66 / .15 */          /* LFO phase (turns, Q32); S&H: held value and smoothed value (Q15) */
-static struct { int16_t id; int16_t base; uint8_t arp; } mod_sv[MOD_SAVE];
-static int mod_nsv, mod_vac_dirty;
-static const uint8_t MOD_DSTID[17] = { 255, P_FOLD, P_SYM, P_FREQ, P_FENV, P_RATIO, P_FM, P_ATK, P_EDEC, P_DECAY, P_OPEN, 255,
-                                       P_ARPGATE, P_ARPSW, P_ARPACC, P_ARPCHANCE, P_ARPHUM };
-static const uint8_t MOD_ARPID[17] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ARP_GATE, ARP_SW, ARP_ACC, ARP_CHANCE, ARP_HUM };
+enum { MOD_N = 6, MOD_SAVE = 32 };
+static struct { uint32_t ph; int32_t shv, shs; } MS_[4][MOD_N];       /* per track and source: LFO phase (turns, Q32); S&H: held value and smoothed value (Q15) */
+static struct { uint8_t kind, t, eng; int16_t id, base; } mod_sv[MOD_SAVE];      /* kind 0 PV, 1 arpeggiator table, 2 engine parameter */
+static int mod_nsv, mod_vac_dirty, mod_ready;
 uint32_t mod_t0;                           /* CPU: worst mod_apply + mod_restore (timer ticks) */
 
 static int32_t lfo_wf(uint32_t ph, int shape)             /* wf(): sine / triangle / saw / square, Q15 */
@@ -32,28 +30,53 @@ static int32_t lfo_wf(uint32_t ph, int shape)             /* wf(): sine / triang
     default: return ph < 0x80000000u ? 32767 : -32768;
     }
 }
-static uint32_t lfo_mhz(int src)                          /* the source's rate, milli-Hz: sync = bpm / 60 * DIV[floor(rate * 8)], else .05 * 800^rate Hz */
+static uint32_t lfo_mhz(const int16_t *M, int b)          /* the source's rate, milli-Hz: sync = bpm / 60 * DIV[floor(rate * 8)], else .05 * 800^rate Hz */
 {
-    int b = LFO_BASE[src], v = PV[b + 2];
-    if (PV[b + 4]) {
+    int v = M[b + 2];
+    if (M[b + 4]) {
         static const uint16_t DIVQ[8] = { 64, 128, 256, 512, 1024, 2048, 4096, 8192 };      /* DIV * 1024 */
         int di = v * 8 / 1000;
         return (uint32_t)bpm_v * DIVQ[di > 7 ? 7 : di] * 25u / 1536u;
     }
     return (50u * fx_exp2_24(DIV1000((int64_t)v * 632020 * 256), 8)) >> 8;            /* 50 mHz * 800^rate */
 }
-static int mod_set(int id, int arp, int16_t newv)         /* write a modulated value, remembering the base once */
+static int mod_cur(int kind, int t, int eng, int id)
+{
+    return kind == 0 ? PV[id] : kind == 1 ? voices_arp_get(t, id) : voices_param_get(t, eng, id);
+}
+static void mod_put(int kind, int t, int eng, int id, int v)
+{
+    if (kind == 0) PV[id] = (int16_t)v; else if (kind == 1) voices_arp(t, id, v); else voices_param(t, eng, id, v);
+}
+static void mod_set(int kind, int t, int eng, int id, int newv)         /* write a modulated value, remembering the base once */
 {
     int k;
-    for (k = 0; k < mod_nsv; k++) if (mod_sv[k].id == id && mod_sv[k].arp == arp) break;
+    for (k = 0; k < mod_nsv; k++) if (mod_sv[k].kind == kind && mod_sv[k].t == t && mod_sv[k].id == id) break;
     if (k == mod_nsv) {
-        if (mod_nsv >= MOD_SAVE) return 0;
-        mod_sv[k].id = (int16_t)id; mod_sv[k].arp = (uint8_t)arp;
-        mod_sv[k].base = arp ? (int16_t)voices_arp_get(voices_sel(), id) : PV[id];
+        if (mod_nsv >= MOD_SAVE) return;
+        mod_sv[k].kind = (uint8_t)kind; mod_sv[k].t = (uint8_t)t; mod_sv[k].eng = (uint8_t)eng; mod_sv[k].id = (int16_t)id;
+        mod_sv[k].base = (int16_t)mod_cur(kind, t, eng, id);
         mod_nsv++;
     }
-    if (arp) voices_arp(voices_sel(), id, newv); else PV[id] = newv;
-    return 1;
+    mod_put(kind, t, eng, id, newv);
+}
+/* a destination of the master list on the engine of track t -> what to modulate; 0: nothing (not this engine's, or a no-op as in the prototype) */
+static int mod_target(int t, int eng, int d, int *kind, int *id)
+{
+    if (d <= 0 || d >= N_DST || !((DSTM[d].grp >> eng) & 1)) return 0;
+    switch (DSTM[d].kind) {
+    case DK_PV: if (eng != ENG_VAC || t != voices_vac_owner()) return 0; *kind = 0; *id = DSTM[d].a; return 1;
+    case DK_ARP: *kind = 1; *id = DSTM[d].a; return 1;
+    case DK_ENG: case DK_DRUM: *kind = 2; *id = DSTM[d].a; return 1;
+    case DK_ENV: {                                                  /* atk, edec, sus, rel: each engine's own envelope */
+        static const uint8_t MGE[4] = { MG_ATK, MG_DEC, MG_SUS, MG_REL }, PRE[4] = { PR_ATK, PR_DEC, PR_SUS, PR_REL };
+        int e = DSTM[d].a;
+        if (eng == ENG_VAC) { if (e > 1) return 0; if (t != voices_vac_owner()) return 0; *kind = 0; *id = e ? P_EDEC : P_ATK; return 1; }
+        if (eng == ENG_MOOG && e == 3) return 0;                    /* the prototype's Minimoog reads mgrel (a switch), not rel: "Env release" does nothing there */
+        *kind = 2; *id = eng == ENG_MOOG ? MGE[e] : PRE[e]; return 1;
+    }
+    }
+    return 0;
 }
 
 #ifdef MOD_TEST                                         /* test builds: -DMOD_TEST="{src,dst,shape,rate,amount,sync,smooth}" -DMOD_ID=<param id>; the right channel carries PV[MOD_ID] */
@@ -67,45 +90,55 @@ static void mod_test_init(void)
 #endif
 void mod_apply(int n)
 {
-    int s, vac = 0;
+    int s, t, vac = 0;
+    int32_t lvl[4];
 #ifdef MOD_TEST
     static uint8_t once;
     if (!once) { once = 1; mod_test_init(); }
 #endif
+    if (!mod_ready) {                                                /* the prototype's start phases .33 / .66 / .15 */
+        static const uint32_t P0[MOD_N] = { 0, 1417339207u, 2834678415u, 644245094u, 0, 0 };
+        for (t = 0; t < 4; t++) for (s = 0; s < MOD_N; s++) MS_[t][s].ph = P0[s];
+        mod_ready = 1;
+    }
     mod_t0 = fm1_ticks();
     mod_nsv = 0;
-    for (s = 0; s < MOD_N; s++) {
-        int b = LFO_BASE[s], dst = PV[b], x, id, k;
-        int32_t src, amt, xq, lo, hi, nn;
-        uint32_t inc = INC_MHZ(lfo_mhz(s)) , ph0 = MS_[s].ph;
-        MS_[s].ph += inc * (uint32_t)n;
-        if (s < 4) src = lfo_wf(MS_[s].ph, PV[b + 1]);
-        else {                                                         /* sample and hold: a new value each time the phase wraps (the first block too) */
-            if (MS_[s].ph < ph0 || (!ph0 && !MS_[s].shv)) MS_[s].shv = (int32_t)(rnd32() >> 16) - 32768;
-            {
-                uint32_t xq16 = 1902220u / (uint32_t)(20 + 4 * PV[b + 1]);          /* dt / (.002 + smooth * .4), dt = 128 / 44100 */
-                MS_[s].shs += (int32_t)(((int64_t)(MS_[s].shv - MS_[s].shs) * c_expm(xq16 * (uint32_t)n / 128u)) >> 16);
+    for (t = 0; t < 4; t++) lvl[t] = 32768;
+    for (t = 0; t < 4; t++) {                                        /* every track has its own matrix and acts on its own engine */
+        const int16_t *M = t == mod_view ? &PV[P_M0T] : MODT[t].m;
+        int eng = voices_engine(t);
+        for (s = 0; s < MOD_N; s++) {
+            int b = 5 * s, dst = M[b], x, id, k, kind;
+            int32_t src, amt, xq, nn, cur, mn, mx;
+            uint32_t ph0;
+            if (dst <= 0 || dst >= N_DST || !M[b + 3]) continue;
+            ph0 = MS_[t][s].ph;
+            MS_[t][s].ph += INC_MHZ(lfo_mhz(M, b)) * (uint32_t)n;
+            if (s < 4) src = lfo_wf(MS_[t][s].ph, M[b + 1]);
+            else {                                                  /* sample and hold: a new value each time the phase wraps (the first block too) */
+                uint32_t xq16 = 1902220u / (uint32_t)(20 + 4 * M[b + 1]);          /* dt / (.002 + smooth * .4), dt = 128 / 44100 */
+                if (MS_[t][s].ph < ph0 || (!ph0 && !MS_[t][s].shv)) MS_[t][s].shv = (int32_t)(rnd32() >> 16) - 32768;
+                MS_[t][s].shs += (int32_t)(((int64_t)(MS_[t][s].shv - MS_[t][s].shs) * c_expm(xq16 * (uint32_t)n / 128u)) >> 16);
+                src = MS_[t][s].shs;
             }
-            src = MS_[s].shs;
-        }
-        if (dst <= 0 || dst > 68 || !PV[b + 3]) continue;
-        amt = (PV[b + 3] * PV[b + 3] * 2147) >> 16;                    /* amount^2, Q15 */
-        xq = (int32_t)(((int64_t)src * amt) >> 15);
-        if (dst >= 17) { fx_mod(dst - 17, xq); continue; }              /* the FX knobs: on each track's own value (fxdsp.c, FEFF) */
-        else if (dst >= 12) { id = MOD_ARPID[dst]; x = 1; }
-        else { id = MOD_DSTID[dst]; x = 0; if (id == 255) continue; vac = 1; }
-        {
-            const pdesc_t *d = x ? 0 : &PD[id];
-            int cur, mn = x ? 0 : d->min, mx = x ? 1000 : d->max;
-            cur = x ? voices_arp_get(voices_sel(), id) : PV[id];
+            amt = (M[b + 3] * M[b + 3] * 2147) >> 16;               /* amount^2, Q15 */
+            xq = (int32_t)(((int64_t)src * amt) >> 15);
+            if (DSTM[dst].kind == DK_FX) { if ((DSTM[dst].grp >> eng) & 1) fx_mod_t(t, DSTM[dst].a, xq); continue; }
+            if (DSTM[dst].kind == DK_LVL) { lvl[t] = (int32_t)(((int64_t)lvl[t] * (xq + 32768 < 0 ? 0 : xq + 32768 > 32768 ? 32768 : xq + 32768)) >> 15); continue; }
+            if (!mod_target(t, eng, dst, &kind, &id)) continue;
+            if (kind == 0) { mn = PD[id].min; mx = PD[id].max; vac = 1; }
+            else if (kind == 1) { mn = 0; mx = 1000; }
+            else { mn = 0; mx = 1000; }
+            cur = mod_cur(kind, t, eng, id);
             if (mx == mn) continue;
-            lo = 0; hi = 32768;
             nn = (int32_t)(((int64_t)(cur - mn) << 15) / (mx - mn)) + xq;
-            nn = nn < lo ? lo : nn > hi ? hi : nn;
-            k = mn + (int)(((int64_t)nn * (mx - mn)) >> 15);
-            mod_set(id, x, (int16_t)k);
+            nn = nn < 0 ? 0 : nn > 32768 ? 32768 : nn;
+            k = (int)(mn + (((int64_t)nn * (mx - mn)) >> 15));
+            mod_set(kind, t, eng, id, k);
+            (void)x;
         }
     }
+    for (t = 0; t < 4; t++) voices_lvl_mod(t, lvl[t]);
     if (vac || mod_vac_dirty) { vac_update(); mod_vac_dirty = 0; }
 #ifdef MOD_TEST
     mod_tap = MOD_ID >= P_F0DRIVE && MOD_ID <= P_F15MIX ? FEFF[fx_view][MOD_ID - P_F0DRIVE] : PV[MOD_ID];
@@ -115,8 +148,8 @@ void mod_restore(void)
 {
     int k, vac = 0;
     for (k = mod_nsv - 1; k >= 0; k--) {
-        if (mod_sv[k].arp) voices_arp(voices_sel(), mod_sv[k].id, mod_sv[k].base);
-        else { PV[mod_sv[k].id] = mod_sv[k].base; vac = 1; }
+        mod_put(mod_sv[k].kind, mod_sv[k].t, mod_sv[k].eng, mod_sv[k].id, mod_sv[k].base);
+        if (mod_sv[k].kind == 0) vac = 1;
     }
     mod_nsv = 0;
     if (vac) mod_vac_dirty = 1;                       /* the derived values stay modulated until the next block's mod_apply recomputes them (once per block) */

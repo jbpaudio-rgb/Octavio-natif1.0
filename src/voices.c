@@ -17,14 +17,15 @@ typedef struct {
     uint32_t down[4];                                     /* bitmap of the notes held (0..127) */
 } arp_t;
 
-static struct { uint8_t eng; int16_t vol; arp_t a; } TK[NTRK];       /* vol: Q15 */
+static struct { uint8_t eng; int16_t vol; int32_t lvl; arp_t a; } TK[NTRK];       /* vol: Q15; lvl: the Level destination's gain (Q15, 32768 = none) */
 #ifndef C_BOOT_TRACK
 #define C_BOOT_TRACK 0
 #endif
 static uint8_t sel_t = C_BOOT_TRACK;
 static uint32_t keys_prev_v;
 static uint8_t key_note[27], key_trk[27];
-static int ctrl_bank_key_cb(int key);                  /* main.c: a key pressed while the bank keys are active */
+static int ctrl_bank_key_cb(int key);
+static void ctrl_key_rel_cb(int key);                 /* main.c: a chord key (no note) was released */                  /* main.c: a key pressed while the bank keys are active */
 static int bpm_v = 120;
 static uint8_t vac_owner = 0;                              /* the Vactrol is a singleton: one track plays it */
 static const uint8_t SPB[6] = {1, 2, 3, 4, 6, 8};
@@ -55,7 +56,9 @@ void voices_init(void)
 {
     int t, i;
     fx_defaults();
+    mod_defaults();
     for (t = 0; t < NTRK; t++) {
+        TK[t].lvl = 32768;
         TK[t].eng = (uint8_t)(t == 0 ? ENG_VAC : t == 1 ? ENG_MOOG : t == 2 ? ENG_PROPH : ENG_DRUM);
         TK[t].vol = 26214;
         for (i = 0; i < ARP_COUNT; i++) TK[t].a.p[i] = ARP_DEF[i];
@@ -90,7 +93,9 @@ void voices_set_engine(int t, int e)
         vac_owner = (uint8_t)t;
     }
     TK[t].eng = (uint8_t)e;
+    mod_fix_track(t);                                      /* rebuildDst(): the destinations the new engine does not have go back to None */
 }
+void voices_lvl_mod(int t, int q15) { TK[t & 3].lvl = q15 < 0 ? 0 : q15 > 32768 ? 32768 : q15; }
 void voices_param(int t, int eng, int id, int v)
 {
     if (eng == ENG_MOOG) moog_set(t & 3, id, v);
@@ -98,6 +103,71 @@ void voices_param(int t, int eng, int id, int v)
     else if (eng == ENG_DRUM) drum_set(t & 3, id, v);
 }
 int voices_param_get(int t, int eng, int id) { return eng == ENG_MOOG ? moog_get(t & 3, id) : eng == ENG_PROPH ? proph_get(t & 3, id) : eng == ENG_DRUM ? drum_get(t & 3, id) : 0; }
+
+
+/* ---- the step clock (the prototype's seq() / fire()): 16th notes at the tempo from PLAY; the drum lanes (DG) fire here ---- */
+static int8_t seq_cur = -1;
+static uint8_t seq_on;
+static int32_t seq_cnt;
+static uint32_t seq_st;
+static struct { int8_t t, v; int16_t vel; int32_t d; } seq_q[16];       /* delayed hits (swing / humanize): hitD() */
+static int seq_nq;
+int voices_seq_cur(void) { return seq_on ? seq_cur : -1; }
+void voices_play(int on)
+{
+    int t;
+    seq_on = (uint8_t)(on != 0);
+    seq_cnt = 0; seq_st = 0; seq_cur = -1; seq_nq = 0;
+    if (!on) for (t = 0; t < NTRK; t++) if (!TK[t].a.p[ARP_MODE] && !(TK[t].a.down[0] | TK[t].a.down[1] | TK[t].a.down[2] | TK[t].a.down[3])) eng_off(t);
+}
+static int rnd16u(void) { return c_rand15() + 32768; }       /* 0..65535 */
+static void seq_hit(int t, int v, int vel, int d)
+{
+    if (d > 1 && seq_nq < 16) { seq_q[seq_nq].t = (int8_t)t; seq_q[seq_nq].v = (int8_t)v; seq_q[seq_nq].vel = (int16_t)vel; seq_q[seq_nq].d = d; seq_nq++; }
+    else drum_hit(t, v, vel);
+}
+void voices_seq_rec(int t, int v)
+{
+    t &= 3;
+    if (!seq_on || seq_cur < 0 || TK[t].eng != ENG_DRUM || v < 0 || v > 5) return;
+    drum_gates_set(t, v, (uint16_t)(drum_gates(t, v) | (1u << seq_cur)));
+    drum_hit(t, v, 32767);
+}
+static void seq_fire(void)
+{
+    int t, v, cur = (int)(seq_st++ & 15u);
+    int32_t sl = (FS * 15) / bpm_v;
+    seq_cur = (int8_t)cur;
+    for (t = 0; t < NTRK; t++) {
+        if (TK[t].eng != ENG_DRUM) continue;
+        for (v = 0; v < 6; v++) {
+            int ch, hu, ac, sw, vel, d, r;
+            if (!((drum_gates(t, v) >> cur) & 1u)) continue;
+            ch = drum_get(t, DR_ID(v, DR_CHANCE)); hu = drum_get(t, DR_ID(v, DR_HUM));
+            ac = drum_get(t, DR_ID(v, DR_ACC)); sw = drum_get(t, DR_ID(v, DR_SW));
+            if (((rnd16u() * 1000) >> 16) >= ch) continue;                         /* Math.random() >= chance: the step is skipped */
+            vel = 32767;
+            if (cur % 4) vel = vel * (1000 - ac * 6 / 10) / 1000;                    /* accent: the off-beat steps are softer */
+            r = (rnd16u() * (hu * 400 / 1000)) >> 16;                              /* 1 - hu * .4 * random */
+            vel = vel * (1000 - r) / 1000;
+            d = (int)((int64_t)((rnd16u() * hu) >> 16) * sl * 3 / 20000);          /* hu * random * .15 steps */
+            if (cur & 1) d += (int)((int64_t)sw * sl / 2000);                        /* swing: the odd steps late by sw * .5 step */
+            seq_hit(t, v, vel, d);
+        }
+    }
+}
+static void seq_tick(int n)
+{
+    int k;
+    if (!seq_on) return;
+    for (k = 0; k < seq_nq;) {
+        seq_q[k].d -= n;
+        if (seq_q[k].d <= 0) { drum_hit(seq_q[k].t, seq_q[k].v, seq_q[k].vel); seq_q[k] = seq_q[--seq_nq]; }
+        else k++;
+    }
+    seq_cnt -= n;
+    if (seq_cnt <= 0) { seq_cnt += (FS * 15) / bpm_v; seq_fire(); }
+}
 
 /* ---- arpeggiator ---- */
 static void varp_build(arp_t *a)
@@ -256,6 +326,8 @@ void voices_keys(uint32_t now)
                 voices_note(sel_t, key_note[i], 1);
             } else if (key_trk[i] != 255)
                 voices_note(key_trk[i], key_note[i], 0);
+            else
+                ctrl_key_rel_cb(i);
         }
     keys_prev_v = now;
 }
@@ -293,6 +365,8 @@ void voices_render(int32_t *out, int n)
     int t, i;
     int64_t acc[128];
     for (i = 0; i < n; i++) acc[i] = 0;
+    bpm_v = PV[P_BPM] < 20 ? 20 : PV[P_BPM] > 300 ? 300 : PV[P_BPM];      /* the TEMPO page */
+    seq_tick(n);
     for (t = 0; t < NTRK; t++) {
         int act = 1;
         arp_tick(t, n);
@@ -307,6 +381,7 @@ void voices_render(int32_t *out, int n)
             if (!fx_awake(t)) continue;
             for (i = 0; i < n; i++) tmp[i] = 0;
         }
+        if (act && TK[t].lvl != 32768) for (i = 0; i < n; i++) tmp[i] = (int32_t)(((int64_t)tmp[i] * TK[t].lvl) >> 15);      /* the Level destination */
         fx_track(t, tmp, n, act);               /* the track's effects (fxdsp.c), then the track volume as the prototype: F(tb[i]) * t.vol */
         {                                       /* HOME's meter: this block's peak of the track */
             int32_t pk = 0;

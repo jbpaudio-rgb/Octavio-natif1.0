@@ -377,6 +377,7 @@ static void epg_drum_draw(void)
 static void epg_prepare(void)
 {
     eg_key[0] = -1;                                                              /* the ENV page's strokes are being reused */
+    if (EP.eng == ENG_DRUM && EP.idx == EPI_ARP) return;                         /* the prototype draws nothing there (dgrey() is not defined) */
     if (EP.eng == ENG_DRUM) epg_drum();
     else if (EP.idx == EPI_EDIT) epg_filter();
     else if (EP.idx == EPI_ENV || EP.idx == EPI_ENV2) epg_env();
@@ -384,6 +385,7 @@ static void epg_prepare(void)
 }
 static void epg_draw(void)
 {
+    if (EP.eng == ENG_DRUM && EP.idx == EPI_ARP) return;
     if (EP.eng == ENG_DRUM) epg_drum_draw();
     else if (EP.idx == EPI_EDIT) epg_filter_draw();
     else if (EP.idx == EPI_ENV || EP.idx == EPI_ENV2) epg_env_draw();
@@ -391,8 +393,6 @@ static void epg_draw(void)
 }
 
 /* ---------------------------------------------------------------- the drum mixer: six strips (MIXER 1/2 shows 1..4 on the knobs, 2/2 shows 5, 6) ---------------- */
-static const char *const DVN[3][8] = { { "BD", "SD", "CH", "OH", "CP", "CB", "HT", "LT" }, { "BD", "SD", "CH", "OH", "CP", "RD", "HT", "LT" },
-                                       { "KICK", "SNR", "CH", "OH", "TOM", "CRSH", "HI T", "LO T" } };
 static const char *epm_name(int v)
 {
     int t = voices_sel(), k = voices_param_get(t, ENG_DRUM, DR_ID(v, DR_KV)), y = voices_param_get(t, ENG_DRUM, DR_ID(v, DR_TYPE));

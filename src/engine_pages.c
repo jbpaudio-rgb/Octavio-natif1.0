@@ -35,8 +35,10 @@ static const epd_t PRD[PR_COUNT] = {
     PC(5), PC(10), PC(10), PC(10),
     { EF_MSA, 5, 0, 0 }, { EF_MSD, 5, 0, 0 }, PC(10), { EF_MSD, 5, 0, 0 },
     { EF_MSA, 5, 0, 0 }, { EF_MSD, 5, 0, 0 }, PC(10), { EF_MSD, 5, 0, 0 }, PC(10) };
-static const epd_t DRD[DR_PER] = { PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10) };
+static const epd_t DRD[DR_PER] = { PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10) };
 
+static const char *const DVN[3][8] = { { "BD", "SD", "CH", "OH", "CP", "CB", "HT", "LT" }, { "BD", "SD", "CH", "OH", "CP", "RD", "HT", "LT" },
+                                       { "KICK", "SNR", "CH", "OH", "TOM", "CRSH", "HI T", "LO T" } };
 static const char *const KITN[3] = { "808", "909", "ACOU" };
 static const char *const DVL[3][8] = {
     { "KICK", "SNARE", "CLOSED HAT", "OPEN HAT", "CLAP", "COWBELL", "HI TOM", "LOW TOM" },
@@ -45,7 +47,7 @@ static const char *const DVL[3][8] = {
 static const char *const DV3[8] = { "CLICK", "SNAPPY", "TONE", "TONE", "TONE", "TONE", "CLICK", "CLICK" };
 
 /* ---------------------------------------------------------------- the pages ---- */
-enum { EPI_GLO, EPI_OSC1, EPI_OSC2, EPI_OSC3, EPI_OSC4, EPI_EDIT, EPI_ENV, EPI_ENV2, EPI_N };
+enum { EPI_GLO, EPI_OSC1, EPI_OSC2, EPI_OSC3, EPI_OSC4, EPI_EDIT, EPI_ENV, EPI_ENV2, EPI_ARP, EPI_N };      /* EPI_ARP: the drums' lane settings (ARP) */
 typedef struct { const char *title; const char *nm[4]; int8_t id[4]; } epg_t;
 static const epg_t MG_PG[EPI_N] = {
     { "MIXER", { "OSC 1", "OSC 2", "OSC 3", "NOISE" }, { MG_L1, MG_L2, MG_L3, MG_NLEV } },
@@ -79,6 +81,7 @@ static int ep_pidx(void)                        /* the page as an engine page in
     case PG_EDIT: return EPI_EDIT;
     case PG_ENV: return EPI_ENV;
     case PG_ENV2: return EPI_ENV2;
+    case PG_ARP: return ep_eng() == ENG_DRUM ? EPI_ARP : -1;
     }
     return -1;
 }
@@ -92,7 +95,7 @@ static int ep_on(void)                          /* the 2 x 2 knob page of a non-
     if (e == ENG_DRUM) {
         int v, k, y, n = 0;
         const char *s;
-        if (x != EPI_EDIT && x != EPI_ENV) return 0;
+        if (x != EPI_EDIT && x != EPI_ENV && x != EPI_ARP) return 0;
         v = ctrl_drum_voice();
         k = voices_param_get(voices_sel(), e, DR_ID(v, DR_KV)); y = voices_param_get(voices_sel(), e, DR_ID(v, DR_TYPE));
         k = k < 0 ? 0 : k > 2 ? 2 : k; y = y < 0 ? 0 : y > 7 ? 7 : y;
@@ -101,7 +104,15 @@ static int ep_on(void)                          /* the 2 x 2 knob page of a non-
         for (s = DVL[k][y]; *s;) EP.title[n++] = *s++;
         if (x == EPI_ENV) for (s = " ENV"; *s;) EP.title[n++] = *s++;
         EP.title[n] = 0;
-        if (x == EPI_EDIT) {
+        if (x == EPI_ARP) {                                                     /* the lane's settings: "BD SEQ" */
+            static const int8_t I[4] = { DR_SW, DR_HUM, DR_CHANCE, DR_ACC };
+            n = 0;
+            for (s = DVN[k][y]; *s;) EP.title[n++] = *s++;
+            for (s = " SEQ"; *s;) EP.title[n++] = *s++;
+            EP.title[n] = 0;
+            EP.nm[0] = "SWING"; EP.nm[1] = "HUMAN."; EP.nm[2] = "CHANCE"; EP.nm[3] = "ACCENT";
+            for (i = 0; i < 4; i++) EP.id[i] = (int16_t)DR_ID(v, I[i]);
+        } else if (x == EPI_EDIT) {
             static const int8_t I[4] = { DR_TUNE, DR_TONE, DR_DRIVE, DR_FILT };
             EP.nm[0] = "TUNE"; EP.nm[1] = DV3[y]; EP.nm[2] = "DRIVE"; EP.nm[3] = "FILTER";
             for (i = 0; i < 4; i++) EP.id[i] = (int16_t)DR_ID(v, I[i]);

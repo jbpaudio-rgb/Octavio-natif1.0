@@ -19,12 +19,14 @@
 void fx_track(int t, int32_t *x, int n, int act) { (void)t; (void)x; (void)n; (void)act; }
 int fx_awake(int t) { (void)t; return 0; }
 #include "../src/vactrol.c"
+#include "../src/dst.c"
 #include "../src/voices.c"
 #include "../src/ctrl.c"
 #include "../src/overlay.c"
 #include "../src/ui.c"
 void ui_params_changed(void) {}
 static int ctrl_bank_key_cb(int key) { (void)key; return 0; }
+static void ctrl_key_rel_cb(int key) { (void)key; }
 void fx_bus(int32_t *x, int n) { (void)x; (void)n; }
 
 /* ---- in-memory NOR flash, 1 MiB; programming can only clear bits; the 0xF00..0xFFF of the sectors in use stay untouched ---- */
@@ -71,13 +73,17 @@ typedef struct {
     int16_t pv[P_COUNT];
     int16_t mg[4][MG_COUNT], pr[4][PR_COUNT], dr[4][DR_COUNT];
     int16_t arp[4][ARP_COUNT], sq[96];
+    int16_t mt[4][MODT_N], dg[4][6];                 /* the matrix of each track (dst.c), the drum sequencer lanes */
     uint8_t eng[4], owner, arps[4][ARP_STATE_N];
 } snap_t;
 static void take(snap_t *s)
 {
     int t, i;
     memcpy(s->pv, PV, sizeof PV);
+    mod_commit();
     for (t = 0; t < 4; t++) {
+        memcpy(s->mt[t], MODT[t].m, sizeof MODT[0].m); memcpy(s->mt[t] + MODM_N, MODT[t].q, sizeof MODT[0].q);
+        for (i = 0; i < 6; i++) s->dg[t][i] = (int16_t)drum_gates(t, i);
         for (i = 0; i < MG_COUNT; i++) s->mg[t][i] = (int16_t)voices_param_get(t, ENG_MOOG, i);
         for (i = 0; i < PR_COUNT; i++) s->pr[t][i] = (int16_t)voices_param_get(t, ENG_PROPH, i);
         for (i = 0; i < DR_COUNT; i++) s->dr[t][i] = (int16_t)voices_param_get(t, ENG_DRUM, i);
@@ -102,6 +108,8 @@ static int diff(const snap_t *a, const snap_t *b, int scene, const char *what)
         for (i = 0; i < PR_COUNT; i++) if (a->pr[t][i] != b->pr[t][i]) { bad++; if (bad < 6) if (vb) printf("  %s: prophet t%d %d: %d != %d\n", what, t, i, a->pr[t][i], b->pr[t][i]); }
         for (i = 0; i < DR_COUNT; i++) if (i % DR_PER != DR_KIT && a->dr[t][i] != b->dr[t][i]) { bad++; if (bad < 6) if (vb) printf("  %s: drum t%d %d: %d != %d\n", what, t, i, a->dr[t][i], b->dr[t][i]); }
         for (i = 0; i < ARP_COUNT; i++) if (a->arp[t][i] != b->arp[t][i]) { bad++; if (bad < 6) if (vb) printf("  %s: arp t%d %d: %d != %d\n", what, t, i, a->arp[t][i], b->arp[t][i]); }
+        for (i = 0; i < MODT_N; i++) if (a->mt[t][i] != b->mt[t][i]) { bad++; if (bad < 6) if (vb) printf("  %s: matrix t%d %d: %d != %d\n", what, t, i, a->mt[t][i], b->mt[t][i]); }
+        for (i = 0; i < 6; i++) if (a->dg[t][i] != b->dg[t][i]) { bad++; if (bad < 6) if (vb) printf("  %s: drum lane t%d v%d: %04x != %04x\n", what, t, i, a->dg[t][i] & 0xffff, b->dg[t][i] & 0xffff); }
         if (memcmp(a->arps[t], b->arps[t], ARP_STATE_N)) { bad++; if (vb) printf("  %s: arp position of track %d\n", what, t); }
         if (a->eng[t] != b->eng[t]) { bad++; if (vb) printf("  %s: engine of track %d: %d != %d\n", what, t, a->eng[t], b->eng[t]); }
         if (a->pv[P_TYP0 + t] != b->pv[P_TYP0 + t]) { bad++; if (vb) printf("  %s: PV[P_TYP%d]\n", what, t); }
@@ -127,7 +135,17 @@ static void randomize(int density, int seed_engines)
     for (i = 0; i < P_COUNT; i++) {
         const pdesc_t *d = &PD[i];
         if (i >= P_TYP0 && i <= P_TYP3) continue;
-        if ((int)(rnd() % 100u) < density) PV[i] = (int16_t)rr(d->min, d->max);
+        if ((int)(rnd() % 100u) < density) PV[i] = (int16_t)(dst_kind_of(i) ? dst_at(voices_engine(voices_sel()), dst_kind_of(i) == 2, rr(0, dst_count(voices_engine(voices_sel()), dst_kind_of(i) == 2) - 1)) : rr(d->min, d->max));
+    }
+    for (t = 0; t < 4; t++) {                  /* the other tracks' matrices: destinations of their own engine; the drum lanes */
+        for (i = 0; i < MODT_N; i++) {
+            int sq = i >= MODM_N, r = sq ? i - MODM_N : i, isdst = sq ? (r % 4 == 0) : (r % 5 == 0);
+            const pdesc_t *d = &PD[sq ? P_M4T + r : P_M0T + r];
+            if (t == mod_view || (int)(rnd() % 100u) >= density) continue;
+            if (sq) MODT[t].q[r] = (int16_t)(isdst ? dst_at(voices_engine(t), 1, rr(0, dst_count(voices_engine(t), 1) - 1)) : rr(d->min, d->max));
+            else MODT[t].m[r] = (int16_t)(isdst ? dst_at(voices_engine(t), 0, rr(0, dst_count(voices_engine(t), 0) - 1)) : rr(d->min, d->max));
+        }
+        for (i = 0; i < 6; i++) if ((int)(rnd() % 100u) < density) drum_gates_set(t, i, (uint16_t)rr(0, 65535));
     }
     for (t = 0; t < 4; t++) {
         for (i = 0; i < MG_COUNT; i++) if ((int)(rnd() % 100u) < density) voices_param(t, ENG_MOOG, i, rr(0, 1000));
@@ -186,6 +204,43 @@ int main(int argc, char **argv)
     {
         uint32_t n = state_save(ebuf, sizeof ebuf, 0), m = state_save(ebuf, sizeof ebuf, 1);
         printf("factory state: preset body %u bytes, scene body %u bytes\n", n, m);
+    }
+
+    /* 0b. destinations follow the engine of the track (dst.c): the lists, the swap of the matrix per track, the validation on an engine change */
+    {
+        int e, k, bad = 0;
+        for (e = 0; e < 4; e++) {               /* every entry of an engine's list is valid for it, in both index spaces; every other engine's entry is not */
+            for (k = 0; k < dst_count(e, 0); k++) { int v = dst_at(e, 0, k); if (dst_pos(e, 0, v) != k) bad++; if (v && !((DSTM[v].grp >> e) & 1)) bad++; }
+            for (k = 0; k < dst_count(e, 1); k++) { int v = dst_at(e, 1, k); if (dst_pos(e, 1, v) != k) bad++; }
+        }
+        CHECK(!bad, "destination lists inconsistent (%d)", bad);
+        CHECK(dst_count(0, 0) == 69 && dst_pos(0, 0, 10) == 10 && dst_pos(0, 1, 2) == 2, "the Vactrol list is not the one saved presets use");
+        voices_set_engine(0, ENG_VAC); voices_set_engine(1, ENG_MOOG);
+        voices_select(0); mod_select(0);
+        PV[P_M0T] = 3; PV[P_M1T] = 12; PV[P_M4T + 4] = 5 + 3;           /* Freq, Arp gate (any engine but the drums), a sequencer line on FM ratio */
+        CHECK(dst_pos(ENG_MOOG, 0, 3) < 0 && dst_pos(ENG_MOOG, 0, 12) >= 0, "Freq must not be a Minimoog destination, Arp gate must");
+        mod_select(1); voices_select(1);
+        CHECK(PV[P_M0T] == 0 && PV[P_M1T] == 0, "the second track starts with an empty matrix");
+        PV[P_M0T] = DSTL1[3];                                          /* a Minimoog destination on track 2 */
+        mod_select(0); voices_select(0);
+        CHECK(PV[P_M0T] == 3 && PV[P_M1T] == 12, "track 1's matrix did not come back");
+        mod_select(1);
+        CHECK(PV[P_M0T] == DSTL1[3], "track 2's matrix did not come back");
+        voices_set_engine(1, ENG_DRUM);                                  /* the engine of the selected track changes: its destinations are validated */
+        CHECK(PV[P_M0T] == 0, "a Minimoog destination survived the change to the drums");
+        PV[P_M1T] = DSTL3[5];
+        voices_set_engine(1, ENG_PROPH);
+        CHECK(PV[P_M1T] == 0, "a drum destination survived the change to the Prophet");
+        PV[P_M1T] = 12;                                                  /* Arp gate: valid on the Prophet, not on the drums */
+        voices_set_engine(1, ENG_DRUM); CHECK(PV[P_M1T] == 0, "Arp gate survived the change to the drums");
+        voices_set_engine(1, ENG_MOOG);
+        mod_select(0); voices_select(0);                                  /* a track that is not selected is validated too */
+        voices_set_engine(1, ENG_PROPH);
+        mod_select(1);
+        CHECK(PV[P_M0T] == 0, "unexpected destination on track 2");
+        mod_select(0); voices_select(0);
+        voices_set_engine(1, ENG_MOOG);
+        printf("destination lists: VACT %d, MOOG %d, PROPH %d, DRUM %d entries (LFO), master list %d\n", dst_count(0, 0), dst_count(1, 0), dst_count(2, 0), dst_count(3, 0), N_DST);
     }
 
     /* 1. preset round trip, every engine: A (engines VAC? random), B, then scramble, reload */

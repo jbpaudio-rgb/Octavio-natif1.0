@@ -31,6 +31,7 @@
 #include "params.c"
 #include "fxstate.c"
 #include "vactrol.c"
+#include "dst.c"
 #include "voices.c"
 #include "ctrl.c"
 #include "overlay.c"
@@ -66,8 +67,18 @@ static int ctrl_bank_key_cb(int key)                  /* HOME held / SAVE BANK: 
     }
     for (k = 0; k < key; k++) w += WH[(53 + k) % 12];
     if (ctrl_fx_key(w, ms)) return 1;
+    if (ctrl_dseq_key(w)) return 1;                       /* the drum sequencer: the white key toggles a step of the selected lane */
     if (!ctrl_bank_mode()) return 0;
     return ctrl_bank_key(w, ms);
+}
+
+static void ctrl_key_rel_cb(int key)                  /* a key that was a chord (no note) is released: a black key = an OP key let go */
+{
+    static const uint8_t WH[12] = { 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1 };
+    int k, o = 0;
+    if (WH[(53 + key) % 12]) return;
+    for (k = 0; k < key; k++) o += !WH[(53 + k) % 12];
+    ctrl_op_release(o);
 }
 
 void fm1_alnk0_irq(void)

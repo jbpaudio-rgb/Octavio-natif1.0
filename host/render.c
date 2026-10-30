@@ -14,6 +14,7 @@
 #include "../src/params.c"
 #include "../src/fxstate.c"
 #include "../src/vactrol.c"
+#include "../src/dst.c"
 #include "../src/voices.c"
 #include "../src/ctrl.c"
 #include "../src/overlay.c"
@@ -22,6 +23,7 @@ void ui_params_changed(void) {}
 void fx_track(int t, int32_t *x, int n, int act) { (void)t; (void)x; (void)n; (void)act; }      /* the effects are not rendered on the host screen harness */
 int fx_awake(int t) { (void)t; return 0; }
 static int ctrl_bank_key_cb(int key) { (void)key; return 0; }
+static void ctrl_key_rel_cb(int key) { (void)key; }
 int main(int argc, char **argv)
 {
     static uint16_t band[SCR_W * 8];
@@ -44,6 +46,8 @@ int main(int argc, char **argv)
                 PV[FX_FIRST[e] + j] = (l == L_MIX || l == L_HOLD) ? (b ? 1000 : 0) : (b ? 800 : 500);
             }
         }
+        if (argv[i][0] == 'd' && argv[i][1] == 'g') { int v = atoi(argv[i + 1]); drum_gates_set(0, v, (uint16_t)strtoul(strchr(argv[i + 1], ',') + 1, 0, 0)); }      /* "dg v,bits": the lane of voice v */
+        if (argv[i][0] == 's' && argv[i][1] == 'c') ui_seq_cur(atoi(argv[i + 1]));                                                    /* "sc N": the playing step */
         if (argv[i][0] == 'p' && argv[i][1] >= '0' && argv[i][1] <= '9') PV[atoi(argv[i] + 1)] = (int16_t)atoi(argv[i + 1]);
         if (argv[i][0] == 'p' && argv[i][1] == 'g') ui_set_page(atoi(argv[i + 1]));      /* "pg N": a page (PG_*) */
         if (argv[i][0] == 't' && argv[i][1] == 'm') { ui_tick((uint32_t)atoi(argv[i + 1])); }     /* "tm ms": the clock */

@@ -19,6 +19,7 @@ static const page_t PAGES[PG_COUNT] = {
     [PG_MENU2] = { "MIDI ROUTING", { "NOTES", "CLOCK", "START", "SEND" },   { P_IONOTE, P_IOCLK, P_IOTRN, P_IOSND } },
     [PG_FXO] = { "FX ORDER", { "", "", "", "" }, { 255, 255, 255, 255 } },
     [PG_HOME] = { "", { "T1", "T2", "T3", "T4" },                           { P_VOL0, P_VOL1, P_VOL2, P_VOL3 } },
+    [PG_DSEQ] = { "", { "", "", "", "" },                                   { 255, 255, 255, 255 } },
 };
 static void env_tick(uint32_t ms);
 static void lfo_tick(uint32_t dt);
@@ -36,6 +37,9 @@ static int wheel_p[4] = { -1, -1, -1, -1 };
 #include "pages.c"                             /* dynamic pages (LFO, FX), page state */
 #include "engine_pages.c"                      /* the Minimoog / Prophet / drum settings pages */
 
+/* a destination knob follows the engine of the selected track (dst.c): its position is the place in that engine's list */
+static int32_t pn_q16(int id) { return dst_kind_of(id) ? dst_n_q16(id, voices_engine(voices_sel())) : param_n_q16(id); }
+static void pset_n(int id, int32_t n) { if (dst_kind_of(id)) dst_set_n(id, voices_engine(voices_sel()), n); else param_set_n(id, n); }
 static int pid_of(int k)                       /* the parameter under KNOB k+1 on this page (ENV: cutoff in low-pass) */
 {
     if (page == PG_ENV && k == 2 && PV[P_MODE] == 0)
@@ -78,12 +82,12 @@ void ui_encoder(int k, int steps)              /* one detent = 1/50 of the range
         int32_t g;
         if (id < 0)
             return;
-        g = param_n_q16(id);
+        g = pn_q16(id);
         int32_t base = (wheel_p[k] == id && wheel[k] >= g - 1 && wheel[k] <= g + 1) ? wheel[k] : g;
         int32_t nv = base + (steps < 0 ? -1 : 1) * (65536 / 50);
         if (nv < 0) nv = 0;
         if (nv > 65536) nv = 65536;
-        param_set_n(id, nv);
+        pset_n(id, nv);
         wheel[k] = nv;
         wheel_p[k] = id;
         if (id == P_STEPV) seq_commit();
@@ -119,13 +123,14 @@ void ui_tick(uint32_t ms)                      /* the scope scrolls: .25 + 1.5 *
     fx_ms = ms % 1000000u;
     lfo_tick(dt);
     home_tick(dt);
+    ui_seq_cur(voices_seq_cur());                  /* the step clock's playing step (PLAY): the SEQ / DSEQ cursor */
     ed_phase += dt * (uint32_t)(250 + (3 * PV[P_FREQ]) / 2) * 4295u;      /* turns/ms in 2^32 / 1e6 units */
 }
 
 static int page_of(int pgn)                    /* the controller's PGN_* -> this screen's PG_* */
 {
     static const int8_t M[PGN_COUNT] = { PG_GLO, PG_EDIT, PG_ENV, PG_LFO, PG_FX, PG_FXO, PG_ARP, PG_SEQ, PG_HOME, PG_MENU, PG_MENU2, PG_TEMPO,
-                                         PG_OSC1, PG_OSC2, PG_OSC3, PG_OSC4, PG_ENV2, PG_GLO2 };
+                                         PG_OSC1, PG_OSC2, PG_OSC3, PG_OSC4, PG_ENV2, PG_GLO2, PG_DSEQ };
     return pgn >= 0 && pgn < PGN_COUNT ? M[pgn] : page;
 }
 static void ctrl_sync(void)                    /* the controller's state -> the pages' (page, LFO source, FX slot, HOME's track) */
@@ -138,6 +143,7 @@ static void ctrl_sync(void)                    /* the controller's state -> the 
     ui_set_track(ctrl_track());
     voices_select(ctrl_track());
     fx_select(ctrl_track());                   /* the FX knobs in PV[] are the selected track's */
+    mod_select(ctrl_track());                  /* so are its modulation matrix and sequencer lines (dst.c) */
 }
 void ui_goto(int p)                            /* the controller shows page PGN_p (its state follows through ctrl_sync) */
 {
@@ -152,6 +158,7 @@ int ui_scene(int *y0, int *y1)
     uint32_t v = ctrl_version();
     if (v != seen || ctrl_overlay() != OV_NONE) { if (v != seen) ctrl_sync(); seen = v; dirty_all = 1; }
     if (dirty_all) { dirty_all = 0; dirty_top = 0; *y0 = 0; *y1 = SCR_H; return 1; }
+    if (page == PG_DSEQ) { *y0 = 0; *y1 = 1; dirty_top = 0; return 1; }         /* nothing changed: one row (the cursor, the gates and the lane mark redraw everything through dirty_all) */
     *y0 = dirty_top || page == PG_HOME ? 0 : 124;
     *y1 = 206;
     dirty_top = 0;
@@ -294,7 +301,7 @@ static void draw_cell(int k)
     if (page == PG_LFO || page == PG_FX)
         dyn_cell(k, &lab, &dim);
     if (eon) { id = EP.id[k]; dim = id < 0; lab = EP.nm[k]; }
-    draw_knob(cx, cy, dim ? -1000 : eon ? ep_n_q16(id) : param_n_q16(id), dim ? DIM_A : 256);
+    draw_knob(cx, cy, dim ? -1000 : eon ? ep_n_q16(id) : pn_q16(id), dim ? DIM_A : 256);
     gfx_text(F_LABEL, id == P_OPEN && !eon ? "CUTOFF" : lab, TXT_X64[cx], LAB_BASE[cy], COL_LABEL, LS_CELL, 0, clip);
     if (dim)
         return;
@@ -305,7 +312,7 @@ static void draw_cell(int k)
 void ui_prepare(void)
 {
     if (ep_on()) epg_prepare();
-    else if (ep_strips()) { }
+    else if (ep_strips() || page == PG_DSEQ) { }
     else if (page == PG_ENV) env_prepare();
     else if (page == PG_LFO) lfo_prepare();
     else scope_prepare();
@@ -324,6 +331,7 @@ static void ui_draw_page(int y0, int y1)
     if (page == PG_HOME) { home_draw(); return; }
     if (ep_strips()) { epm_draw(); return; }
     if (page == PG_SEQ) { seq_draw(); return; }
+    if (page == PG_DSEQ) { dseq_draw(); return; }
     {
         char tb[32];
         const char *t = PAGES[page].title;
