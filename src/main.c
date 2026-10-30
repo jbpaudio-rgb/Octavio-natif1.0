@@ -7,6 +7,7 @@
 #define FELUCCA_OTA 1             /* the update entry: the installer can replace this firmware over USB-MIDI */
 #define FELUCCA_ID "FM-1_2000"
 #define RING_PUBLISH() __asm__ volatile("" ::: "memory")
+#define PERSIST_FLASH 1
 #include "fm1_time.h"
 #include "fm1_sys.h"
 #include "fm1_irq.h"
@@ -175,6 +176,7 @@ static void lcd_frame(int y0, int y1)           /* rows [y0, y1): drawn band by 
 
 /* ---- the update (ota.c): the installer's M-UPGRADE session over USB-MIDI ---- */
 static uint8_t flash_ok;
+#include "persist.c"
 static uint32_t ota_now_ms(void) { return ms; }
 static void ota_idle(void) { fm1_wdt_feed(); }
 static int ota_in_area(uint32_t off, uint32_t n) { return FL_IN(off, n, OTA_AREA, OTA_AREA + OTA_AREA_LEN); }
@@ -273,6 +275,7 @@ static void app_main(void)
     vac_init();
     voices_init();
     ctrl_init(ms);
+    persist_boot();
     fm1_input_init();
     fm1_adc_init();
     for (i = 0; i < 2u * HALF_WORDS; i++)

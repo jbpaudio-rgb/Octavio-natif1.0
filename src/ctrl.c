@@ -124,7 +124,13 @@ static void load_preset(const preset_t *b)         /* loadPreset(): the engine's
 }
 
 /* the persistence hooks (flash.c on the target; the host test stubs them) */
+#ifdef PERSIST_FLASH
+void bank_store(const void *p, uint32_t n);          /* persist.c */
+void scene_store(const void *p, uint32_t n);
+#else
 __attribute__((weak)) void bank_store(const void *p, uint32_t n) { (void)p; (void)n; }
+__attribute__((weak)) void scene_store(const void *p, uint32_t n) { (void)p; (void)n; }
+#endif
 static void save_bank(void) { bank_store(bank, (uint32_t)(sizeof(preset_t) * (uint32_t)nbank)); }
 
 /* ---- name editor ---- */
@@ -185,21 +191,44 @@ static void commit_save(uint32_t ms)
 /* ---- scenes: the bank of keys (HOME held, or SAVE BANK); the state of the one engine so far ---- */
 static int16_t scn[16][P_COUNT];
 static uint16_t scn_used;
+static void save_scenes(void)
+{
+    static uint8_t b[2 + sizeof scn];
+    uint32_t i;
+    b[0] = (uint8_t)scn_used; b[1] = (uint8_t)(scn_used >> 8);
+    for (i = 0; i < 16u * P_COUNT; i++) { uint16_t v = (uint16_t)((int16_t *)scn)[i]; b[2 + 2 * i] = (uint8_t)v; b[3 + 2 * i] = (uint8_t)(v >> 8); }
+    scene_store(b, sizeof b);
+}
+void scene_restore(const void *p, uint32_t n)
+{
+    const uint8_t *b = p;
+    uint32_t i;
+    if (n != 2 + sizeof scn) return;
+    scn_used = (uint16_t)(b[0] | (b[1] << 8));
+    for (i = 0; i < 16u * P_COUNT; i++) ((int16_t *)scn)[i] = (int16_t)(b[2 + 2 * i] | (b[3 + 2 * i] << 8));
+}
 static void sc_save(int w, uint32_t ms)
 {
     int i;
     char a[16];
     for (i = 0; i < P_COUNT; i++) scn[w][i] = PV[i];
     scn_used |= (uint16_t)(1u << w);
+    save_scenes();
     cur_bank = w; sc_mode = 0;
     scopy(a, "BANK ", sizeof a); { char t[4]; itoa2(t, w + 1, 0); sappend(a, t, sizeof a); } sappend(a, " SAVED", sizeof a);
     toast(a, "4 TRACKS", ms);
 }
-static void sc_load(int w)
+static void sc_load(int w, uint32_t ms)             /* scLoad(): an empty bank resets the track to its defaults ("DEFAULT") */
 {
     int i;
+    char a[16];
+    int had = (scn_used >> w) & 1;
     cur_bank = w;
-    if (scn_used & (1u << w)) { for (i = 0; i < P_COUNT; i++) PV[i] = scn[w][i]; ui_params_changed(); }
+    for (i = 0; i < P_COUNT; i++) PV[i] = had ? scn[w][i] : PD[i].def;
+    ui_params_changed();
+    scopy(a, "BANK ", sizeof a); { char t[4]; itoa2(t, w + 1, 0); sappend(a, t, sizeof a); }
+    toast(a, had ? "LOADED" : "DEFAULT", ms);
+    pi = 0;
     bump();
 }
 int ctrl_bank_mode(void) { return ((bdn >> CB_HOME) & 1) || sc_mode; }
@@ -208,7 +237,7 @@ int ctrl_bank_key(int w, uint32_t ms)
 {
     if (!ctrl_bank_mode() || w < 0 || w > 15) return 0;
     chord = 1;
-    if (sc_mode) sc_save(w, ms); else sc_load(w);
+    if (sc_mode) sc_save(w, ms); else sc_load(w, ms);
     bump();
     return 1;
 }
