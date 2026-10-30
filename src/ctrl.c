@@ -301,6 +301,28 @@ int ctrl_bank_key(int w, uint32_t ms)
 
 /* ---- buttons ---- */
 
+/* A tab pressed alone (ENV / EDIT / GLO): the first press opens the tab's first page, repeated presses step through its other pages, in a loop.
+   Requested behaviour (the prototype itself does not cycle, except the drums' GLO <-> GLO2). Held chords (EDIT / GLO + OPk) are in ctrl_op_key.
+   Moog / Prophet: EDIT = FILTER > OSC1 > OSC2 > OSC3 > OSC4 (noise); ENV = LOUDNESS > CONTOUR; GLO = MIXER (its only page).
+   Vactrol: one page per tab (ENV = AD ENV, EDIT = FM, GLO = GLOBAL), so a repeat stays put.
+   Drums: EDIT / ENV = the next voice (BD > SD > ... > CB); GLO = MIXER 1/2 > 2/2. */
+static void tab_press(int t)
+{
+    int e = cur_engine(), mp = e == ENG_MOOG || e == ENG_PROPH;
+    if (t == CB_ENV) {
+        if (e == ENG_DRUM && pg == PGN_ENV) dv[sel & 3] = (uint8_t)((dv[sel & 3] + 1) % 6);
+        pg = mp && pg == PGN_ENV ? PGN_ENV2 : PGN_ENV;
+    } else if (t == CB_EDIT) {
+        if (e == ENG_VAC) pg = PGN_GLO;                 /* Vactrol: the FM page is named GLO internally */
+        else if (e == ENG_DRUM) { if (pg == PGN_EDIT) dv[sel & 3] = (uint8_t)((dv[sel & 3] + 1) % 6); pg = PGN_EDIT; }
+        else pg = pg == PGN_EDIT ? PGN_OSC1 : (pg >= PGN_OSC1 && pg < PGN_OSC4) ? pg + 1 : PGN_EDIT;
+    } else {
+        if (e == ENG_VAC) pg = PGN_EDIT;
+        else if (e == ENG_DRUM) pg = pg == PGN_GLO ? PGN_GLO2 : PGN_GLO;
+        else pg = PGN_GLO;
+    }
+}
+
 static void btn(int t, uint32_t ms)                /* btn(): a button's action (the Vactrol engine) */
 {
     if (t == CB_SAVE && ((bdn >> CB_HOME) & 1) && !pend) {
@@ -315,9 +337,7 @@ static void btn(int t, uint32_t ms)                /* btn(): a button's action (
         if (t == CB_SAVE) { commit_save(ms); return; }
         if (t == CB_HOME) { pend = 0; bump(); }
     }
-    if (t == CB_ENV) pg = PGN_ENV;
-    else if (t == CB_EDIT) pg = cur_engine() == ENG_VAC ? PGN_GLO : PGN_EDIT;     /* Vactrol: EDIT shows the FM page, GLO the global one; the others: EDIT = filter / drum voice, GLO = mixer */
-    else if (t == CB_GLO) pg = cur_engine() == ENG_VAC ? PGN_EDIT : cur_engine() == ENG_DRUM ? (pg == PGN_GLO ? PGN_GLO2 : PGN_GLO) : PGN_GLO;
+    if (t == CB_ENV || t == CB_EDIT || t == CB_GLO) tab_press(t);
     else if (t == CB_FX) { if (pg == PGN_FX) fxo = (fxo + 1) % FX_NSLOT; else pg = PGN_FX; }
     else if (t == CB_LFO) { if (pg == PGN_LFO) src = (src + 1) % 6; else pg = PGN_LFO; }
     else if (t == CB_HOME) pg = PGN_HOME;
