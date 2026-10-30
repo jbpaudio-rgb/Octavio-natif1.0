@@ -12,6 +12,7 @@ static const page_t PAGES[PG_COUNT] = {
     [PG_EDIT] = { "GLOBAL", { "FOLD", "SYMM.", "FREQ", "WAVE" },            { P_FOLD, P_SYM, P_FREQ, P_WAVE } },
     [PG_ENV]  = { "AD ENV", { "ATTACK", "DECAY", "VACT", "MODE" },          { P_ATK, P_EDEC, P_DECAY, P_MODE } },
 };
+static void env_tick(uint32_t ms);
 static int page = PG_GLO, oct;
 static uint8_t dirty_top, dirty_all = 1;
 static uint32_t ed_phase;                      /* the scope's scroll (edP), 32-bit turns */
@@ -69,6 +70,7 @@ void ui_tick(uint32_t ms)                      /* the scope scrolls: .25 + 1.5 *
     uint32_t dt = ms - last_ms;
     last_ms = ms;
     if (dt > 50u) dt = 50u;
+    env_tick(ms);
     ed_phase += dt * (uint32_t)(250 + (3 * PV[P_FREQ]) / 2) * 4295u;      /* turns/ms in 2^32 / 1e6 units */
 }
 
@@ -143,6 +145,8 @@ static void draw_scope(void)
     gfx_disc(13393, dot_y8, 875, 819, COL_RED);
 }
 
+#include "envgraph.c"
+
 /* ---- the knob cells ---- */
 #define KS 0.71983                              /* knob px per svg unit: 43.19 / 60 */
 static const int32_t KX8[2] = { 1841, 31639 }, KY8[2] = { 8228, 20513 };           /* svg origins, Q8 px */
@@ -195,7 +199,11 @@ static void draw_cell(int k)
     gfx_text(F_VALUE, v, TXT_X64[cx], VAL_BASE[cy], COL_TEXT, LS_CELL, 0, 233);
 }
 
-void ui_prepare(void) { scope_prepare(); }
+void ui_prepare(void)
+{
+    if (page == PG_ENV) env_prepare();
+    else scope_prepare();
+}
 
 void ui_draw(int y0, int y1)                    /* the current band is [y0, y1) */
 {
@@ -208,6 +216,8 @@ void ui_draw(int y0, int y1)                    /* the current band is [y0, y1) 
     }
     for (k = 0; k < 4; k++)
         draw_cell(k);
-    if (y1 > 124 && y0 < 206)
-        draw_scope();
+    if (y1 > 124 && y0 < 206) {
+        if (page == PG_ENV) env_draw();
+        else draw_scope();
+    }
 }
