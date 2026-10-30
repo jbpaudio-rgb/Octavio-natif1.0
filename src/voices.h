@@ -38,6 +38,7 @@ int  voices_arp_note(int t);                        /* the note the arpeggiator 
 uint32_t voices_held_keys(int t, int base);          /* bit k: note base+k is held (keys / arp latch), k = 0..26 */
 void voices_arp_pos(int t, int *cur, int *len);
 void voices_play(int on);                            /* PLAY / STOP: the step clock (16ths at the tempo) starts from step 0 / stops */
+void voices_sqg_mod(int t, int delta_q15);          /* the "Seq gate" destination: gate length offset (Q15 of a step) */
 int  voices_seq_cur(void);                           /* the step now playing (0..15), -1 when stopped */
 void voices_seq_rec(int t, int v);                   /* REC while playing: the drum voice v is hit and the current step of its lane set */
 void voices_lvl_mod(int t, int q15);                 /* the Level destination: a gain on the track's engine output (32768 = unity), put back every block */

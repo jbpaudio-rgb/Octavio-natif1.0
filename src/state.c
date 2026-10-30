@@ -15,7 +15,7 @@
  *   0x0A ARPS   (added later, rev 1) each track's arpeggiator position: latched chord in order, step, phase (4 x ARP_STATE_N raw bytes)
  *   0x10 + 3 * track + (engine - 1)   ENGINE  the Minimoog / Prophet / drum parameters of that track (12 sections)
  *   0x40..0x4F  per-track effects (agent H: 0x40 FXB)
- *   0x41 MODT   (rev 1) the modulation matrix of each track: LFO / S&H (dest, shape, rate, amount, sync) and sequencer lines, 4 x 54 values.
+ *   0x41 MODT   (rev 2; rev 1 had no gate word) the modulation matrix of each track: LFO / S&H (dest, shape, rate, amount, sync), sequencer lines, then the track's 16 sequencer gate bits: 4 x 55 values.
  *               A destination is an index of the master list (dst.c); 0x02 / 0x05 stay the selected track's view.
  *   0x42 DSQ    (rev 1) the drum sequencer of each drum track: 6 lanes of 16 step bits, then swing / humanize / chance / accent of the 6 voices
  * Value sections: enc u8 | nvals u8 | body. enc 0: nvals x int16 raw. enc 1: sparse, (index u8, int16) pairs for the values that
@@ -72,7 +72,7 @@ static int st_sec(int i, secd_t *s)                 /* the i-th section this fir
     if (i < 0 || i >= ST_NSEC) return 0;
     s->scene = 0; s->t = s->e = 0; s->a = 0;
     if (i == 24) { s->id = 0x42; s->rev = 1; s->kind = SK_DSQ; s->n = ST_DSQ_N; }
-    else if (i == 23) { s->id = 0x41; s->rev = 1; s->kind = SK_MODT; s->n = ST_MODT_N; }
+    else if (i == 23) { s->id = 0x41; s->rev = 2; s->kind = SK_MODT; s->n = ST_MODT_N; }
     else if (i == 22) { s->id = 0x40; s->rev = 1; s->kind = SK_FXB; s->n = 0; }
     else if (i == 21) { s->id = 0x0A; s->rev = 1; s->kind = SK_ARPS; s->n = 0; }
     else if (i == 0) { s->id = 0x08; s->rev = 1; s->kind = SK_TRK; s->n = 5; }

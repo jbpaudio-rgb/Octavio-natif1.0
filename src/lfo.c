@@ -13,7 +13,8 @@
  * engine: a destination is an entry of the master list, valid for the engines whose group bit it carries (DSTM[].grp): Vactrol
  * parameters (PV), the engines' own parameters (voices_param: Minimoog / Prophet / the 6 drum voices incl. their lane settings), the
  * envelope times, the arpeggiator (12..16), the 52 effect knobs of the track (fxdsp.c) and Level (a gain on the track's engine).
- * The sequencer lines (m4..m9) are not sources here: they need the synth sequencer's step values (not played yet). */
+ * The sequencer lines (m4..m9) are sources while the step clock runs (the line's step value x amount; destinations master + 3, the pitch ones are used by
+ * the synth sequencer when it plays a note, voices.c). "Seq gate" (DK_SQG, not in the prototype) offsets the sequenced notes' gate length. */
 
 enum { MOD_N = 6, MOD_SAVE = 32 };
 static struct { uint32_t ph; int32_t shv, shs; } MS_[4][MOD_N];       /* per track and source: LFO phase (turns, Q32); S&H: held value and smoothed value (Q15) */
@@ -79,6 +80,25 @@ static int mod_target(int t, int eng, int d, int *kind, int *id)
     return 0;
 }
 
+static void mod_dest(int t, int eng, int dst, int32_t xq, int32_t *lvl, int32_t *sqg, int *vacp)     /* one source value (Q15) onto destination dst of track t */
+{
+    int id, k, kind;
+    int32_t nn, cur, mn, mx;
+    if (DSTM[dst].kind == DK_FX) { if ((DSTM[dst].grp >> eng) & 1) fx_mod_t(t, DSTM[dst].a, xq); return; }
+            if (DSTM[dst].kind == DK_SQG) { if ((DSTM[dst].grp >> eng) & 1) sqg[t] += xq; return; }
+    if (DSTM[dst].kind == DK_LVL) { lvl[t] = (int32_t)(((int64_t)lvl[t] * (xq + 32768 < 0 ? 0 : xq + 32768 > 32768 ? 32768 : xq + 32768)) >> 15); return; }
+            if (!mod_target(t, eng, dst, &kind, &id)) return;
+            if (kind == 0) { mn = PD[id].min; mx = PD[id].max; *vacp = 1; }
+            else if (kind == 1) { mn = 0; mx = 1000; }
+            else { mn = 0; mx = 1000; }
+            cur = mod_cur(kind, t, eng, id);
+            if (mx == mn) return;
+            nn = (int32_t)(((int64_t)(cur - mn) << 15) / (mx - mn)) + xq;
+            nn = nn < 0 ? 0 : nn > 32768 ? 32768 : nn;
+            k = (int)(mn + (((int64_t)nn * (mx - mn)) >> 15));
+            mod_set(kind, t, eng, id, k);
+}
+
 #ifdef MOD_TEST                                         /* test builds: -DMOD_TEST="{src,dst,shape,rate,amount,sync,smooth}" -DMOD_ID=<param id>; the right channel carries PV[MOD_ID] */
 int32_t mod_tap;
 static void mod_test_init(void)
@@ -91,7 +111,7 @@ static void mod_test_init(void)
 void mod_apply(int n)
 {
     int s, t, vac = 0;
-    int32_t lvl[4];
+    int32_t lvl[4], sqg[4];
 #ifdef MOD_TEST
     static uint8_t once;
     if (!once) { once = 1; mod_test_init(); }
@@ -103,7 +123,7 @@ void mod_apply(int n)
     }
     mod_t0 = fm1_ticks();
     mod_nsv = 0;
-    for (t = 0; t < 4; t++) lvl[t] = 32768;
+    for (t = 0; t < 4; t++) { lvl[t] = 32768; sqg[t] = 0; }
     for (t = 0; t < 4; t++) {                                        /* every track has its own matrix and acts on its own engine */
         const int16_t *M = t == mod_view ? &PV[P_M0T] : MODT[t].m;
         int eng = voices_engine(t);
@@ -123,22 +143,18 @@ void mod_apply(int n)
             }
             amt = (M[b + 3] * M[b + 3] * 2147) >> 16;               /* amount^2, Q15 */
             xq = (int32_t)(((int64_t)src * amt) >> 15);
-            if (DSTM[dst].kind == DK_FX) { if ((DSTM[dst].grp >> eng) & 1) fx_mod_t(t, DSTM[dst].a, xq); continue; }
-            if (DSTM[dst].kind == DK_LVL) { lvl[t] = (int32_t)(((int64_t)lvl[t] * (xq + 32768 < 0 ? 0 : xq + 32768 > 32768 ? 32768 : xq + 32768)) >> 15); continue; }
-            if (!mod_target(t, eng, dst, &kind, &id)) continue;
-            if (kind == 0) { mn = PD[id].min; mx = PD[id].max; vac = 1; }
-            else if (kind == 1) { mn = 0; mx = 1000; }
-            else { mn = 0; mx = 1000; }
-            cur = mod_cur(kind, t, eng, id);
-            if (mx == mn) continue;
-            nn = (int32_t)(((int64_t)(cur - mn) << 15) / (mx - mn)) + xq;
-            nn = nn < 0 ? 0 : nn > 32768 ? 32768 : nn;
-            k = (int)(mn + (((int64_t)nn * (mx - mn)) >> 15));
-            mod_set(kind, t, eng, id, k);
-            (void)x;
+            mod_dest(t, eng, dst, xq, lvl, sqg, &vac);
+        }
+        if (voices_seq_cur() >= 0) {                                 /* the sequencer lines (destination master + 3): the step value times the amount */
+            const int16_t *QL = t == mod_view ? &PV[P_M4T] : MODT[t].q;
+            for (s = 0; s < 6; s++) {
+                int d = QL[4 * s] - 3;
+                if (d <= 0 || !QL[4 * s + 2]) continue;
+                mod_dest(t, eng, d, (int32_t)(((int64_t)ui_seq_get(s, voices_seq_cur()) * 32768 / 1000) * QL[4 * s + 2] / 1000), lvl, sqg, &vac);
+            }
         }
     }
-    for (t = 0; t < 4; t++) voices_lvl_mod(t, lvl[t]);
+    for (t = 0; t < 4; t++) { voices_lvl_mod(t, lvl[t]); voices_sqg_mod(t, sqg[t]); }
     if (vac || mod_vac_dirty) { vac_update(); mod_vac_dirty = 0; }
 #ifdef MOD_TEST
     mod_tap = MOD_ID >= P_F0DRIVE && MOD_ID <= P_F15MIX ? FEFF[fx_view][MOD_ID - P_F0DRIVE] : PV[MOD_ID];

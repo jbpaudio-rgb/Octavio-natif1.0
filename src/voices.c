@@ -107,6 +107,7 @@ int voices_param_get(int t, int eng, int id) { return eng == ENG_MOOG ? moog_get
 
 /* ---- the step clock (the prototype's seq() / fire()): 16th notes at the tempo from PLAY; the drum lanes (DG) fire here ---- */
 static int8_t seq_cur = -1;
+static int32_t sq_off[4];                                  /* frames until the sequenced note of a track ends, 0: none */
 static uint8_t seq_on;
 static int32_t seq_cnt;
 static uint32_t seq_st;
@@ -118,6 +119,7 @@ void voices_play(int on)
     int t;
     seq_on = (uint8_t)(on != 0);
     seq_cnt = 0; seq_st = 0; seq_cur = -1; seq_nq = 0;
+    for (t = 0; t < NTRK; t++) sq_off[t] = 0;
     if (!on) for (t = 0; t < NTRK; t++) if (!TK[t].a.p[ARP_MODE] && !(TK[t].a.down[0] | TK[t].a.down[1] | TK[t].a.down[2] | TK[t].a.down[3])) eng_off(t);
 }
 static int rnd16u(void) { return c_rand15() + 32768; }       /* 0..65535 */
@@ -133,13 +135,46 @@ void voices_seq_rec(int t, int v)
     drum_gates_set(t, v, (uint16_t)(drum_gates(t, v) | (1u << seq_cur)));
     drum_hit(t, v, 32767);
 }
+/* the synth sequencer (the prototype's fire() / seq() for non-drum tracks): a gate step plays noteOn(60 + 12 * octave) and the note ends 6/bpm s later
+   (40 % of the step); the pitch lines (destination Pitch semitones / major / minor) add their step value to the note, as the prototype adds it to q.pitch.
+   Added to the prototype: the "Seq gate" destination scales the gate length (sq_glen). */
+int ctrl_octave_val(void);
+static int32_t sq_glen[4] = { 13107, 13107, 13107, 13107 };    /* gate length, Q15 of a step (.4: the prototype's 6 / bpm of the 15 / bpm step) */
+void voices_sqg_mod(int t, int delta_q15) { int32_t g = 13107 + delta_q15; sq_glen[t & 3] = g < 1000 ? 1000 : g > 32768 ? 32768 : g; }
+static int seq_pitch(int t, int cur)
+{
+    const int16_t *q = t == mod_view ? &PV[P_M4T] : MODT[t].q;
+    int j, semi = 0;
+    static const uint8_t SC[2][7] = { { 0, 2, 4, 5, 7, 9, 11 }, { 0, 2, 3, 5, 7, 8, 10 } };
+    for (j = 0; j < 6; j++) {
+        int d = q[4 * j], key = q[4 * j + 1], v = ui_seq_get(j, cur), a = q[4 * j + 2], x;
+        if (d < 1 || d > 3) continue;
+        if (d == 1) { x = v * a; x = (x * 24 + (x >= 0 ? 500000 : -500000)) / 1000000; semi += x + key; }
+        else {
+            int dg, o, i;
+            x = v * a; dg = (x * 14 + (x >= 0 ? 500000 : -500000)) / 1000000;      /* Math.round(x * 14) */
+            o = dg >= 0 ? dg / 7 : -((-dg + 6) / 7); i = dg - o * 7;               /* floor(d / n), ((d % n) + n) % n */
+            semi += o * 12 + SC[d - 2][i] + key;
+        }
+    }
+    return semi;
+}
+static void seq_synth(int t, int cur, int32_t sl)
+{
+    int note;
+    if (!((SQG[t] >> cur) & 1u)) { sq_off[t] = 0; return; }
+    note = 60 + 12 * ctrl_octave_val() + seq_pitch(t, cur);
+    note = note < 0 ? 0 : note > 127 ? 127 : note;
+    eng_on(t, note, 32767);
+    sq_off[t] = (int32_t)(((int64_t)sl * sq_glen[t]) >> 15) + 1;
+}
 static void seq_fire(void)
 {
     int t, v, cur = (int)(seq_st++ & 15u);
     int32_t sl = (FS * 15) / bpm_v;
     seq_cur = (int8_t)cur;
     for (t = 0; t < NTRK; t++) {
-        if (TK[t].eng != ENG_DRUM) continue;
+        if (TK[t].eng != ENG_DRUM) { seq_synth(t, cur, sl); continue; }
         for (v = 0; v < 6; v++) {
             int ch, hu, ac, sw, vel, d, r;
             if (!((drum_gates(t, v) >> cur) & 1u)) continue;
@@ -164,6 +199,10 @@ static void seq_tick(int n)
         seq_q[k].d -= n;
         if (seq_q[k].d <= 0) { drum_hit(seq_q[k].t, seq_q[k].v, seq_q[k].vel); seq_q[k] = seq_q[--seq_nq]; }
         else k++;
+    }
+    for (k = 0; k < NTRK; k++) if (sq_off[k] > 0 && (sq_off[k] -= n) <= 0) {
+        sq_off[k] = 0;
+        if (!(TK[k].a.down[0] | TK[k].a.down[1] | TK[k].a.down[2] | TK[k].a.down[3])) eng_off(k);       /* noOff() unless a key is held */
     }
     seq_cnt -= n;
     if (seq_cnt <= 0) { seq_cnt += (FS * 15) / bpm_v; seq_fire(); }

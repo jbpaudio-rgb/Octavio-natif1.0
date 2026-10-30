@@ -547,7 +547,7 @@ int ctrl_op_key(int o)                              /* the prototype's black-key
         chord = 1; fxo = o; pg = PGN_FX;
     } else if (((bdn >> CB_FX) & 1) && o == 7) {                                       /* FX + OP8: the delay's tempo sync (toggleSync("FX")) */
         chord = 1; PV[P_F5SYNC] = !PV[P_F5SYNC]; ui_params_changed();
-    } else if (o == 7 && !h_edit && !h_glo && !h_env) {                                  /* OP8: FX ORDER */
+    } else if (o == 7 && (pg == PGN_FX || pg == PGN_FXO) && !h_edit && !h_glo && !h_env) {       /* OP8: FX ORDER, only from the effects menu (the prototype opens it from any page; restricted on request) */
         pg = PGN_FXO;
     } else if (o < 4 && (e == ENG_MOOG || e == ENG_PROPH) && (h_edit || h_glo)) {
         int np = PGN_OSC1 + o;
@@ -560,6 +560,9 @@ int ctrl_op_key(int o)                              /* the prototype's black-key
         chord = 1; dv[sel & 3] = (uint8_t)o; pg = PGN_ENV;
     } else if (e == ENG_DRUM && h_edit && o < 6) {
         chord = 1; dv[sel & 3] = (uint8_t)o; pg = PGN_EDIT;
+    } else if (h_edit || h_glo || h_env) {                                              /* an undefined chord (EDIT / GLO / ENV + OPk): no note, no page change */
+        chord = 1;
+        return 1;
     } else
         return 0;
     bump();

@@ -47,6 +47,7 @@ DPN = [("dtu","Tune","Tune"),("ddc","Decay","Decay"),("dtn","Tone","Tone"),("dlv
 for n, f, sh in NEWD: dst.append((n, sh, f))
 for v in range(6):
     for a in DPN: dst.append((a[0] + str(v), "L%d %s" % (v + 1, a[2]), "L%d %s" % (v + 1, a[1])))
+dst.append(("sqg", "Seq gate", "Seq gate length"))      # NOT in the prototype: the synth sequencer's gate length (appended: the indexes of saved presets stay valid)
 # how each destination is applied: (group mask V=1 M=2 P=4 D=8, kind, argument)
 MGID = dict(mg1l='MG_L1', mg2l='MG_L2', mg3l='MG_L3', mgsl='MG_NLEV', mgso='MG_NTONE', mgst='MG_NCRUSH', mg1t='MG_T1', mg2t='MG_T2', mg3t='MG_T3', mg1p='MG_P1', mg2p='MG_P2', mg3p='MG_P3', mgcut='MG_CUT', mgres='MG_RES', mgenv='MG_ENV')
 PRID = dict(pla='PR_LA', plb='PR_LB', psl='PR_SL', pnl='PR_NLEV', pwave='PR_WAVE', ppw='PR_PW', patune='PR_TUNE', pbwave='PR_BWAVE', pbpw='PR_BPW', pbdet='PR_BTUNE', pst='PR_ST', psp='PR_SP', pno='PR_NTONE', pnc='PR_NCRUSH', pcut='PR_CUT', pres='PR_RES', penv='PR_ENV', ppm='PR_PM')
@@ -60,15 +61,16 @@ for key, short, full in dst:
     elif key in ('atk', 'edec'): meta.append((7, 'DK_ENV', '0' if key == 'atk' else '1'))
     elif key in ('sus', 'rel'): meta.append((6, 'DK_ENV', '2' if key == 'sus' else '3'))
     elif key == 'lvl': meta.append((15, 'DK_LVL', '0'))
+    elif key == 'sqg': meta.append((7, 'DK_SQG', '0'))
     elif key in ARPID: meta.append((7, 'DK_ARP', ARPID[key]))
     elif key[0] == 'f' and key[1].isdigit(): meta.append((7, 'DK_FX', str(fxk))); fxk += 1
     elif key in MGID: meta.append((2, 'DK_ENG', MGID[key]))
     elif key in PRID: meta.append((4, 'DK_ENG', PRID[key]))
     else: meta.append((8, 'DK_DRUM', '%d * DR_PER + %s' % (int(key[3:]), DRID[key[:3]])))
 assert fxk == 52, fxk
-ORD = {0: ["fold","sym","freq","fenv","ratio","fm","atk","edec","decay","open","lvl"],
-       1: ["mg1l","mg2l","mg3l","mgsl","mg1t","mg1p","mg2t","mg2p","mg3t","mg3p","mgso","mgst","mgcut","mgres","mgenv","atk","edec","sus","rel","lvl"],
-       2: ["pla","plb","psl","pnl","pwave","ppw","patune","pbwave","pbpw","pbdet","pst","psp","pno","pnc","pcut","pres","penv","ppm","atk","edec","sus","rel","lvl"],
+ORD = {0: ["fold","sym","freq","fenv","ratio","fm","atk","edec","decay","open","sqg","lvl"],
+       1: ["mg1l","mg2l","mg3l","mgsl","mg1t","mg1p","mg2t","mg2p","mg3t","mg3p","mgso","mgst","mgcut","mgres","mgenv","atk","edec","sus","rel","sqg","lvl"],
+       2: ["pla","plb","psl","pnl","pwave","ppw","patune","pbwave","pbpw","pbdet","pst","psp","pno","pnc","pcut","pres","penv","ppm","atk","edec","sus","rel","sqg","lvl"],
        3: [str(a) for a in []]}
 ORD[3] = [a[0] + str(v) for v in range(6) for a in DPN] + ["lvl"]
 # the prototype's own option order (before its sort): none, VACT, fx, arps, mg, p, sus/rel, drums  -> used for the ties of the sort

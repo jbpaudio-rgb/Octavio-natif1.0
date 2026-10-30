@@ -206,7 +206,6 @@ static void fxo_draw(void)
 
 /* ---- SEQ: the sequencer's pitch editor (line sl, 16 steps) ---- */
 static int16_t sq_v[6][16] = { { 0, 260, 600, 850, 1000, 850, 600, 260, 0, 260, 600, 850, 1000, 850, 600, 260 } };    /* thousandths */
-static uint16_t sq_gate = 0x5555u;                              /* bit s: step s triggers */
 static int sq_step, sq_cur = -1;                       /* selected line / step, the playing step (-1: stopped) */
 static int sq_snap(int v) { return v >= 0 ? (v + 25) / 50 * 50 : -((-v + 25) / 50 * 50); }       /* an <input type=range step=.05> */
 static void seq_sync(void) { PV[P_STEPV] = (int16_t)sq_snap(sq_v[sq_line][sq_step]); }
@@ -221,8 +220,8 @@ int  ui_seq_line(void) { return sq_line; }
 int  ui_seq_step(void) { return sq_step; }
 void ui_seq_set(int line, int step, int v) { if (line >= 0 && line < 6 && step >= 0 && step < 16) { sq_v[line][step] = (int16_t)v; seq_sync(); dirty_all = 1; } }
 int  ui_seq_get(int line, int step) { return sq_v[line][step]; }
-void ui_seq_gate_toggle(int step) { if (step >= 0 && step < 16) { sq_gate ^= (uint16_t)(1u << step); dirty_all = 1; } }
-int  ui_seq_gate(int step) { return (sq_gate >> step) & 1; }
+void ui_seq_gate_toggle(int step) { if (step >= 0 && step < 16) { SQG[mod_view] ^= (uint16_t)(1u << step); dirty_all = 1; } }
+int  ui_seq_gate(int step) { return (SQG[mod_view] >> step) & 1; }
 void ui_seq_cur(int step) { if (step != sq_cur) { sq_cur = step; dirty_all = 1; } }
 
 /* one knob: svg origin (ox8, oy8) in Q8 px, u = px per svg unit (Q16); the body is a sprite */
@@ -284,7 +283,7 @@ static void seq_draw(void)
         else { top = 70; bot = (69725 + ((-val * 33595) / 1000) + 500) / 1000; }
         if (bot > top)
             rrect2(bx0, top, bx1 - bx0, bot - top, val >= 0 ? COL_TEXT : COL_RED);
-        gfx_rect((x8 + 817 + 128) >> 8, 109, ((x8 + 2448 + 128) >> 8) - ((x8 + 817 + 128) >> 8), 2, (sq_gate >> k) & 1 ? COL_TEXT : 0x333333u, 256);
+        gfx_rect((x8 + 817 + 128) >> 8, 109, ((x8 + 2448 + 128) >> 8) - ((x8 + 817 + 128) >> 8), 2, (SQG[mod_view] >> k) & 1 ? COL_TEXT : 0x333333u, 256);
         if (k == sq_step) {                                                        /* inset 1 px frame */
             gfx_rect(xa, 36, xb - xa, 1, COL_TEXT, 256); gfx_rect(xa, 102, xb - xa, 1, COL_TEXT, 256);
             gfx_rect(xa, 37, 1, 65, COL_TEXT, 256); gfx_rect(xb - 1, 37, 1, 65, COL_TEXT, 256);

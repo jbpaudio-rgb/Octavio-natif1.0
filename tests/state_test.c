@@ -82,7 +82,7 @@ static void take(snap_t *s)
     memcpy(s->pv, PV, sizeof PV);
     mod_commit();
     for (t = 0; t < 4; t++) {
-        memcpy(s->mt[t], MODT[t].m, sizeof MODT[0].m); memcpy(s->mt[t] + MODM_N, MODT[t].q, sizeof MODT[0].q);
+        memcpy(s->mt[t], MODT[t].m, sizeof MODT[0].m); memcpy(s->mt[t] + MODM_N, MODT[t].q, sizeof MODT[0].q); s->mt[t][MODM_N + MODQ_N] = (int16_t)SQG[t];
         for (i = 0; i < 6; i++) s->dg[t][i] = (int16_t)drum_gates(t, i);
         for (i = 0; i < MG_COUNT; i++) s->mg[t][i] = (int16_t)voices_param_get(t, ENG_MOOG, i);
         for (i = 0; i < PR_COUNT; i++) s->pr[t][i] = (int16_t)voices_param_get(t, ENG_PROPH, i);
@@ -141,6 +141,7 @@ static void randomize(int density, int seed_engines)
         for (i = 0; i < MODT_N; i++) {
             int sq = i >= MODM_N, r = sq ? i - MODM_N : i, isdst = sq ? (r % 4 == 0) : (r % 5 == 0);
             const pdesc_t *d = &PD[sq ? P_M4T + r : P_M0T + r];
+            if (i == MODM_N + MODQ_N) { if ((int)(rnd() % 100u) < density) SQG[t] = (uint16_t)rr(0, 65535); continue; }
             if (t == mod_view || (int)(rnd() % 100u) >= density) continue;
             if (sq) MODT[t].q[r] = (int16_t)(isdst ? dst_at(voices_engine(t), 1, rr(0, dst_count(voices_engine(t), 1) - 1)) : rr(d->min, d->max));
             else MODT[t].m[r] = (int16_t)(isdst ? dst_at(voices_engine(t), 0, rr(0, dst_count(voices_engine(t), 0) - 1)) : rr(d->min, d->max));
@@ -214,7 +215,7 @@ int main(int argc, char **argv)
             for (k = 0; k < dst_count(e, 1); k++) { int v = dst_at(e, 1, k); if (dst_pos(e, 1, v) != k) bad++; }
         }
         CHECK(!bad, "destination lists inconsistent (%d)", bad);
-        CHECK(dst_count(0, 0) == 69 && dst_pos(0, 0, 10) == 10 && dst_pos(0, 1, 2) == 2, "the Vactrol list is not the one saved presets use");
+        CHECK(dst_count(0, 0) == 70 && dst_pos(0, 0, 10) == 10 && dst_pos(0, 1, 2) == 2, "the Vactrol list is not the one saved presets use");
         voices_set_engine(0, ENG_VAC); voices_set_engine(1, ENG_MOOG);
         voices_select(0); mod_select(0);
         PV[P_M0T] = 3; PV[P_M1T] = 12; PV[P_M4T + 4] = 5 + 3;           /* Freq, Arp gate (any engine but the drums), a sequencer line on FM ratio */
