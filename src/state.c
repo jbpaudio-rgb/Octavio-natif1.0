@@ -28,10 +28,12 @@
 #define ST_DRUM_N (6 * (DR_PER - 1))                /* the drum voices' parameters without the DR_KIT slot (a command, not a value) */
 #define ST_SQ_N (6 * 16)
 #define ST_TARP_N (4 * ARP_COUNT)
-#define ST_NSEC 22
-#define ST_MAX 1900u                                /* the largest body state_save() can produce (checked by tests) */
+#define ST_NSEC 23
+#define ST_MAX 2400u                                /* the largest body state_save() can produce (checked by tests) */
 
-enum { SK_PV, SK_ENG, SK_SQ, SK_TARP, SK_TRK, SK_ARPS };
+enum { SK_PV, SK_ENG, SK_SQ, SK_TARP, SK_TRK, SK_ARPS, SK_FXB };
+uint32_t fxbank_save(uint8_t *b); int fxbank_load(const uint8_t *b, uint32_t n);   /* fxstate.c: the 4 tracks' effect chains (agent H) */
+#define ST_FXB_N 444u                               /* FXBANK_BYTES */
 typedef struct { uint8_t id, rev, kind, n, t, e, scene; int16_t a; } secd_t;
 typedef char st_fit_n[(P_STEPV - P_M4T + 1 < 256 && P_F5SYNC - P_F0DRIVE + 1 < 256 && ST_TARP_N < 256 && ST_SQ_N < 256 && ST_DRUM_N < 256) ? 1 : -1];
 
@@ -61,7 +63,8 @@ static int st_sec(int i, secd_t *s)                 /* the i-th section this fir
 {
     if (i < 0 || i >= ST_NSEC) return 0;
     s->scene = 0; s->t = s->e = 0; s->a = 0;
-    if (i == 21) { s->id = 0x0A; s->rev = 1; s->kind = SK_ARPS; s->n = 0; }
+    if (i == 22) { s->id = 0x40; s->rev = 1; s->kind = SK_FXB; s->n = 0; }
+    else if (i == 21) { s->id = 0x0A; s->rev = 1; s->kind = SK_ARPS; s->n = 0; }
     else if (i == 0) { s->id = 0x08; s->rev = 1; s->kind = SK_TRK; s->n = 5; }
     else if (i <= 6) {
         s->id = PVR[i - 1].id; s->rev = PVR[i - 1].rev; s->scene = PVR[i - 1].scene; s->kind = SK_PV;
@@ -141,6 +144,13 @@ static uint32_t st_enc(uint8_t *o, uint32_t cap, const secd_t *s)     /* bytes w
 {
     uint32_t len, w;
     int i, n = s->n, d = 0;
+    if (s->kind == SK_FXB) {
+        uint8_t b[ST_FXB_N]; uint32_t n = fxbank_save(b);
+        if (n != ST_FXB_N || cap < 4u + n) return 0;
+        o[0] = s->id; o[1] = s->rev; o[2] = (uint8_t)n; o[3] = (uint8_t)(n >> 8);
+        memcpy(o + 4, b, n);
+        return 4u + n;
+    }
     if (s->kind == SK_ARPS) {
         if (cap < 4u + 4u * ARP_STATE_N) return 0;
         o[0] = s->id; o[1] = s->rev; o[2] = (uint8_t)(4 * ARP_STATE_N); o[3] = 0;
@@ -213,6 +223,7 @@ static uint32_t state_save_pv(uint8_t *o, uint32_t cap, const int16_t *pv, int s
 static int st_dec(const secd_t *s, const uint8_t *d, uint32_t len)    /* 1 = applied */
 {
     int i, n = s->n;
+    if (s->kind == SK_FXB) return fxbank_load(d, len);
     if (s->kind == SK_ARPS) {
         if (len != 4u * ARP_STATE_N) return 0;
         for (i = 0; i < 4; i++) voices_arp_state_set(i, d + i * ARP_STATE_N);

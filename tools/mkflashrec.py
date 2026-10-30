@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MPL-2.0
-# Test helper: write the src/persist.c records (presets at 0xEB000, scenes at 0xE7000) into a 1 MiB chip image, so
+# Test helper: write the src/persist.c records (presets at 0xED000, scenes at 0xE7000) into a 1 MiB chip image, so
 # fm1-emu --raw-flash can boot "after a restart". Same format as persist.c / state.c (NOTES-G.md).
 #   mkflashrec.py OUT.bin            one preset "RESTORED" (track 1 = Minimoog, CORE fold 900, Minimoog cutoff of track 2 = 123)
 #                                    and a scene in key slot 1 (HOME + first white key)
@@ -44,6 +44,6 @@ if __name__ == '__main__':
     else:
         # P_FOLD is PV[0] (CORE section 0x01, 14 values); the Minimoog of track 2 is section 0x10 + 3 * 1 + 0 (31 values), MG_CUT = 19
         body = trk([1, 1, 2, 3], 0) + section(0x01, 1, 14, [(0, 900)]) + section(0x13, 1, 31, [(19, 123)])
-        rec(0xEB000, flash, 0x00020001, entry_preset('RESTORED', 1, 1, body))
+        rec(0xED000, flash, 0x00020001, entry_preset('RESTORED', 1, 1, body))
         rec(0xE7000, flash, 0x00030001, entry_scene(1, body))
     open(out, 'wb').write(flash)

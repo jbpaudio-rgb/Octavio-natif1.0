@@ -15,6 +15,9 @@
 #include "../src/assets_gen.c"
 #include "../src/gfx.c"
 #include "../src/params.c"
+#include "../src/fxstate.c"
+void fx_track(int t, int32_t *x, int n, int act) { (void)t; (void)x; (void)n; (void)act; }
+int fx_awake(int t) { (void)t; return 0; }
 #include "../src/vactrol.c"
 #include "../src/voices.c"
 #include "../src/ctrl.c"

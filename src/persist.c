@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: MPL-2.0
  * persist.c - the bank (presets) and the 16 key scenes kept in flash across power cycles.
  *
- * Regions (FL_XDATA1 of the BSP is 0xE7000..0xFC000, "a firmware's own data"): scenes 0xE7000..0xEB000 (4 sectors), presets
- * 0xEB000..0xF1000 (6 sectors); 0xF1000..0xFC000 stays free. The first format kept its presets at 0x93000 (FL_XDATA0, between
+ * Regions (FL_XDATA1 of the BSP is 0xE7000..0xFC000, "a firmware's own data"): scenes 0xE7000..0xED000 (6 sectors), presets
+ * 0xED000..0xF5000 (8 sectors); 0xF5000..0xFC000 stays free. The first format kept its presets at 0x93000 (FL_XDATA0, between
  * the app area and Felucca's store): still read there, and erased once the new region has been written. 4 KiB sectors; the stream
  * [header | entries] is cut in 0xF00-byte pieces, one per sector, so bytes 0xF00..0xFFF of every sector stay erased (the
  * update loader clears an "AT"+CRC record there).
@@ -14,10 +14,10 @@
  * Only the sectors the record needs are erased. Pages are programmed from the END of the stream to the start, so the
  * header (which makes the record valid) goes last: a cut power leaves either no readable record or the new one complete -
  * never a half record that passes the CRC. IRQs are off around each flash call (the fl_*_ram functions run from RAM). */
-#define PS_BASE   0xEB000u               /* record 0: the presets (FL_XDATA1), 6 sectors: 0xEB000..0xF1000 */
-#define PS_SECT   6u
-#define PS_BASE1  0xE7000u               /* record 1: the 16 key scenes (FL_XDATA1), 4 sectors: 0xE7000..0xEB000 */
-#define PS_SECT1  4u
+#define PS_BASE   0xED000u               /* record 0: the presets (FL_XDATA1), 8 sectors: 0xED000..0xF5000 */
+#define PS_SECT   8u
+#define PS_BASE1  0xE7000u               /* record 1: the 16 key scenes (FL_XDATA1), 6 sectors: 0xE7000..0xED000 */
+#define PS_SECT1  6u
 #define PS_BASE_V1 0x93000u              /* the first format's presets (FL_XDATA0, 4 sectors): read at boot, erased after the first new save */
 #define PS_MAX_V1 (4u * PS_PIECE - 16u)
 #define PS_PIECE  0xF00u
