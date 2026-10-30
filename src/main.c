@@ -30,6 +30,7 @@
 #include "params.c"
 #include "vactrol.c"
 #include "voices.c"
+#include "leds.c"
 #include "ui.c"
 
 extern uint32_t _data_start[], _data_end[], _data_load[], _bss_start[], _bss_end[];
@@ -249,7 +250,7 @@ static void fm1_fault(const fm1_crash_t *c)     /* a fault: red screen, then res
 
 static void app_main(void)
 {
-    uint32_t i, last_adc = 0, last_frame = 0, led_b = 0, led_n = 0;
+    uint32_t i, last_adc = 0, last_frame = 0;
     {
         uint32_t f = irq_save();
         flash_ok = FL_FAR(fl_jedec_ram)() == 0x856014u;
@@ -317,14 +318,7 @@ static void app_main(void)
                 params_dirty = 1;
             }
         }
-        if (led_b != fm1_in.buttons || led_n != fm1_in.notes) {      /* the LEDs follow the keys (only on a change) */
-            led_b = fm1_in.buttons;
-            led_n = fm1_in.notes;
-            for (i = 0; i < 14u; i++)
-                fm1_led_key(i, (led_b >> i) & 1u);
-            for (i = 0; i < 27u; i++)
-                fm1_led_key(14u + i, (led_n >> i) & 1u);
-        }
+        leds_update();                                               /* key / arpeggiator LEDs, only on a change */
         {
             int y0, y1;
             ui_tick(now);

@@ -25,6 +25,8 @@ int  voices_arp_get(int t, int id);
 void voices_bpm(int bpm);
 void voices_track_level(int t, int v1000);           /* the track volume (prototype: .8) */
 uint32_t voices_gate_mask(void);                     /* bit t: track t is sounding (for the LEDs) */
+int  voices_arp_note(int t);                        /* the note the arpeggiator is playing now (-1: none) */
+uint32_t voices_held_keys(int t, int base);          /* bit k: note base+k is held (keys / arp latch), k = 0..26 */
 void voices_arp_pos(int t, int *cur, int *len);
 /* engines */
 void moog_init(int t);

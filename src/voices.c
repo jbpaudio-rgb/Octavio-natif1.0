@@ -16,7 +16,10 @@ typedef struct {
 } arp_t;
 
 static struct { uint8_t eng; int16_t vol; arp_t a; } TK[NTRK];       /* vol: Q15 */
-static uint8_t sel_t;
+#ifndef C_BOOT_TRACK
+#define C_BOOT_TRACK 0
+#endif
+static uint8_t sel_t = C_BOOT_TRACK;
 static uint32_t keys_prev_v;
 static uint8_t key_note[27], key_trk[27];
 static int bpm_v = 120;
@@ -51,6 +54,10 @@ void voices_init(void)
         for (i = 0; i < ARP_COUNT; i++) TK[t].a.p[i] = ARP_DEF[i];
         moog_init(t);
     }
+#ifdef C_BOOT_ARP
+    voices_arp(C_BOOT_TRACK, ARP_MODE, C_BOOT_ARP);
+    voices_arp(C_BOOT_TRACK, ARP_OCT, 2);
+#endif
 }
 
 void voices_select(int t) { sel_t = (uint8_t)(t & 3); }
@@ -209,6 +216,22 @@ void voices_keys(uint32_t now)
                 voices_note(key_trk[i], key_note[i], 0);
         }
     keys_prev_v = now;
+}
+
+int voices_arp_note(int t)
+{
+    arp_t *a = &TK[t & 3].a;
+    if (!a->p[ARP_MODE] || !a->nlist || a->goff <= 0 || !a->i) return -1;
+    return a->list[(a->i - 1) % a->nlist] + a->p[ARP_TR];
+}
+uint32_t voices_held_keys(int t, int base)
+{
+    arp_t *a = &TK[t & 3].a;
+    uint32_t m = 0;
+    int k;
+    for (k = 0; k < a->nheld; k++)
+        if (a->held[k] >= base && a->held[k] < base + 27) m |= 1u << (a->held[k] - base);
+    return m;
 }
 
 uint32_t voices_gate_mask(void)
