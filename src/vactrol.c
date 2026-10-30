@@ -17,7 +17,8 @@ static struct {
     uint8_t wave, mwave, mode, ead;
     /* voice */
     uint32_t ph, mph, env;
-    int32_t note, fa, sl, v30, lp, dc;
+    int32_t note, fa, sl, v30, lp, dc, vel;      /* vel: Q15 (the arpeggiator's accent / humanize, the sequencer) */
+    uint32_t inc_s;                   /* the phase increment the previous block ended on (0 = none yet): the pitch ramps across the block */
     uint8_t gate, stage;
 } V;
 
@@ -86,20 +87,26 @@ void vac_update(void)
 void vac_init(void)
 {
     V.note = 60;
+    V.vel = 32767;
     vac_update();
 }
-void vac_note_on(int note) { V.note = note; V.gate = 1; V.stage = 1; }      /* vel = 1 */
+void vac_note_on(int note, int vel15) { V.note = note; V.vel = vel15; V.gate = 1; V.stage = 1; }
 void vac_note_off(void) { V.gate = 0; }
 
 void vac_render(int32_t *out, int n)
 {
-    uint32_t inc = exp2_fx(V.freq_exp + ((V.note - 60) * 65536) / 12, 0);
-    uint32_t minc = (uint32_t)(((uint64_t)inc * (uint32_t)V.ratio16) >> 16);
+    uint32_t inc1 = exp2_fx(V.freq_exp + ((V.note - 60) * 65536) / 12, 0);
+    uint32_t inc0 = V.inc_s ? V.inc_s : inc1, inc, minc;
+    int64_t dinc = (int64_t)inc1 - (int64_t)inc0;
+    int32_t rq = n > 0 ? 65536 / n : 0;                              /* 1 / n, Q16 */
     int i;
+    V.inc_s = inc1;
     for (i = 0; i < n; i++) {
         int32_t o2, osc, x, y, t, g, c, v15, d;
         uint32_t off, pf;
         int64_t m;
+        inc = (uint32_t)((int64_t)inc0 + ((dinc * ((i + 1) * rq)) >> 16));
+        minc = (uint32_t)(((uint64_t)inc * (uint32_t)V.ratio16) >> 16);
         V.ph += inc;
         V.mph += minc;
         o2 = vac_wave_q15(V.mph, V.mwave);
@@ -126,6 +133,7 @@ void vac_render(int32_t *out, int n)
                 t = (int32_t)V.env;
         } else
             t = V.gate ? (1 << 30) : 0;
+        if (V.vel < 32767) t = (int32_t)(((int64_t)t * V.vel) >> 15);      /* the note's velocity scales the vactrol's drive, as the prototype (t * vel) */
         /* the vactrol: a fast cell and a slow tail */
         d = t - V.fa;
         if (d > 0)

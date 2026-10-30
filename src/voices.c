@@ -27,6 +27,7 @@ static uint8_t key_note[27], key_trk[27];
 static int ctrl_bank_key_cb(int key);
 static void ctrl_key_rel_cb(int key);                 /* main.c: a chord key (no note) was released */                  /* main.c: a key pressed while the bank keys are active */
 static int bpm_v = 120;
+static int32_t lvl_prev[NTRK] = { 32768, 32768, 32768, 32768 };
 static uint8_t vac_owner = 0;                              /* the Vactrol is a singleton: one track plays it */
 static const uint8_t SPB[6] = {1, 2, 3, 4, 6, 8};
 static const uint8_t PATS[6][8] = {{1, 1, 1, 1, 1, 1, 1, 1}, {1, 0, 0, 1, 0, 0, 1, 0}, {0, 1, 0, 1, 0, 1, 0, 1},
@@ -37,7 +38,7 @@ static const int16_t ARP_DEF[ARP_COUNT] = {0, 1, 3, 500, 0, 0, 0, 1000, 0, 1, 0,
 static void eng_on(int t, int note, int vel15)
 {
     switch (TK[t].eng) {
-    case ENG_VAC: if (t == vac_owner) vac_note_on(note); break;
+    case ENG_VAC: if (t == vac_owner) vac_note_on(note, vel15); break;
     case ENG_MOOG: moog_on(t, note, vel15); break;
     case ENG_PROPH: proph_on(t, note, vel15); break;
     case ENG_DRUM: drum_on(t, note, vel15); break;
@@ -420,7 +421,12 @@ void voices_render(int32_t *out, int n)
             if (!fx_awake(t)) continue;
             for (i = 0; i < n; i++) tmp[i] = 0;
         }
-        if (act && TK[t].lvl != 32768) for (i = 0; i < n; i++) tmp[i] = (int32_t)(((int64_t)tmp[i] * TK[t].lvl) >> 15);      /* the Level destination */
+        {                                       /* the Level destination: the gain ramps over the block from the previous block's value (a step every 128 samples is a 344 Hz zipper line) */
+            int32_t g0 = lvl_prev[t], g1 = TK[t].lvl, rq = 65536 / n;
+            if (act && (g0 != 32768 || g1 != 32768))
+                for (i = 0; i < n; i++) tmp[i] = (int32_t)(((int64_t)tmp[i] * (g0 + (int32_t)(((int64_t)(g1 - g0) * ((i + 1) * rq)) >> 16))) >> 15);
+            lvl_prev[t] = g1;
+        }
         fx_track(t, tmp, n, act);               /* the track's effects (fxdsp.c), then the track volume as the prototype: F(tb[i]) * t.vol */
         {                                       /* HOME's meter: this block's peak of the track */
             int32_t pk = 0;

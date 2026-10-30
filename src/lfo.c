@@ -89,13 +89,19 @@ static void mod_dest(int t, int eng, int dst, int32_t xq, int32_t *lvl, int32_t 
     if (DSTM[dst].kind == DK_LVL) { lvl[t] = (int32_t)(((int64_t)lvl[t] * (xq + 32768 < 0 ? 0 : xq + 32768 > 32768 ? 32768 : xq + 32768)) >> 15); return; }
             if (!mod_target(t, eng, dst, &kind, &id)) return;
             if (kind == 0) { mn = PD[id].min; mx = PD[id].max; *vacp = 1; }
-            else if (kind == 1) { mn = 0; mx = 1000; }
+            else if (kind == 1) { mn = id == ARP_GATE ? 50 : 0; mx = 1000; }          /* the prototype's MP: the arpeggiator gate runs .05 .. 1 */
             else { mn = 0; mx = 1000; }
             cur = mod_cur(kind, t, eng, id);
             if (mx == mn) return;
-            nn = (int32_t)(((int64_t)(cur - mn) << 15) / (mx - mn)) + xq;
-            nn = nn < 0 ? 0 : nn > 32768 ? 32768 : nn;
-            k = (int)(mn + (((int64_t)nn * (mx - mn)) >> 15));
+            if (kind == 0 && id == P_FM) {                           /* the prototype's fm is knob^2 * 2 and its range [0, 2] is linear in that: modulate the square, not the knob */
+                nn = (int32_t)(((int64_t)cur * cur << 15) / 1000000) + xq;
+                nn = nn < 0 ? 0 : nn > 32768 ? 32768 : nn;
+                k = nn >= 32768 ? 1000 : (int)((isqrt32((uint32_t)nn << 17) * 1000u) >> 16);
+            } else {
+                nn = (int32_t)(((int64_t)(cur - mn) << 15) / (mx - mn)) + xq;
+                nn = nn < 0 ? 0 : nn > 32768 ? 32768 : nn;
+                k = (int)(mn + (((int64_t)nn * (mx - mn)) >> 15));
+            }
             mod_set(kind, t, eng, id, k);
 }
 

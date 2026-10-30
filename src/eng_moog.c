@@ -16,6 +16,8 @@ typedef struct {
     noisec_t nc;
     uint32_t gc;                                   /* glide coefficient Q32; 0xFFFFFFFF = off */
     int32_t ai, fai, sus, fsus, cut16, env5, k16, gain16, lvl;
+    int32_t cut_s, oct_s[3];                       /* the values the previous block ended on: the pitch / cutoff ramp across the block instead of stepping */
+    uint8_t si;
     uint32_t dc, rc, fdc, frc;
     /* voice */
     uint32_t ph[3];
@@ -118,18 +120,22 @@ void moog_render(int t, int32_t *out, int n)
 {
     moog_t *m = &MG[t];
     int i = 0, k, j;
+    int32_t cut0, oct0[3], rq = n > 0 ? 65536 / n : 0;                /* 1 / n, Q16: the ramp position of sample i is i * rq */
     if (m->dirty) moog_derive(m);
+    if (!m->si) { m->si = 1; m->cut_s = m->cut16; for (k = 0; k < 3; k++) m->oct_s[k] = m->oct16[k]; }
+    cut0 = m->cut_s; for (k = 0; k < 3; k++) oct0[k] = m->oct_s[k];
     m->drift = (int32_t)(((int64_t)(m->drift + (c_rand15() >> 11)) * 65503) >> 16);       /* the slow drift, +-.0002 st */
     while (i < n) {
         uint32_t inc[3], rd[3], g;
         int32_t rel = m->gn16 + m->drift - (60 << 16), x16, ef = m->f.e;
         int cnt = n - i < 8 ? n - i : 8;
+        int32_t cutc = cut0 + (int32_t)(((int64_t)(m->cut16 - cut0) * ((i + cnt) * rq)) >> 16);
         for (k = 0; k < 3; k++) {
-            int32_t lx = C_L2_MINC + (int32_t)(((int64_t)rel * 21845) >> 18) + m->oct16[k];
+            int32_t lx = C_L2_MINC + (int32_t)(((int64_t)rel * 21845) >> 18) + oct0[k] + (int32_t)(((int64_t)(m->oct16[k] - oct0[k]) * ((i + cnt) * rq)) >> 16);
             inc[k] = exp2_fx(lx, 0);
             rd[k] = c_rd(inc[k]);
         }
-        x16 = (int32_t)exp2_fx(C_L2_FC0 + m->cut16 + (int32_t)(((int64_t)(m->gn16 - (60 << 16)) * 3604) >> 16) +
+        x16 = (int32_t)exp2_fx(C_L2_FC0 + cutc + (int32_t)(((int64_t)(m->gn16 - (60 << 16)) * 3604) >> 16) +
                                (int32_t)(((int64_t)m->env5 * ef) >> 30), 16);
         if (x16 > 82354 || x16 < 0) x16 = 82354;                         /* fc <= .4 FS */
         g = c_expm((uint32_t)x16);
@@ -166,4 +172,5 @@ void moog_render(int t, int32_t *out, int n)
             out[i] = (int32_t)(((int64_t)o * 39322 >> 15) * m->lvl >> 15);       /* * 2 * .6 * lvl */
         }
     }
+    m->cut_s = m->cut16; for (k = 0; k < 3; k++) m->oct_s[k] = m->oct16[k];
 }

@@ -25,7 +25,7 @@ void param_text_ms(int attack, int s, char *out);   /* an envelope time in thous
 /* engine (vactrol.c) */
 void vac_init(void);
 void vac_update(void);                      /* after any parameter change */
-void vac_note_on(int note);
+void vac_note_on(int note, int vel15);
 void vac_note_off(void);
 void vac_render(int32_t *out, int n);       /* Q15 mono */
 int32_t vac_wave_q15(uint32_t ph, int t);

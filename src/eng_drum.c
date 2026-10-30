@@ -231,7 +231,7 @@ void drum_hit(int t, int v, int vel15)
     int j;
     if (v < 0 || v > 5) return;
     V = &d->V[v];
-    V->on = 1; V->t = 0; V->vel = vel15; V->ph = V->ph2 = 0; V->l = V->l2 = V->fl = V->fh = 0; V->e = 32768;
+    V->on = 1; V->t = 0; V->vel = vel15; V->ph = V->ph2 = 0; V->l = V->l2 = V->fl = V->fh = 0; V->e = 32768 << 8;
     for (j = 0; j < 6; j++) V->m[j] = 0;
     if (d->p[v * DR_PER + DR_TYPE] == 2)
         for (j = 0; j < 6; j++)
@@ -268,11 +268,11 @@ void drum_render(int t, int32_t *out, int n)
             else if (P->fl_t > 0) { V->fh += M16(x - V->fh, P->fl_c); x = x - V->fh; }
             V->t++;
             ax = x < 0 ? -x : x;
-            V->e = ax > M16(V->e, 65470) ? ax : M16(V->e, 65470);
+            V->e = (ax << 8) > M16(V->e, 65470) ? (ax << 8) : M16(V->e, 65470);       /* the output follower in Q23: in Q15 its decay stalled at 1 LSB / sample and killed quiet low-pitched voices at the zero crossings */
             x = M15(M15(x, P->g), V->vel);
             if (ty == 2 || ty == 3) x = M15(x, Q(1.9) / 2) * 2;
             acc += x;
-            if ((V->t > 2205 && V->e < 13) || V->t > 176400) V->on = 0;
+            if ((V->t > 2205 && V->e < (13 << 8)) || V->t > 176400) V->on = 0;
         }
         out[i] = M15(c_tanh(M15(acc, Q(.9))), Q(.8));
     }

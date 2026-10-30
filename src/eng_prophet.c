@@ -12,6 +12,8 @@ typedef struct {
     int32_t tuna, tunb, rnga, rngb, subo, lva, lvb, lvs, lvn;   /* pitch offsets: Q16 semitones (tune) / Q16 octaves */
     noisec_t nc;
     int32_t ai, fai, sus, fsus, cut16, env16, pm16, k16, lvl;
+    int32_t cut_s, tuna_s, tunb_s;                 /* the values the previous block ended on: tune / cutoff ramp across the block instead of stepping */
+    uint8_t si;
     uint32_t dc, rc, fdc, frc;
     /* voice */
     uint32_t pa, pb, so;
@@ -126,18 +128,23 @@ void proph_render(int t, int32_t *out, int n)
 {
     proph_t *m = &PR[t];
     int i = 0, j;
+    int32_t cut0, ta0, tb0, rq = n > 0 ? 65536 / n : 0;                /* 1 / n, Q16: the ramp position of sample i is i * rq */
     if (m->dirty) proph_derive(m);
+    if (!m->si) { m->si = 1; m->cut_s = m->cut16; m->tuna_s = m->tuna; m->tunb_s = m->tunb; }
+    cut0 = m->cut_s; ta0 = m->tuna_s; tb0 = m->tunb_s;
     m->drift = (int32_t)(((int64_t)(m->drift + (c_rand15() >> 11)) * 65503) >> 16);
     while (i < n) {
         int32_t base = (m->note - 60) << 16, xa, xb, xs, ef = m->f.e, lx0;
         uint32_t incA, incB, incS, rdA, rdB, rdS, g0;
         int cnt = n - i < 8 ? n - i : 8;
-        xa = C_L2_MINC + (int32_t)(((int64_t)(base + m->drift + m->tuna) * 21845) >> 18) + m->rnga;
-        xb = C_L2_MINC + (int32_t)(((int64_t)(base - m->drift + m->tunb) * 21845) >> 18) + m->rngb;
+        int32_t cutc = cut0 + (int32_t)(((int64_t)(m->cut16 - cut0) * ((i + cnt) * rq)) >> 16);
+        int32_t tua = ta0 + (int32_t)(((int64_t)(m->tuna - ta0) * ((i + cnt) * rq)) >> 16), tub = tb0 + (int32_t)(((int64_t)(m->tunb - tb0) * ((i + cnt) * rq)) >> 16);
+        xa = C_L2_MINC + (int32_t)(((int64_t)(base + m->drift + tua) * 21845) >> 18) + m->rnga;
+        xb = C_L2_MINC + (int32_t)(((int64_t)(base - m->drift + tub) * 21845) >> 18) + m->rngb;
         xs = C_L2_MINC + (int32_t)(((int64_t)base * 21845) >> 18) + m->subo;
         incA = exp2_fx(xa, 0); incB = exp2_fx(xb, 0); incS = exp2_fx(xs, 0);
         rdA = c_rd(incA); rdB = c_rd(incB); rdS = c_rd(incS);
-        lx0 = C_L2_FC0 + 92735 /* log2(80/30): 2pi * 40 / FS */ + m->cut16 + (int32_t)(((int64_t)base * 4369) >> 16) +
+        lx0 = C_L2_FC0 + 92735 /* log2(80/30): 2pi * 40 / FS */ + cutc + (int32_t)(((int64_t)base * 4369) >> 16) +
               (int32_t)(((int64_t)m->env16 * ef) >> 30);               /* 2pi fc / FS with fc = 40 * ... */
         g0 = 0;
         if (!m->p[PR_PM]) {
@@ -181,4 +188,5 @@ void proph_render(int t, int32_t *out, int n)
             out[i] = (int32_t)(((int64_t)o * 35389 >> 15) * m->lvl >> 15);             /* * 1.8 * .6 = 1.08 */
         }
     }
+    m->cut_s = m->cut16; m->tuna_s = m->tuna; m->tunb_s = m->tunb;
 }
