@@ -127,6 +127,11 @@ void param_text(int id, char *out)
     case FMT_INT:
         o = put_u(o, (uint32_t)s);
         break;
+    case FMT_STEP:                              /* a sequencer step: "+50", "0", "-30" (Math.round(value * 100)) */
+        if (s > 0) *o++ = '+';
+        else if (s < 0) { *o++ = '-'; s = -s; }
+        o = put_u(o, (uint32_t)((s + 5) / 10));
+        break;
     case FMT_RATE:                              /* LFO rate: .05 * 800^s Hz ("0.7Hz": two decimals, the third dropped), or the division when synced */
         if (PV[id + 2]) {
             static const char *const DIVN[8] = { "4 bars", "2 bars", "1 bar", "1/2", "1/4", "1/8", "1/16", "1/32" };

@@ -10,7 +10,7 @@ typedef struct {
     int16_t min, max, step, def;/* thousandths (select: indices) */
     const char *const *opts;
 } pdesc_t;
-enum { FMT_PCT, FMT_RATIO, FMT_FREQ, FMT_MS, FMT_TEXT, FMT_CUT, FMT_RATE, FMT_INT };
+enum { FMT_PCT, FMT_RATIO, FMT_FREQ, FMT_MS, FMT_TEXT, FMT_CUT, FMT_RATE, FMT_INT, FMT_STEP };
 enum { P_FOLD, P_SYM, P_DECAY, P_WAVE, P_FREQ, P_MWAVE, P_RATIO, P_FM, P_FENV, P_EAD, P_ATK, P_EDEC, P_OPEN, P_MODE,
        #include "pext_ids.h"            /* page parameters (tools/gen_pext.py) */
        P_COUNT };
