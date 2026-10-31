@@ -92,6 +92,25 @@ static inline int32_t c_adsr(adsr_t *s, int32_t ai, uint32_t dc, int32_t su, uin
     return s->e;
 }
 
+/* the same envelope advanced 8 samples at once (control rate: the filter envelope is only read at the start of each 8-sample chunk): dc8 / rc8 = 1 - (1 - c)^8, Q32 */
+static inline uint32_t c_pow8(uint32_t c)             /* 1 - (1 - c)^8, c Q32 */
+{
+    uint32_t p = 0xFFFFFFFFu - c;
+    p = c_mulhi(p, p); p = c_mulhi(p, p); p = c_mulhi(p, p);
+    return 0xFFFFFFFFu - p;
+}
+static inline int32_t c_adsr8(adsr_t *s, int32_t ai, uint32_t dc8, int32_t su, uint32_t rc8)
+{
+    switch (s->st) {
+    case 1: s->e += ai * 8; if (s->e >= (1 << 30) || s->e < 0) { s->e = 1 << 30; s->st = 2; } break;
+    case 2: s->e += (int32_t)(((int64_t)(su - s->e) * dc8) >> 32);
+            if ((s->e > su ? s->e - su : su - s->e) < 858993) s->st = 3; break;
+    case 3: s->e = su; break;
+    case 4: s->e -= (int32_t)(((int64_t)s->e * rc8) >> 32); if (s->e < 536871) { s->e = 0; s->st = 0; } break;
+    }
+    return s->e;
+}
+
 /* the noise source of the Moog / Prophet: white, pink, brown, blue, crackle; tone = one-pole LP (below the centre)
  * or HP (above) and 'crush' = sample-and-hold of 1..49 samples */
 typedef struct { int32_t b[7], br, pw, v, l; uint32_t c; } noise_t;

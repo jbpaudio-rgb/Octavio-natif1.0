@@ -18,6 +18,15 @@
 #ifndef LT_FXMASK
 #define LT_FXMASK 15
 #endif
+#ifndef LT_ACTIVE                                   /* bit t: track t plays (arp / step gates / drum lanes); the others are silent */
+#define LT_ACTIVE 15
+#endif
+#ifndef LT_DLANES                                   /* bit v: drum lane v has its 16 steps on */
+#define LT_DLANES 63
+#endif
+#ifndef LT_NSRC                                     /* modulation sources routed per track (of MOD_N = 6) */
+#define LT_NSRC MOD_N
+#endif
 #ifndef LT_BPM
 #define LT_BPM 180
 #endif
@@ -44,7 +53,7 @@ static void lt_setup(void)
     for (t = 0; t < 4; t++) {                                                          /* the mod matrix */
         int e = ENG[t];
 #ifndef LT_NOMOD
-        for (s = 0; s < MOD_N; s++) {
+        for (s = 0; s < LT_NSRC; s++) {
             int b = LFO_BASE[s] - P_M0T, dst = 0;
             if (e == ENG_DRUM) dst = DDST[s];
             else if (s < 2) dst = SDST[e == ENG_VAC ? 0 : e == ENG_MOOG ? 1 : 2][s];
@@ -61,27 +70,36 @@ static void lt_setup(void)
             routes++;
         }
 #endif
-        SQG[t] = 0xFFFFu;                                                              /* the synth step gates, every 16th */
+        SQG[t] = (LT_ACTIVE >> t & 1) ? 0xFFFFu : 0u;                                                              /* the synth step gates, every 16th */
         if (e == ENG_DRUM) {
             int v;
             drum_set(t, DR_ID(0, DR_KIT), t % 3);
             for (v = 0; v < 6; v++) {
-                drum_gates_set(t, v, 0xFFFFu);
+                drum_gates_set(t, v, ((LT_ACTIVE >> t & 1) && (LT_DLANES >> v & 1)) ? 0xFFFFu : 0u);
                 drum_set(t, DR_ID(v, DR_DECAY), 900);                                   /* long decays: the six voices overlap */
                 drum_set(t, DR_ID(v, DR_CHANCE), 1000);
                 drum_set(t, DR_ID(v, DR_LEVEL), 700);
             }
         } else {
+#ifdef LT_CHORD                                    /* Prophet tracks: no arpeggiator, a held chord of LT_CHORD notes (all the voices sound), no step gates */
+            if (e == ENG_PROPH) { SQG[t] = 0; if (LT_ACTIVE >> t & 1) for (i = 0; i < LT_CHORD; i++) voices_note(t, 48 + 4 * i + t, 1); }
+            else
+#endif
 #ifndef LT_NOARP
+          if (LT_ACTIVE >> t & 1) {
             voices_arp(t, ARP_MODE, 3);                                                /* up-down */
             voices_arp(t, ARP_OCT, 4);
             voices_arp(t, ARP_RATE, 5);
             voices_arp(t, ARP_GATE, 990);                                              /* legato: the engine never rests */
             voices_arp(t, ARP_LATCH, 1);
             for (i = 0; i < 8; i++) voices_note(t, 48 + 2 * i + t, 1);
+          }
 #endif
         }
     }
+#ifdef LT_SEL
+    sel = LT_SEL;                                                                      /* the track the note keys play */
+#endif
     mod_load_view();                                                                   /* the selected track (0)'s matrix and chain into PV[] */
     fx_load_view();
     PV[P_F5SYNC] = FXT[0].p[FX_NP - 1];

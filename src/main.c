@@ -139,7 +139,8 @@ void fm1_alnk0_irq(void)
         perf.audio_sum += perf.audio_last;
         if (perf.audio_last > perf.audio_max) perf.audio_max = perf.audio_last;
         if (++perf.blocks > 200 && perf.audio_last > perf.audio_max_w) perf.audio_max_w = perf.audio_last;      /* worst block after the first 0.6 s (allocation and start-up excluded) */
-        gov_block(perf.audio_last);                             /* the CPU governor (fxstate.c) */
+        gov_block(perf.audio_last > fx_alloc_blk ? perf.audio_last - fx_alloc_blk : perf.audio_last);       /* the CPU governor (fxstate.c); a chain's one-off allocation is not load */
+        fx_alloc_blk = 0;
 #ifndef NO_PERF
         perf.gov[0] = gov.fx; perf.gov[1] = gov.voices; perf.gov[2] = gov.steals; perf.gov[3] = gov.cap_min; perf.gov[4] = (uint32_t)dv_cap; perf.gov[5] = gov_cool;
         perf_audio(t_blk, perf.audio_last, fx_blk_ticks);       /* histogram, lost boundaries (entry gap >= 2 blocks), ISR spacing */

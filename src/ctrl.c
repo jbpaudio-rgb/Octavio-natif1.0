@@ -82,6 +82,7 @@ static void itoa2(char *o, int v, int pad)         /* v >= 0, zero padded to `pa
 static const char *const ENG_TAG[CENG_N] = { "VACT", "MINI", "PRO70", "DRUM" };   /* dn(): the display name of each engine */
 static const char *etag(int t) { return t >= 0 && t < CENG_N ? ENG_TAG[t] : "???"; }
 static int cur_engine(void) { return voices_engine(sel); }
+static int ceng_n(void) { return sel >= DRUM_T0 ? CENG_N : CENG_N - 1; }       /* the engines the selected track offers: the drums run on tracks 3 and 4 only (2 drum machines, M) */
 
 /* ---- toast / list ---- */
 static void toast(const char *a, const char *b, uint32_t ms)
@@ -454,11 +455,11 @@ static int32_t ak_get(void)
 {
     int h = lane_h();
     if (h >= 0) { int k = voices_param_get(sel, ENG_DRUM, DR_ID(h, DR_KV)); return ((int32_t)(k < 0 ? 0 : k > 2 ? 2 : k) << Q) / 2; }
-    return ((int32_t)cur_engine() << Q) / (CENG_N - 1);
+    return ((int32_t)cur_engine() << Q) / (ceng_n() - 1);
 }
 static void ak_set(int32_t n)
 {
-    int i = round_q(n, CENG_N - 1), h = lane_h();
+    int i = round_q(n, ceng_n() - 1), h = lane_h();
     char t[20], num[4], nb[24];
     if (h >= 0) {
         voices_param(sel, ENG_DRUM, DR_ID(h, DR_KV), round_q(n, 2));
@@ -470,8 +471,9 @@ static void ak_set(int32_t n)
     ap_q = (int)n;
     scopy(t, "ALGO \x02 T", sizeof t); itoa2(num, sel + 1, 0); sappend(t, num, sizeof t);
     scopy(nb, "TRACK ", sizeof nb); sappend(nb, num, sizeof nb);
+    if (ceng_n() < CENG_N) sappend(nb, " (DRUMS T3 T4)", sizeof nb);          /* the list has no DRUM entry here */
     alg_t = g_ms ? g_ms : 1;
-    show_list(1, t, cur_engine(), CENG_N, cur_engine() == ENG_DRUM ? "SELECT = KIT" : nb, g_ms);
+    show_list(1, t, cur_engine(), ceng_n(), cur_engine() == ENG_DRUM ? "SELECT = KIT" : nb, g_ms);
 }
 /* SELECT: the name editor's letter, HOME's track, else the LFO source */
 static int kit_h(void) { return cur_engine() == ENG_DRUM && alg_t && g_ms - alg_t < 5000u && !pend && pg != PGN_HOME && !type_held(); }       /* eng.drum && Date.now() - algT < 5000 */

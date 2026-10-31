@@ -57,7 +57,12 @@ void proph_init(int t);
 void proph_set(int t, int id, int v);
 int  proph_get(int t, int id);
 void proph_on(int t, int note, int vel15);
-void proph_off(int t);
+void proph_off(int t);                                /* every voice into release */
+void proph_off_note(int t, int note);                 /* the voice(s) playing this note into release */
+int  proph_nvoices(int t);                            /* voices sounding on the track */
+int  proph_nsuspended(int t);                         /* held notes the governor suspended */
+int  proph_shed_one(int t);                           /* governor: a voice fades out over the next block (a released one is freed, a held one suspended) */
+int  proph_resume_one(int t);                         /* governor: a suspended held note comes back (fade in) */
 int  proph_active(int t);
 void proph_render(int t, int32_t *out, int n);
 void drum_init(int t);

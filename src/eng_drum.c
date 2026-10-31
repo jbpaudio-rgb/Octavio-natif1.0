@@ -13,9 +13,11 @@
 
 typedef struct { int32_t tf, dfi, tn, g, hd, pe, at, dr, drinv, fl_c; int8_t fl_t; } dpar_t;
 typedef struct {
-    uint8_t on;
+    uint8_t on, kill;                                    /* kill: samples of fade-out left (a choke or the governor takes the voice: a 32-sample ramp, then off) */
     int32_t t, vel, e, l, l2, fl, fh;
     uint32_t ph, ph2, m[6];
+    uint32_t minc[6]; int32_t mtf, mm;                   /* the six metal increments for the (tf, m16) they were computed with */
+    uint16_t xa[6], xb[6];                               /* control-rate envelopes (exc): value at the last 8-sample boundary / the next one, per call site */
 } dvoice_t;
 typedef struct {
     int16_t p[DR_COUNT];
@@ -25,7 +27,11 @@ typedef struct {
     dvoice_t V[6];
 } drum_t;
 
-static drum_t DRM[4];
+#define DRUM_FADE 32                                    /* samples of the ramp that takes a drum voice away (a choke, the governor) */
+#define NDRUM 2                                         /* drum machines: only tracks 3 and 4 (t = 2, 3) can run the drum engine (DRM[t - 2]) */
+#define DRUM_T0 2
+static drum_t DRM[NDRUM];
+static inline drum_t *dp(int t) { return (unsigned)(t - DRUM_T0) < (unsigned)NDRUM ? &DRM[t - DRUM_T0] : 0; }
 static const uint8_t DKV[12] = {0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5};
 static const uint16_t MET[6] = {2053, 3044, 3696, 5227, 5400, 8000};          /* Hz * 10 */
 
@@ -35,14 +41,29 @@ static inline int32_t exq(int32_t t, int32_t a24, int32_t dfi)                /*
     if (x > 16 * 65536) return 0;
     return (int32_t)exp2_fx(-(int32_t)x, 15);
 }
+/* an exponential envelope at control rate: exp(-t a / df) is computed every 8 samples (at the boundary V->t % 8 == 0, one step ahead) and interpolated
+ * linearly in between (the slowest-moving decay here is 0.8 ms = 35 samples: the error is < 0.7 %).  A voice has up to 6 call sites, numbered in call order (ci). */
+static __attribute__((noinline)) int32_t exc(dvoice_t *V, int ci, int32_t tu, int32_t a24, int32_t dfi)       /* tu: V->t - hold (may be < 0: the envelope waits at 1) */
+{
+    int ph = V->t & 7;
+    if (!ph) {
+        int32_t tn = tu + 8;
+        V->xa[ci] = (uint16_t)(V->t == 0 ? exq(tu < 0 ? 0 : tu, a24, dfi) : V->xb[ci]);
+        V->xb[ci] = (uint16_t)exq(tn < 0 ? 0 : tn, a24, dfi);
+    }
+    return (int32_t)V->xa[ci] + (((int32_t)V->xb[ci] - (int32_t)V->xa[ci]) * ph >> 3);
+}
 static inline uint32_t dinc(int32_t hz256) { return (uint32_t)(((uint64_t)(uint32_t)hz256 * 97392u) >> 8); }
 
 static int32_t met(dvoice_t *V, int32_t m16, int32_t tf16)           /* six squares, the metallic hat source, Q15 */
 {
     int i, a = 0;
+    if (V->mtf != tf16 || V->mm != m16 || !V->minc[0]) {
+        for (i = 0; i < 6; i++) V->minc[i] = dinc((int32_t)(((int64_t)MET[i] * 256 / 10 * m16 >> 16) * tf16 >> 16));
+        V->mtf = tf16; V->mm = m16;
+    }
     for (i = 0; i < 6; i++) {
-        uint32_t inc = dinc((int32_t)(((int64_t)MET[i] * 256 / 10 * m16 >> 16) * tf16 >> 16));
-        V->m[i] += inc;
+        V->m[i] += V->minc[i];
         a += V->m[i] < 0x80000000u ? 1 : -1;
     }
     return a * 5461;
@@ -53,11 +74,11 @@ static int32_t met(dvoice_t *V, int32_t m16, int32_t tf16)           /* six squa
 
 static int32_t dvoice(int ty, dvoice_t *V, int k, const dpar_t *pr)
 {
-    int32_t t = V->t - pr->hd, tf, tn = pr->tn, dfi = pr->dfi, nz = c_rand15(), s, e, x;
-    if (t < 0) t = 0;
-    tf = M16(pr->tf, 65536 + (int32_t)(((int64_t)pr->pe * exq(t, A24(.04), 65536)) >> 15));
-#define EX(tau) exq(t, A24(tau), 65536)
-#define EXD(tau) exq(t, A24(tau), dfi)
+    int32_t tu = V->t - pr->hd, t = tu < 0 ? 0 : tu, tf, tn = pr->tn, dfi = pr->dfi, nz = c_rand15(), s, e, x;
+    int ci = 0;
+    tf = pr->pe ? M16(pr->tf, 65536 + (int32_t)(((int64_t)pr->pe * exc(V, ci++, tu, A24(.04), 65536)) >> 15)) : pr->tf;
+#define EX(tau) exc(V, ci++, tu, A24(tau), 65536)
+#define EXD(tau) exc(V, ci++, tu, A24(tau), dfi)
     if (ty == 0) {                                                    /* kick */
         int32_t f, cl;
         if (k == 0) {
@@ -139,11 +160,11 @@ static int32_t dvoice(int ty, dvoice_t *V, int k, const dpar_t *pr)
         int32_t dcs = hi ? (k == 0 ? 280 : k == 1 ? 224 : 320) : (k == 0 ? 403 : k == 1 ? 322 : 460);   /* decay, ms */
         int32_t cl;
         V->ph += dinc(M16(M16(f0 * 256, tf), swv));
-        e = exq(t, A24(.001) / dcs, dfi);
+        e = exc(V, ci++, tu, A24(.001) / dcs, dfi);
         s = M15(sin_q15(V->ph), e);
         if (k == 2) {
             V->ph2 += dinc(M16(M16(f0 * 256, tf), Q16(1.6)));
-            s += M15(M15(sin_q15(V->ph2), Q(.3)), exq(t, A24(.001) / dcs * 2, dfi));
+            s += M15(M15(sin_q15(V->ph2), Q(.3)), exc(V, ci++, tu, A24(.001) / dcs * 2, dfi));
         }
         cl = M15(M15(k == 2 ? LPF(nz, Q16(.3)) : nz, EX(.005)), Q(.08) + M15(tn, Q(.5)));
         return M15(s + cl, Q(.9));
@@ -197,9 +218,9 @@ static void drum_derive(drum_t *d)
 
 void drum_set(int t, int id, int v)
 {
-    drum_t *d = &DRM[t];
+    drum_t *d = dp(t);
     int vv;
-    if (id < 0 || id >= DR_COUNT) return;
+    if (!d || id < 0 || id >= DR_COUNT) return;
     if (id % DR_PER == DR_KIT) {                                  /* the kit for all six voices */
         v = v < 0 ? 0 : v > 2 ? 2 : v;
         for (vv = 0; vv < 6; vv++) d->p[vv * DR_PER + DR_KV] = (int16_t)v;
@@ -207,14 +228,15 @@ void drum_set(int t, int id, int v)
     d->p[id] = (int16_t)(v < 0 ? 0 : v);
     d->dirty = 1;
 }
-int drum_get(int t, int id) { return DRM[t].p[id]; }
-uint16_t drum_gates(int t, int v) { return DRM[t & 3].gate[v % 6]; }
-void drum_gates_set(int t, int v, uint16_t bits) { DRM[t & 3].gate[v % 6] = bits; }
+int drum_get(int t, int id) { drum_t *d = dp(t); return d && id >= 0 && id < DR_COUNT ? d->p[id] : 0; }
+uint16_t drum_gates(int t, int v) { drum_t *d = dp(t); return d ? d->gate[v % 6] : 0; }
+void drum_gates_set(int t, int v, uint16_t bits) { drum_t *d = dp(t); if (d) d->gate[v % 6] = bits; }
 
 void drum_init(int t)
 {
-    drum_t *d = &DRM[t];
+    drum_t *d = dp(t);
     int i, v;
+    if (!d) return;
     for (i = 0; i < (int)sizeof(*d); i++) ((uint8_t *)d)[i] = 0;
     for (v = 0; v < 6; v++) {
         int16_t *p = &d->p[v * DR_PER];
@@ -226,29 +248,33 @@ void drum_init(int t)
 
 void drum_hit(int t, int v, int vel15)
 {
-    drum_t *d = &DRM[t];
+    drum_t *d = dp(t);
     dvoice_t *V;
     int j;
-    if (v < 0 || v > 5) return;
+    if (!d || v < 0 || v > 5) return;
     V = &d->V[v];
-    V->on = 1; V->t = 0; V->vel = vel15; V->ph = V->ph2 = 0; V->l = V->l2 = V->fl = V->fh = 0; V->e = 32768 << 8;
+    V->on = 1; V->kill = 0; V->t = 0; V->vel = vel15; V->ph = V->ph2 = 0; V->l = V->l2 = V->fl = V->fh = 0; V->e = 32768 << 8;
     for (j = 0; j < 6; j++) V->m[j] = 0;
+    V->minc[0] = 0;
     if (d->p[v * DR_PER + DR_TYPE] == 2)
         for (j = 0; j < 6; j++)
-            if (d->p[j * DR_PER + DR_TYPE] == 3) d->V[j].on = 0;
+            if (d->p[j * DR_PER + DR_TYPE] == 3 && d->V[j].on && !d->V[j].kill) d->V[j].kill = DRUM_FADE;             /* the closed hat chokes the open one: a short fade, not a cut */
 }
 void drum_on(int t, int note, int vel15) { drum_hit(t, DKV[((note % 12) + 12) % 12], vel15); }
 int drum_active(int t)
 {
     int v;
-    for (v = 0; v < 6; v++) if (DRM[t].V[v].on) return 1;
+    drum_t *d = dp(t);
+    if (!d) return 0;
+    for (v = 0; v < 6; v++) if (d->V[v].on) return 1;
     return 0;
 }
 
 void drum_render(int t, int32_t *out, int n)
 {
-    drum_t *d = &DRM[t];
+    drum_t *d = dp(t);
     int i, v;
+    if (!d) { for (i = 0; i < n; i++) out[i] = 0; return; }
     if (d->dirty) drum_derive(d);
     for (i = 0; i < n; i++) {
         int32_t acc = 0;
@@ -270,6 +296,7 @@ void drum_render(int t, int32_t *out, int n)
             ax = x < 0 ? -x : x;
             V->e = (ax << 8) > M16(V->e, 65470) ? (ax << 8) : M16(V->e, 65470);       /* the output follower in Q23: in Q15 its decay stalled at 1 LSB / sample and killed quiet low-pitched voices at the zero crossings */
             x = M15(M15(x, P->g), V->vel);
+            if (V->kill) { x = (x * (int32_t)V->kill) >> 5; if (!--V->kill) V->on = 0; }          /* fading out: 32 .. 1 / 32 */
             if (ty == 2 || ty == 3) x = M15(x, Q(1.9) / 2) * 2;
             acc += x;
             if ((V->t > 2205 && V->e < (13 << 8)) || V->t > 176400) V->on = 0;

@@ -127,8 +127,9 @@ static void randomize(int density, int seed_engines)
     if (seed_engines) {
         int e[4] = { rr(0, 3), rr(0, 3), rr(0, 3), rr(0, 3) };
         int pick = rr(0, 3), a, b;
-        for (a = 0; a < 4; a++) for (b = a + 1; b < 4; b++) if (e[a] == ENG_VAC && e[b] == ENG_VAC) e[b] = ENG_DRUM;   /* one Vactrol at most */
+        for (a = 0; a < 4; a++) for (b = a + 1; b < 4; b++) if (e[a] == ENG_VAC && e[b] == ENG_VAC) e[b] = ENG_PROPH;   /* one Vactrol at most */
         e[pick] = e[pick];
+        for (t = 0; t < 2; t++) if (e[t] == ENG_DRUM) e[t] = ENG_MOOG;      /* only tracks 3 and 4 can be drums (M) */
         for (t = 0; t < 4; t++) { voices_set_engine(t, e[t]); PV[P_TYP0 + t] = (int16_t)e[t]; }
         for (t = 0; t < 4; t++) if (e[t] == ENG_VAC) voices_set_vac_owner(t);
     }
@@ -237,7 +238,7 @@ int main(int argc, char **argv)
         voices_play(1);
         for (k = 0; k < 400; k++) { voices_render(tmpb, 128); if (drum_active(3)) h1++; }
         voices_play(0);
-        { int v; for (v = 0; v < 6; v++) DRM[3].V[v].on = 0; }                                               /* let the previous hits go */
+        { int v; for (v = 0; v < 6; v++) DRM[3 - DRUM_T0].V[v].on = 0; }                                               /* let the previous hits go */
         drum_gates_set(3, 0, 0x0002);                                                                       /* step 1 only (an odd step: swing delays it) */
         voices_param(3, ENG_DRUM, DR_ID(0, DR_SW), 1000);
         voices_play(1);
@@ -259,31 +260,31 @@ int main(int argc, char **argv)
         }
         CHECK(!bad, "destination lists inconsistent (%d)", bad);
         CHECK(dst_count(0, 0) == 70 && dst_pos(0, 0, 10) == 10 && dst_pos(0, 1, 2) == 2, "the Vactrol list is not the one saved presets use");
-        voices_set_engine(0, ENG_VAC); voices_set_engine(1, ENG_MOOG);
+        voices_set_engine(0, ENG_VAC); voices_set_engine(2, ENG_MOOG);
         voices_select(0); mod_select(0);
         PV[P_M0T] = 3; PV[P_M1T] = 12; PV[P_M4T + 4] = 5 + 3;           /* Freq, Arp gate (any engine but the drums), a sequencer line on FM ratio */
         CHECK(dst_pos(ENG_MOOG, 0, 3) < 0 && dst_pos(ENG_MOOG, 0, 12) >= 0, "Freq must not be a Minimoog destination, Arp gate must");
-        mod_select(1); voices_select(1);
+        mod_select(2); voices_select(2);
         CHECK(PV[P_M0T] == 0 && PV[P_M1T] == 0, "the second track starts with an empty matrix");
         PV[P_M0T] = DSTL1[3];                                          /* a Minimoog destination on track 2 */
         mod_select(0); voices_select(0);
         CHECK(PV[P_M0T] == 3 && PV[P_M1T] == 12, "track 1's matrix did not come back");
-        mod_select(1);
+        mod_select(2);
         CHECK(PV[P_M0T] == DSTL1[3], "track 2's matrix did not come back");
-        voices_set_engine(1, ENG_DRUM);                                  /* the engine of the selected track changes: its destinations are validated */
+        voices_set_engine(2, ENG_DRUM);                                  /* the engine of the selected track changes: its destinations are validated */
         CHECK(PV[P_M0T] == 0, "a Minimoog destination survived the change to the drums");
         PV[P_M1T] = DSTL3[5];
-        voices_set_engine(1, ENG_PROPH);
+        voices_set_engine(2, ENG_PROPH);
         CHECK(PV[P_M1T] == 0, "a drum destination survived the change to the Prophet");
         PV[P_M1T] = 12;                                                  /* Arp gate: valid on the Prophet, not on the drums */
-        voices_set_engine(1, ENG_DRUM); CHECK(PV[P_M1T] == 0, "Arp gate survived the change to the drums");
-        voices_set_engine(1, ENG_MOOG);
+        voices_set_engine(2, ENG_DRUM); CHECK(PV[P_M1T] == 0, "Arp gate survived the change to the drums");
+        voices_set_engine(2, ENG_MOOG);
         mod_select(0); voices_select(0);                                  /* a track that is not selected is validated too */
-        voices_set_engine(1, ENG_PROPH);
-        mod_select(1);
+        voices_set_engine(2, ENG_PROPH);
+        mod_select(2);
         CHECK(PV[P_M0T] == 0, "unexpected destination on track 2");
         mod_select(0); voices_select(0);
-        voices_set_engine(1, ENG_MOOG);
+        voices_set_engine(2, ENG_MOOG);
         printf("destination lists: VACT %d, MOOG %d, PROPH %d, DRUM %d entries (LFO), master list %d\n", dst_count(0, 0), dst_count(1, 0), dst_count(2, 0), dst_count(3, 0), N_DST);
     }
 
@@ -534,6 +535,49 @@ int main(int argc, char **argv)
             pi = 0; save_preset_ui();
             printf("save into a full bank: bank %d -> %d presets, %u -> %u bytes, toast '%s'\n", nb, nbank, bn, bpool_n, toast_a);
         }
+    }
+    /* 7b. M: two drum machines only (tracks 3 and 4), records from before M still load, the Prophet is polyphonic */
+    {
+        static int32_t tb[128];
+        uint8_t body[2 + 64 + 8 + 2 + 240 + 8], *w = body;
+        int k, i2, nv, peak = 0, held = 0;
+        state_defaults();
+        voices_set_engine(0, ENG_DRUM); voices_set_engine(1, ENG_DRUM);
+        CHECK(voices_engine(0) != ENG_DRUM && voices_engine(1) != ENG_DRUM, "the drum engine was accepted on track 1 or 2");
+        voices_set_engine(2, ENG_DRUM);
+        CHECK(voices_engine(2) == ENG_DRUM && voices_engine(3) == ENG_DRUM, "tracks 3 and 4 refused the drum engine");
+        CHECK(drum_get(0, DR_ID(0, DR_LEVEL)) == 0 && drum_gates(1, 0) == 0, "drum data exists for a track that cannot be a drum track");
+        /* an old record: TRK says drums on track 1, DSQ rev 1 holds four drum tracks: track 1 becomes a Minimoog, the lanes of tracks 3 and 4 are kept */
+        *w++ = 0x08; *w++ = 1; *w++ = 5; *w++ = 0; *w++ = ENG_DRUM; *w++ = ENG_MOOG; *w++ = ENG_DRUM; *w++ = ENG_DRUM; *w++ = 0;
+        *w++ = 0x42; *w++ = 1; *w++ = (uint8_t)((2 + 240) & 255); *w++ = (uint8_t)((2 + 240) >> 8); *w++ = 0; *w++ = 120;
+        for (i2 = 0; i2 < 120; i2++) { int v = i2 == 60 ? 0x1234 : i2 == 91 ? 0x00F0 : i2 == 0 ? 0x0F0F : (i2 % 30 >= 6 && (i2 % 30 - 6) % 4 == DR_CHANCE - DR_SW) ? 1000 : 0; *w++ = (uint8_t)v; *w++ = (uint8_t)(v >> 8); }
+        state_defaults();
+        k = state_load(body, (uint32_t)(w - body));
+        CHECK(k == 2, "an old record applied %d sections instead of 2", k);
+        CHECK(voices_engine(0) == ENG_MOOG, "track 1 is %d after an old record asked for drums", voices_engine(0));
+        CHECK(drum_gates(2, 0) == 0x1234 && drum_gates(3, 1) == 0x00F0, "old DSQ lanes of tracks 3 / 4: %04x %04x", drum_gates(2, 0), drum_gates(3, 1));
+        /* the Prophet: 5 voices, a 6th note steals, a release frees only its own voice */
+        state_defaults();
+        voices_set_engine(1, ENG_PROPH);
+        for (i2 = 0; i2 < 5; i2++) voices_note(1, 48 + 4 * i2, 1);
+        for (k = 0; k < 40; k++) { voices_render(tb, 128); for (i2 = 0; i2 < 128; i2++) { int a = tb[i2] < 0 ? -tb[i2] : tb[i2]; if (a > peak) peak = a; } }
+        nv = proph_nvoices(1);
+        CHECK(nv == 5, "a five note chord sounds %d voices", nv);
+        CHECK(peak > 500 && peak < 32767, "chord peak %d", peak);
+        voices_note(1, 80, 1);
+        for (k = 0; k < 4; k++) voices_render(tb, 128);
+        CHECK(proph_nvoices(1) == 5, "the sixth note did not steal a voice (%d voices)", proph_nvoices(1));
+        { int on80 = 0; for (i2 = 0; i2 < PR_NV; i2++) if (PR[1].V[i2].note == 80 && PR[1].V[i2].gate) on80++; CHECK(on80 == 1, "the sixth note has %d voices", on80); }
+        voices_note(1, 80, 0);
+        for (i2 = 0; i2 < PR_NV; i2++) held += PR[1].V[i2].gate;
+        CHECK(held == 4, "releasing one key left %d voices held", held);
+        for (k = 0; k < 600; k++) voices_render(tb, 128);                     /* the others still sound (sustain) */
+        CHECK(proph_nvoices(1) == 4, "after the release %d voices sound, expected 4", proph_nvoices(1));
+        for (i2 = 0; i2 < 5; i2++) voices_note(1, 48 + 4 * i2, 0);
+        for (k = 0; k < 1500; k++) voices_render(tb, 128);
+        CHECK(!proph_active(1), "the Prophet never went silent after every key was released");
+        printf("polyphony: 5 voices, steal on the sixth, per-key release; two drum machines (tracks 3, 4); old records with drums on track 1 / 2 load as Minimoog\n");
+        state_defaults();
     }
     /* 8. a record written by tools/mkflashrec.py (an independent encoder) boots and loads: run with the image as argv[1] */
     if (argc > 1) {

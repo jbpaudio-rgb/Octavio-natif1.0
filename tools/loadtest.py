@@ -59,6 +59,16 @@ def V(xc="", ms=3800, keys="", snap="", eng=None, fx=None):
 def E(*e): return ",".join("ENG_" + x for x in e)
 
 NOGOV = "-DNO_GOV "
+FX4 = "{{0,1,2,3},{0,1,2,3},{0,1,2,3},{0,1,2,3}}"           # overdrive, phaser, flanger, chorus on every track (Mix > 0): the factory chain once switched on
+def G(eng, act, fx=False, xc="", ms=3800, keys=""):
+    xc = "-DLT_ACTIVE=%d " % act + ("" if "NSRC" in xc else "-DLT_NOMOD ") + xc + " " + ("" if fx else "-DLT_FXMASK=0 ")
+    return V(xc, ms=ms, keys=keys, eng=E(*eng), fx=FX4 if fx else None)
+S3 = ("VAC", "MOOG", "PROPH", "MOOG"); S21 = ("MOOG", "PROPH", "DRUM", "MOOG"); S12 = ("PROPH", "MOOG", "DRUM", "DRUM"); # the Minimoog (track 2, selected at boot) is played by hand: single notes repeated, held notes, chords; Vactrol and drums run on their own (arp / step clock, a little modulation)
+PLAYM = ",".join(["1500-1800:n7", "1900-2200:n9", "2300-2600:n12", "2700-2800:n7", "2900-3000:n7", "3100-3200:n7", "3300-3400:n7", "3500-3600:n7",
+                  "3700-4700:n7", "3750-4750:n12", "3800-4800:n14", "3850-4800:n16", "4900-4950:n5", "5000-5050:n8", "5100-5150:n10", "5200-5250:n13", "5300-5350:n5", "5400-5450:n8"])
+def M(xc="", fx=False, ms=6000, eng=None):
+    return G(eng or VMD, 5, fx, "-DLT_NSRC=2 -DLT_SEL=1 " + xc, ms=ms, keys=PLAYM)
+VMD = ("VAC", "MOOG", "DRUM", "PROPH"); S3B = ("MOOG", "PROPH", "MOOG", "PROPH")
 SAVE = "3000:SAVE,3700:SAVE"
 VARIANTS = {
     # idle reference: the normal firmware (no LOADTEST), same key script -> UI cost without audio load
@@ -71,18 +81,49 @@ VARIANTS = {
     "eng_mod":     V(NOGOV + "-DLT_FXMASK=0"),                            # + the 24 mod routes
     "fx_budget":   V(NOGOV),                                              # + the chains, admitted by the static FX_BUDGET of NOTES-H
     "fx_nobudget": V(NOGOV + "-DFX_BUDGET=1000000"),                      # all 16 slots running
-    "drum4":       V(NOGOV, eng=E("DRUM", "DRUM", "DRUM", "DRUM")),
+    "drum4":       V(NOGOV, eng=E("MOOG", "MOOG", "DRUM", "DRUM")),
     "moog4":       V(NOGOV, eng=E("MOOG", "MOOG", "MOOG", "MOOG")),
     "proph4":      V(NOGOV, eng=E("PROPH", "PROPH", "PROPH", "PROPH")),
     "full_ui":     V(NOGOV, ms=UI_MS, keys=UI, snap="1500,3000,4500"),    # the worst case measured, front panel driven
     # -- with the governor (the shipped firmware) --
     "gov_fx_budget":   V(),
     "gov_fx_nobudget": V("-DFX_BUDGET=1000000"),
-    "gov_drum4":       V(eng=E("DRUM", "DRUM", "DRUM", "DRUM")),
+    "gov_drum4":       V(eng=E("MOOG", "MOOG", "DRUM", "DRUM")),
     "gov_moog4":       V(eng=E("MOOG", "MOOG", "MOOG", "MOOG")),
     "gov_full_ui":     V(ms=UI_MS, keys=UI, snap="1500,3000,4500"),
-    "gov_drum4_ui":    V(ms=UI_MS, keys=UI, eng=E("DRUM", "DRUM", "DRUM", "DRUM")),
+    "gov_drum4_ui":    V(ms=UI_MS, keys=UI, eng=E("MOOG", "MOOG", "DRUM", "DRUM")),
     "gov_nobudget_ui": V("-DFX_BUDGET=1000000", ms=UI_MS, keys=UI),
+    # -- glitch hunt (NOTES-M): three tracks play, the fourth is silent; chain: none / OD+PH+FL+CH; the shipped firmware (gov) and the raw one --
+    "g3syn":      G(S3, 7), "g3syn_fx": G(S3, 7, True), "g3synB_fx": G(S3B, 7, True),
+    "g21":        G(S21, 7), "g21_fx": G(S21, 7, True),
+    "g12":        G(S12, 7), "g12_fx": G(S12, 7, True),
+    "r3syn_fx":   G(S3, 7, True, NOGOV), "r21_fx": G(S21, 7, True, NOGOV), "r12_fx": G(S12, 7, True, NOGOV),
+    "g12_noarp":  G(S12, 7, True, "-DLT_NOARP"), "g3syn_noseq": G(S3, 7, True, "-DLT_NOSEQ"),
+    # the user's case: Vactrol + Minimoog + drums (one track each), the fourth silent
+    "u_vmd":      G(VMD, 7), "u_vmd_fx": G(VMD, 7, True), "u_vmd_noseq": G(VMD, 7, True, "-DLT_NOSEQ"), "u_vmd_noarp": G(VMD, 7, True, "-DLT_NOARP"),
+    "u_vmd_mod":  G(VMD, 7, False, "-DLT_NSRC=2", keys=""), "u_vmd_fx_mod": G(VMD, 7, True, "-DLT_NSRC=2"),
+    "ur_vmd_mod": G(VMD, 7, False, NOGOV + "-DLT_NSRC=2"),
+    "dr1": G(("MOOG", "MOOG", "DRUM", "MOOG"), 4, False, NOGOV, ms=3000), "ph1c": G(("MOOG", "PROPH", "MOOG", "MOOG"), 2, False, NOGOV + "-DLT_CHORD=5", ms=3000), "ph3c": G(("MOOG", "PROPH", "MOOG", "MOOG"), 2, False, NOGOV + "-DLT_CHORD=3", ms=3000), "ph1cm": G(("MOOG", "PROPH", "MOOG", "MOOG"), 2, False, NOGOV + "-DLT_CHORD=1", ms=3000), "ph1": G(("MOOG", "PROPH", "MOOG", "MOOG"), 2, False, NOGOV, ms=3000),
+    "mg1": G(("MOOG", "MOOG", "MOOG", "MOOG"), 2, False, NOGOV, ms=3000),
+    # M: the new worst cases: two drum tracks (six voices each), Prophet tracks holding a 5-note chord (all their voices sound), heavy chains, 24 mod routes
+    "wc": V("-DLT_CHORD=5", eng=E("PROPH", "PROPH", "DRUM", "DRUM")), "wc_raw": V(NOGOV + "-DLT_CHORD=5", eng=E("PROPH", "PROPH", "DRUM", "DRUM")),
+    "wc_ui": V("-DLT_CHORD=5", ms=UI_MS, keys=UI, snap="1500,3000,4500", eng=E("PROPH", "PROPH", "DRUM", "DRUM")),
+    "wm": V("-DLT_CHORD=5", eng=E("VAC", "MOOG", "DRUM", "DRUM")), "wm_raw": V(NOGOV + "-DLT_CHORD=5", eng=E("VAC", "MOOG", "DRUM", "DRUM")),
+    "wp4_raw": V(NOGOV + "-DLT_CHORD=5", eng=E("PROPH", "PROPH", "PROPH", "PROPH")), "wp4": V("-DLT_CHORD=5", eng=E("PROPH", "PROPH", "PROPH", "PROPH")),
+    "wc_nofx": V(NOGOV + "-DLT_CHORD=5 -DLT_FXMASK=0 -DLT_NOMOD", eng=E("PROPH", "PROPH", "DRUM", "DRUM")),
+    **{f"dv{v}": G(("MOOG", "MOOG", "DRUM", "MOOG"), 4, False, NOGOV + f"-DLT_DLANES={1 << v}", ms=2500) for v in range(6)},       # one drum voice at a time: its cost
+    **{f"umb{b}": M(f"-DLT_BURN={b * 696}", True) for b in (0, 20, 40, 60)},      # the user's case (Vactrol + hand-played Minimoog + drums, default chains) on a machine slower by b % of a block
+    **{f"umbn{b}": M(f"-DLT_BURN={b * 696} " + NOGOV, True) for b in (0, 20, 40, 60)},
+    **{f"wcb{b}": V(f"-DLT_CHORD=5 -DLT_BURN={b * 696}", eng=E("PROPH", "PROPH", "DRUM", "DRUM")) for b in (0, 20)},
+    # M: the polyphonic Prophet alone (track 2, notes played from the keys): 5-note chord with staggered releases, then a sixth key (steal)
+    "pchord": G(("MOOG", "PROPH", "MOOG", "MOOG"), 2, False, "-DLT_NSRC=0 -DLT_SEL=1 -DLT_NOARP -DLT_NOSEQ -DLT_NOMOD", ms=6500,
+                keys="1000-2500:n0,1000-2800:n2,1000-3100:n4,1000-3400:n7,1000-3700:n9,4300-5900:n0,4300-5900:n2,4300-5900:n4,4300-5900:n7,4300-5900:n9,5000-5500:n11"),
+    # M: variants of the drum engine (NOTES-M): lanes 0-3 only (B), and the full worst case Minimoog + 5-note Prophet + two drum tracks + chains + 24 routes (wf, governed)
+    "drB": G(("MOOG", "MOOG", "DRUM", "MOOG"), 4, False, NOGOV + "-DLT_DLANES=15", ms=3000),
+    "wf": V("-DLT_CHORD=5", eng=E("MOOG", "PROPH", "DRUM", "DRUM")), "wfB": V("-DLT_CHORD=5 -DLT_DLANES=15", eng=E("MOOG", "PROPH", "DRUM", "DRUM")),
+    "wf_raw": V(NOGOV + "-DLT_CHORD=5", eng=E("MOOG", "PROPH", "DRUM", "DRUM")), "wfB_raw": V(NOGOV + "-DLT_CHORD=5 -DLT_DLANES=15", eng=E("MOOG", "PROPH", "DRUM", "DRUM")),
+    "um": M(), "um_fx": M(fx=True), "umr": M(NOGOV), "umr_fx": M(NOGOV, True),
+    "ur_vmd_fx":  G(VMD, 7, True, NOGOV), "ur_vmd": G(VMD, 7, False, NOGOV),
     "gov_save_ui":     V(ms=6500, keys=SAVE),                              # a preset SAVE (flash erase + program with the interrupts off) under load
     "raw_save_ui":     V(NOGOV, ms=6500, keys=SAVE),
 }
@@ -106,7 +147,7 @@ def build(name):
 def start(name):
     v = VARIANTS[name]
     d, addr = build(name)
-    cmd = [EMU, "--fwsc", "fw.fwsc", "--ms", str(v["ms"]), "--wav", "out.wav", "--dump", addr, "103"]
+    cmd = [EMU, "--fwsc", "fw.fwsc", "--ms", str(v["ms"]), "--wav", "out.wav", "--dump", addr, "423"]
     if v["keys"]: cmd += ["--keys", v["keys"]]
     if v["snap"]: cmd += ["--snap", v["snap"]]
     t0 = time.time()
@@ -126,6 +167,7 @@ def parse(d):
         if m: w += [int(x, 16) for x in m.group(1).split()]
     if len(w) < 103 or w[8] != 0x4A504552: return None
     r = dict(zip(NAMES, w))
+    r["trace"] = [x for v in w[103:423] for x in (v & 0xFFFF, v >> 16)] if len(w) >= 423 else []
     r["hist"] = w[44:68]; r["lt"] = w[68:76]
     r["te_sum"] = w[76:80]; r["te_max"] = w[80:84]; r["tf_sum"] = w[84:88]; r["tf_max"] = w[88:92]; r["gov"] = w[92:100]; r["alloc"] = w[100:103]
     return r
@@ -142,8 +184,19 @@ def wav_stats(d):
         if b[k].any() and (b[k] == b[k - 2]).all(): rep += 1
     nz = np.nonzero(b.any(axis=1))[0]
     onset = int(nz[0]) if len(nz) else -1
+    x = a[:, 0].astype(float); d2 = np.abs(np.diff(x, 2))
+    sc = np.convolve(d2, np.ones(257) / 257, "same")
+    fl = np.nonzero((d2 > 6 * sc + 700) & (np.arange(len(d2)) > 128 * 40))[0]       # a second-difference spike far above the local average (after the start-up)
+    ev = []
+    for i in fl:
+        if not ev or i - ev[-1][0] > 16: ev.append([int(i), float(d2[i]), float(sc[i])])
+    clicks = len(ev); atb = sum(1 for e in ev if (e[0] + 1) % 128 in (0, 1, 2, 127))
+    top = sorted(ev, key=lambda e: -e[1] / (e[2] + 1))[:4]
+    wl = 4410; wr = [float(np.sqrt((x[i:i + wl] ** 2).mean())) for i in range(0, len(x) - wl, wl)]
+    wr2 = wr[8:]; med = float(np.median(wr2)) if wr2 else 0.0
+    holes = sum(1 for r in wr2 if r < 0.25 * med)                                   # 100 ms windows far under the median: a hole in the sound
     peak = int(np.abs(a).max()); rms = float(np.sqrt((a[nb // 4 * 128:].astype(float) ** 2).mean()))
-    return dict(frames=n, blocks=nb, repeated=rep, peak=peak, rms=round(rms, 1), first_nonzero_block=onset)
+    return dict(win_rms_min=round(min(wr2), 1) if wr2 else 0, win_rms_med=round(med, 1), holes=holes, clicks=clicks, clicks_at_block_edge=atb, click_top=[(round(e[0] / 44100, 3), int(e[1]), int(e[2])) for e in top], frames=n, blocks=nb, repeated=rep, peak=peak, rms=round(rms, 1), first_nonzero_block=onset)
 
 def report(name, wall=None):
     d = os.path.join(OUT, name)
@@ -176,6 +229,9 @@ def report(name, wall=None):
     if r["gov"][6] and r["wav"] and name == "lat_idle": print(f"   latency check (silent firmware, drums selected, first note): the key was taken by ISR run {r['gov'][6]} ({r['gov'][7]/24:.0f} us after the scan saw it); the first non-silent block of the wav is block {r['wav']['first_nonzero_block']} (run R fills wav block R+1 if the half-buffer chain is as described)")
     if r.get("gov"): print(f"   governor: slots bypassed {r['gov'][0]}, drum-cap steps {r['gov'][1]}, voices stolen {r['gov'][2]}, lowest cap {r['gov'][3]}, cap at the end {r['gov'][4]}")
     if r["alloc"][0]: print(f"   fx_alloc (a chain's effects changed while playing): {r['alloc'][0]} calls, worst {r['alloc'][1]:,} ticks ({100*r['alloc'][1]/P:.0f} % of a block), avg {r['alloc'][2]//r['alloc'][0]:,}")
+    if r.get("trace") and any(r["trace"]):
+        tr = [x * 4 / P * 100 for x in r["trace"] if x]
+        print("   time series (mean % of a block per 20 blocks, from block 200): " + " ".join(f"{sum(tr[i:i+20])/len(tr[i:i+20]):.0f}" for i in range(0, len(tr), 20)) + f"   max {max(tr):.0f} %")
     print(f"   setup: routes {r['lt'][0]}, bpm {r['lt'][1]}, engines 0x{r['lt'][2]:04x}")
     return r
 

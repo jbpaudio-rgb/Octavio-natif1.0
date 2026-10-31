@@ -13,6 +13,7 @@ typedef struct {
     uint8_t held[8], nheld;
     uint8_t list[256];
     uint16_t nlist, i, cur;
+    int16_t last;                                         /* the note the arpeggiator is sounding on a polyphonic engine (-1: none) */
     int32_t cnt, goff;
     uint32_t down[4];                                     /* bitmap of the notes held (0..127) */
 } arp_t;
@@ -44,13 +45,21 @@ static void eng_on(int t, int note, int vel15)
     case ENG_DRUM: drum_on(t, note, vel15); break;
     }
 }
-static void eng_off(int t)
+static void eng_off(int t)                                /* every voice of the track into release */
 {
     switch (TK[t].eng) {
     case ENG_VAC: if (t == vac_owner) vac_note_off(); break;
     case ENG_MOOG: moog_off(t); break;
     case ENG_PROPH: proph_off(t); break;
     }
+}
+static int8_t sq_note[NTRK] = { -1, -1, -1, -1 };          /* the note the step sequencer sounds on a polyphonic engine */
+static void arp_rel(int t)                                /* the arpeggiator's note ends: on the polyphonic Prophet only its own voice */
+{
+    arp_t *a = &TK[t].a;
+    if (TK[t].eng == ENG_PROPH) { if (a->last >= 0) proph_off_note(t, a->last); }
+    else eng_off(t);
+    a->last = -1;
 }
 
 void voices_init(void)
@@ -59,7 +68,7 @@ void voices_init(void)
     fx_defaults();
     mod_defaults();
     for (t = 0; t < NTRK; t++) {
-        TK[t].lvl = 32768;
+        TK[t].lvl = 32768; TK[t].a.last = -1;
         TK[t].eng = (uint8_t)(t == 0 ? ENG_VAC : t == 1 ? ENG_MOOG : t == 2 ? ENG_PROPH : ENG_DRUM);
         TK[t].vol = 26214;
         for (i = 0; i < ARP_COUNT; i++) TK[t].a.p[i] = ARP_DEF[i];
@@ -88,6 +97,7 @@ void voices_set_engine(int t, int e)
 {
     t &= 3;
     if (e == TK[t].eng) return;
+    if (e == ENG_DRUM && t < DRUM_T0) return;              /* only tracks 3 and 4 can run the drum engine (2 drum machines in all) */
     eng_off(t);
     if (e == ENG_VAC) {                                    /* the Vactrol moves to this track */
         eng_off(vac_owner);
@@ -120,7 +130,7 @@ void voices_play(int on)
     int t;
     seq_on = (uint8_t)(on != 0);
     seq_cnt = 0; seq_st = 0; seq_cur = -1; seq_nq = 0;
-    for (t = 0; t < NTRK; t++) sq_off[t] = 0;
+    for (t = 0; t < NTRK; t++) { sq_off[t] = 0; sq_note[t] = -1; }
     if (!on) for (t = 0; t < NTRK; t++) if (!TK[t].a.p[ARP_MODE] && !(TK[t].a.down[0] | TK[t].a.down[1] | TK[t].a.down[2] | TK[t].a.down[3])) eng_off(t);
 }
 static int rnd16u(void) { return c_rand15() + 32768; }       /* 0..65535 */
@@ -166,7 +176,9 @@ static void seq_synth(int t, int cur, int32_t sl)
     if (!((SQG[t] >> cur) & 1u)) { sq_off[t] = 0; return; }
     note = 60 + 12 * ctrl_octave_val() + seq_pitch(t, cur);
     note = note < 0 ? 0 : note > 127 ? 127 : note;
+    if (TK[t].eng == ENG_PROPH && sq_note[t] >= 0) proph_off_note(t, sq_note[t]);
     eng_on(t, note, 32767);
+    sq_note[t] = (int8_t)note;
     sq_off[t] = (int32_t)(((int64_t)sl * sq_glen[t]) >> 15) + 1;
 }
 static void seq_fire(void)
@@ -203,7 +215,8 @@ static void seq_tick(int n)
     }
     for (k = 0; k < NTRK; k++) if (sq_off[k] > 0 && (sq_off[k] -= n) <= 0) {
         sq_off[k] = 0;
-        if (!(TK[k].a.down[0] | TK[k].a.down[1] | TK[k].a.down[2] | TK[k].a.down[3])) eng_off(k);       /* noOff() unless a key is held */
+        if (TK[k].eng == ENG_PROPH) { if (sq_note[k] >= 0) proph_off_note(k, sq_note[k]); sq_note[k] = -1; }       /* polyphonic: only the step's own voice */
+        else if (!(TK[k].a.down[0] | TK[k].a.down[1] | TK[k].a.down[2] | TK[k].a.down[3])) eng_off(k);       /* noOff() unless a key is held */
     }
     seq_cnt -= n;
     if (seq_cnt <= 0) { seq_cnt += (FS * 15) / bpm_v; seq_fire(); }
@@ -249,7 +262,7 @@ static void arp_tick(int t, int n)
     if (!a->p[ARP_MODE] || !a->nlist) return;
     if (a->goff > 0) {
         a->goff -= n;
-        if (a->goff <= 0) eng_off(t);
+        if (a->goff <= 0) arp_rel(t);
     }
     a->cnt -= n;
     if (a->cnt > 0) return;
@@ -262,12 +275,14 @@ static void arp_tick(int t, int n)
     {
         int pat = a->p[ARP_PAT], vel, note, gt, pass;
         pass = PATS[pat][k % PATN[pat]] && ((c_rand32() >> 8) % 1000u) < (uint32_t)a->p[ARP_CHANCE];
-        if (!pass) { eng_off(t); a->goff = 0; return; }
+        if (!pass) { arp_rel(t); a->goff = 0; return; }
         note = a->p[ARP_MODE] == 5 ? a->list[(c_rand32() >> 8) % a->nlist] : a->list[k % a->nlist];
         vel = 32767;
         if (a->p[ARP_ACC] > 0 && k % 4 != 0) vel = vel * (1000 - a->p[ARP_ACC] * 55 / 100) / 1000;
         if (a->p[ARP_HUM]) vel -= (int32_t)(((c_rand32() >> 16) * (uint32_t)a->p[ARP_HUM] / 1000u) >> 1);
+        if (TK[t].eng == ENG_PROPH && a->last >= 0) proph_off_note(t, a->last);       /* the step before ends as this one starts (its release tail overlaps) */
         eng_on(t, note + a->p[ARP_TR], vel);
+        a->last = (int16_t)(note + a->p[ARP_TR]);
         gt = a->p[ARP_GATE];
         if (gt >= 980) a->goff = 0;
         else a->goff = (iv * (gt < 40 ? 40 : gt)) / 1000;
@@ -337,7 +352,8 @@ void voices_note(int t, int note, int on)
     } else {
         a->down[w] &= ~bit;
         if (!a->p[ARP_MODE]) {
-            if (!(a->down[0] | a->down[1] | a->down[2] | a->down[3])) eng_off(t);
+            if (TK[t].eng == ENG_PROPH) proph_off_note(t, note);                 /* polyphonic: this key's voice only */
+            else if (!(a->down[0] | a->down[1] | a->down[2] | a->down[3])) eng_off(t);
             return;
         }
         if (!a->p[ARP_LATCH]) {
@@ -347,7 +363,7 @@ void voices_note(int t, int note, int on)
                 a->nheld--;
             }
             varp_build(a);
-            if (!a->nheld) { eng_off(t); a->goff = 0; }
+            if (!a->nheld) { arp_rel(t); a->goff = 0; }
         }
     }
 }
@@ -398,38 +414,81 @@ uint32_t voices_gate_mask(void)
 }
 
 #ifndef NO_GOV
-static int gov_drum_count(void)
+/* Voice governor (NOTES-M): with no effect left to bypass, the voices sounding in all are capped, drum voices (dv_cap, all drum tracks) and Prophet voices (pv_cap,
+ * all Prophet tracks) alike: the class that costs most right now (voices sounding x measured ticks per voice) loses a voice first, so neither is taken before
+ * the other without a reason.  A taken voice is never cut: it fades out over the next block (kill).  They come back one at a time while the load is under GOV_ADMIT. */
+static int gov_nd(void)
 {
     int t, v, n = 0;
-    for (t = 0; t < NTRK; t++) if (TK[t].eng == ENG_DRUM) for (v = 0; v < 6; v++) n += DRM[t].V[v].on;
+    for (t = DRUM_T0; t < NTRK; t++) if (TK[t].eng == ENG_DRUM) for (v = 0; v < 6; v++) n += DRM[t - DRUM_T0].V[v].on && !DRM[t - DRUM_T0].V[v].kill;
     return n;
 }
-static void gov_drums(void)                          /* the drum voices sounding in all drum tracks are capped while the load is over the ceiling (fxstate.c governor) */
+static int gov_np(void)
 {
-    int t, v, n = gov_drum_count();
-    if (gov_peak > GOV_SHED && !gov_wait && !(fx_run[0] | fx_run[1] | fx_run[2] | fx_run[3]) && n > 2) {       /* no effect left to bypass: fewer voices */
-        int cut = (int)((gov_peak - GOV_AIM + dv_cost - 1u) / dv_cost);
-        dv_cap = n - cut < 2 ? 2 : n - cut;
-        gov_wait = GOV_WAIT; gov_cool = GOV_COOL / 4u; gov.voices++;
-        if (!gov.cap_min || (uint32_t)dv_cap < gov.cap_min) gov.cap_min = (uint32_t)dv_cap;
-    } else if (dv_cap < GOV_DRUMS && !gov_cool && gov_peak + dv_cost * 3u / 2u <= GOV_ADMIT && !(perf.blocks & 31u)) dv_cap++;
-    while (n > dv_cap) {                              /* steal the quietest tail (V->e: the peak follower of the voice); among equals the track with most voices sounding, then the oldest */
-        dvoice_t *q = 0;
-        int nt[NTRK], qn = 0;
-        for (t = 0; t < NTRK; t++) { nt[t] = 0; if (TK[t].eng == ENG_DRUM) for (v = 0; v < 6; v++) nt[t] += DRM[t].V[v].on; }
-        for (t = 0; t < NTRK; t++) if (TK[t].eng == ENG_DRUM) for (v = 0; v < 6; v++) {
-            dvoice_t *V = &DRM[t].V[v];
-            if (!V->on) continue;
-            if (!q || V->e < q->e || (V->e == q->e && (nt[t] > qn || (nt[t] == qn && V->t > q->t)))) { q = V; qn = nt[t]; }
-        }
-        q->on = 0; n--; gov.steals++;
+    int t, n = 0;
+    for (t = 0; t < NTRK; t++) if (TK[t].eng == ENG_PROPH) n += proph_nvoices(t);
+    return n;
+}
+static void gov_kill_drum(void)                       /* the quietest sounding drum voice (V->e: the peak follower); among equals the one of the track with most voices, then the oldest */
+{
+    dvoice_t *q = 0;
+    int t, v, nt[NDRUM], qn = 0;
+    for (t = 0; t < NDRUM; t++) { nt[t] = 0; for (v = 0; v < 6; v++) nt[t] += DRM[t].V[v].on && !DRM[t].V[v].kill; }
+    for (t = 0; t < NDRUM; t++) if (TK[t + DRUM_T0].eng == ENG_DRUM) for (v = 0; v < 6; v++) {
+        dvoice_t *V = &DRM[t].V[v];
+        if (!V->on || V->kill) continue;
+        if (!q || V->e < q->e || (V->e == q->e && (nt[t] > qn || (nt[t] == qn && V->t > q->t)))) { q = V; qn = nt[t]; }
     }
+    if (q) { q->kill = DRUM_FADE; gov.steals++; }
+}
+static int gov_shed_prophet(void)                     /* one Prophet voice goes: the track that has most voices loses its quietest */
+{
+    int t, bt = -1, best = 0;
+    for (t = 0; t < NTRK; t++) if (TK[t].eng == ENG_PROPH && proph_nvoices(t) > best) { best = proph_nvoices(t); bt = t; }
+    return bt >= 0 && proph_shed_one(bt);
+}
+static int gov_resume_prophet(void)                   /* a held note the governor suspended comes back (the track with most suspended notes first) */
+{
+    int t, bt = -1, best = 0;
+    for (t = 0; t < NTRK; t++) if (TK[t].eng == ENG_PROPH && proph_nsuspended(t) > best) { best = proph_nsuspended(t); bt = t; }
+    return bt >= 0 && proph_resume_one(bt);
+}
+static void gov_voices(void)
+{
+    int nd = gov_nd(), np = gov_np();
+    if (gov_n >= GOV_SETTLE && ((gov_peak > GOV_SHED && !gov_wait) || gov_last > GOV_EMERG) && !(fx_run[0] | fx_run[1] | fx_run[2] | fx_run[3]) && nd + np > 2) {       /* no effect left to bypass: fewer voices */
+        uint32_t over = (gov_last > gov_peak ? gov_last : gov_peak) - GOV_AIM, freed = 0;
+        int guard;
+        for (guard = 0; guard < 24 && freed < over && nd + np > 2; guard++) {
+            int pro = np > 0 && (nd < 2 || (uint32_t)np * pv_cost >= (uint32_t)nd * dv_cost);       /* the class that costs most right now loses a voice */
+            if (pro) { np--; pv_cap = np < pv_cap ? np : pv_cap; freed += pv_cost; }
+            else if (nd > 0) { nd--; dv_cap = nd < dv_cap ? nd : dv_cap; freed += dv_cost; }
+            else break;
+        }
+        gov_mark(1, &gov_vcool, GOV_COOL / 8u);
+        gov.voices++;
+        if (!gov.cap_min || (uint32_t)(dv_cap + pv_cap) < gov.cap_min) gov.cap_min = (uint32_t)(dv_cap + pv_cap);
+    } else if (!gov_vcool && !(perf.blocks & 15u)) {                              /* the class that lost more comes back first */
+        int fd = dv_cap * 100 / GOV_DRUMS, fp = pv_cap * 100 / GOV_PROPH;
+        if (fp <= fd && pv_cap < GOV_PROPH && gov_peak + pv_cost * 3u / 2u <= GOV_ADMIT) pv_cap++;
+        else if (fd < fp && dv_cap < GOV_DRUMS && gov_peak + dv_cost * 3u / 2u <= GOV_ADMIT) dv_cap++;
+    }
+    nd = gov_nd(); np = gov_np();
+    while (nd > dv_cap) { gov_kill_drum(); nd--; }
+    while (np > pv_cap && gov_shed_prophet()) { gov.steals++; np--; }
+    while (np < pv_cap && gov_peak + pv_cost <= GOV_ADMIT && !gov_vcool && gov_resume_prophet()) np++;          /* a suspended note comes back, one per block, while the load allows */
 }
 #endif
 void fx_track(int t, int32_t *x, int n, int act);          /* fxdsp.c: the track's chain, in place */
 int fx_awake(int t);
+#ifdef LT_BURN                                  /* load test: a busy wait of LT_BURN ticks in every audio block = a machine that is slower by that much (NOTES-M) */
+static void lt_burn(void) { uint32_t t0 = PERF_NOW(); while (PERF_NOW() - t0 < (uint32_t)(LT_BURN)) ; }
+#endif
 void voices_render(int32_t *out, int n)
 {
+#ifdef LT_BURN
+    lt_burn();
+#endif
     int32_t tmp[128];
     int t, i;
     int64_t acc[128];
@@ -437,7 +496,7 @@ void voices_render(int32_t *out, int n)
     bpm_v = PV[P_BPM] < 20 ? 20 : PV[P_BPM] > 300 ? 300 : PV[P_BPM];      /* the TEMPO page */
     seq_tick(n);
 #ifndef NO_GOV
-    gov_drums();                                /* after the step clock: this block's hits count */
+    gov_voices();                               /* after the step clock: this block's hits count */
 #endif
     for (t = 0; t < NTRK; t++) {
         int act = 1;
@@ -451,12 +510,21 @@ void voices_render(int32_t *out, int n)
         switch (TK[t].eng) {
         case ENG_VAC: if (t != vac_owner) act = 0; else vac_render(tmp, n); break;
         case ENG_MOOG: if (!moog_active(t)) act = 0; else moog_render(t, tmp, n); break;
-        case ENG_PROPH: if (!proph_active(t)) act = 0; else proph_render(t, tmp, n); break;
+        case ENG_PROPH: if (!proph_active(t)) act = 0; else {
+#ifndef NO_GOV
+                int nv = proph_nvoices(t);
+                uint32_t tp = PERF_NOW();
+                proph_render(t, tmp, n);
+                if (nv > 0 && PERF_NOW() != 0u) { uint32_t c = (PERF_NOW() - tp) / (uint32_t)nv; pv_cost = (pv_cost * 7u + c) >> 3; }      /* what a Prophet voice costs on this device (smoothed) */
+#else
+                proph_render(t, tmp, n);
+#endif
+            } break;
         case ENG_DRUM: if (!drum_active(t)) act = 0; else {
 #ifndef NO_GOV
                 int nv = 0, vv;
                 uint32_t td = PERF_NOW();
-                for (vv = 0; vv < 6; vv++) nv += DRM[t].V[vv].on;
+                for (vv = 0; vv < 6; vv++) nv += DRM[t - DRUM_T0].V[vv].on;
                 drum_render(t, tmp, n);
                 if (nv > 1 && PERF_NOW() != 0u) { uint32_t c = (PERF_NOW() - td) / (uint32_t)nv; dv_cost = (dv_cost * 7u + c) >> 3; }      /* what a drum voice costs on this device (smoothed) */
 #else

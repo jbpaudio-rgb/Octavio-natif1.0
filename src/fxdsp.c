@@ -469,6 +469,7 @@ static const fxfn_t FXF[16] = { fx0, fx1, fx2, fx3, fx4, fx5, fx6, fx7, fx8, fx9
 /* perf.fx_max / fx_last: timer ticks spent in the four chains of one audio block (worst, last) */
 static int16_t FEFF[FX_NTRK][FX_NP];                    /* effective parameters: knobs + mod offsets, rebuilt each block */
 static uint8_t fx_ready[FX_NTRK], fx_any[FX_NTRK];
+static uint8_t fx_prev[FX_NTRK];                        /* bit q: slot q's effect was processed in the previous block (a slot that starts or stops is cross-faded with the dry signal over the block: no click) */
 static uint16_t fx_idle[FX_NTRK];                       /* consecutive silent blocks (engine off, chain output ~ 0) */
 #define FX_IDLE_BLOCKS 720                              /* 2.1 s: longer than the longest delay line (1.25 s) */
 static uint32_t fx_blk_ticks;
@@ -532,7 +533,8 @@ void fx_begin(void)                                     /* once per audio block,
 #ifndef NO_PERF
             uint32_t ta = fm1_ticks();
 #endif
-            fx_alloc(t); fx_ready[t] = 1; fx_idle[t] = 0; fx_run[t] = 0;
+            { uint32_t tq = fm1_ticks(); fx_alloc(t); fx_alloc_blk += fm1_ticks() - tq; }
+            fx_ready[t] = 1; fx_idle[t] = 0; fx_run[t] = 0; fx_prev[t] = 0;
 #ifndef NO_PERF
             if (perf.blocks > PERF_WARM) { uint32_t d = fm1_ticks() - ta; perf.alloc_n++; perf.alloc_sum += d; if (d > perf.alloc_max) perf.alloc_max = d; }
 #endif
@@ -551,15 +553,15 @@ void fx_admit(void)                                     /* once per audio block,
                 else { fx_run[t] &= (uint8_t)~(1u << q); fx_off[t] &= (uint8_t)~(1u << q); }
             }
 #ifndef NO_GOV
-        if (gov_peak > GOV_SHED && !gov_wait && used) {  /* overload (measured): bypass the last running slots (track 4 slot 4 first) until about GOV_AIM is freed */
-            uint32_t over = gov_peak - GOV_AIM, freed = 0;
+        if (gov_n >= GOV_SETTLE && ((gov_peak > GOV_SHED && !gov_wait) || gov_last > GOV_EMERG) && used) {  /* overload (measured): bypass the last running slots (track 4 slot 4 first) until about GOV_AIM is freed; one very long block: now */
+            uint32_t over = (gov_last > gov_peak ? gov_last : gov_peak) - GOV_AIM, freed = 0;
             for (t = FX_NTRK - 1; t >= 0 && freed < over; t--)
                 for (q = FX_NSLOT - 1; q >= 0 && freed < over; q--)
                     if (fx_run[t] >> q & 1) {
                         freed += GOV_UNIT(FX_COST[FXT[t].ord[q]]);
                         fx_run[t] &= (uint8_t)~(1u << q); fx_off[t] |= (uint8_t)(1u << q); fx_refused++; gov.fx++;
                     }
-            gov_wait = GOV_WAIT; gov_cool = GOV_COOL;
+            gov_mark(0, &gov_cool, GOV_COOL);
         }
 #endif
         for (t = 0; t < FX_NTRK; t++)
@@ -577,8 +579,8 @@ void fx_admit(void)                                     /* once per audio block,
     for (t = 0; t < FX_NTRK; t++) {
         int any = 0;
         for (q = 0; q < FX_NSLOT; q++) if (fx_run[t] >> q & 1) any = 1;
-        fx_any[t] = (uint8_t)any;
-        if (!any) fx_idle[t] = FX_IDLE_BLOCKS;
+        fx_any[t] = (uint8_t)(any || fx_prev[t]);       /* a slot that just stopped still runs one block, cross-faded out */
+        if (!any && !fx_prev[t]) fx_idle[t] = FX_IDLE_BLOCKS;
     }
 }
 void fx_mod_t(int t, int k, int32_t xq)                 /* destination knob k (0..FX_NP-2), offset xq (Q15 of the knob's range): on track t's own value */
@@ -619,6 +621,7 @@ void fx_track(int t, int32_t *x, int n, int act)        /* the chain of track t,
     }
 #endif
     if (!fx_any[t]) {
+        fx_prev[t] = 0;
 #ifdef FX_TEST
         if (t == 0) for (i = 0; i < n; i++) fx_wet_tap[i] = x[i];
 #endif
@@ -626,9 +629,25 @@ void fx_track(int t, int32_t *x, int n, int act)        /* the chain of track t,
     }
     t0 = fm1_ticks();
     FV = FEFF[t];
-    for (q = 0; q < FX_NSLOT; q++) {
-        int f = FXT[t].ord[q];
-        if ((fx_run[t] >> q & 1) && FEFF[t][FX_FIRST[f] + FX_P[f].n - 1 - P_F0DRIVE] > 0) FXF[f](s, x, n);
+    {
+        uint8_t now = 0;
+        for (q = 0; q < FX_NSLOT; q++) {
+            int f = FXT[t].ord[q];
+            int want = (fx_run[t] >> q & 1) && FEFF[t][FX_FIRST[f] + FX_P[f].n - 1 - P_F0DRIVE] > 0, had = fx_prev[t] >> q & 1;
+            if (!want && !had) continue;
+            if (want == had) FXF[f](s, x, n);
+            else {                                              /* the governor / the budget / the Mix knob switched the slot: dry -> wet (start) or wet -> dry (stop) over this block */
+                int32_t dry[128], rq = 65536 / n;
+                for (i = 0; i < n; i++) dry[i] = x[i];
+                FXF[f](s, x, n);
+                for (i = 0; i < n; i++) {
+                    int32_t w = want ? (i + 1) * rq : 65536 - (i + 1) * rq;
+                    x[i] = dry[i] + (int32_t)(((int64_t)(x[i] - dry[i]) * w) >> 16);
+                }
+            }
+            if (want) now |= (uint8_t)(1u << q);
+        }
+        fx_prev[t] = now;
     }
     if (act) fx_idle[t] = 0;
     else {

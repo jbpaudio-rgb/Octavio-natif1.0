@@ -34,6 +34,9 @@ struct {
     uint32_t te_sum[4], te_max[4], tf_sum[4], tf_max[4]; /* 76..91: per track, warm blocks: ticks of the engine's render / of the track's effect chain (sum, worst) */
     uint32_t gov[8];                                     /* 92..99: governor: slots bypassed, drum-cap steps, voices stolen, lowest cap, cap now, blocks of cool-down left, ISR run (perf.blocks) that took the first note key, its scan-to-block ticks */
     uint32_t alloc_n, alloc_max, alloc_sum;              /* 100..102: fx_alloc calls (a chain's order changed) after the warm-up, worst and total ticks */
+#ifdef LOADTEST
+    uint16_t trace[640];                                 /* 103..422: ticks / 4 of the audio blocks 200 .. 839 (NOTES-M: the time series, to see what the governor does) */
+#endif
 #endif
 } perf;
 #ifdef FM1_TICKS_PER_US
@@ -58,6 +61,9 @@ static void perf_audio(uint32_t t_in, uint32_t d, uint32_t fxt)       /* end of 
     if (perf.blocks > PERF_WARM) {
         perf.nw++; perf.sum_w += d; perf.fx_sum += fxt; perf.mod_sum += perf.mod_last;
         perf.hist[b > 23u ? 23u : b]++;
+#ifdef LOADTEST
+        if (perf.blocks - 200u < 640u) perf.trace[perf.blocks - 200u] = (uint16_t)(d >> 2);
+#endif
         if (d > PERF_P * 3u / 4u) perf.n75++;
         if (d > PERF_P * 9u / 10u) perf.n90++;
         if (d > PERF_P) perf.n100++;
@@ -91,39 +97,59 @@ uint32_t fx_refused;                                 /* counts the slots the bud
 #define GOV_P 69660u                                 /* one audio block in TIMER4 ticks */
 #endif
 #ifndef GOV_SHED
-#define GOV_SHED (GOV_P / 100u * 74u)
+#define GOV_SHED (GOV_P / 100u * 56u)                /* M: was 74 %.  The fm1-emu tick is not the silicon's (nor another emulator's): the ceiling leaves room for a machine up to ~1.7x slower */
 #endif
 #ifndef GOV_ADMIT
-#define GOV_ADMIT (GOV_P / 100u * 68u)
+#define GOV_ADMIT (GOV_P / 100u * 47u)
 #endif
 #ifndef GOV_AIM
-#define GOV_AIM (GOV_P / 100u * 71u)                 /* a shed removes enough to land about here */
+#define GOV_AIM (GOV_P / 100u * 51u)                 /* a shed removes enough to land about here */
 #endif
+#ifndef GOV_EMERG
+#define GOV_EMERG (GOV_P / 100u * 80u)               /* one block this long: shed now, without waiting for the window or the wait (the ISR is about to overrun) */
+#endif
+#define GOV_SETTLE 16u                              /* blocks measured before the governor acts at all (the start-up burst is not a load) */
 #define GOV_WAIT 12u                                 /* blocks between two sheds: the 4-block window must show the effect of the last one */
 #define GOV_COOL 480u                                /* blocks (1.4 s) after a shed before anything comes back */
-#define GOV_DRUMS 24                                 /* drum voices in all: 4 tracks x 6 */
+#define GOV_DRUMS 12                                 /* drum voices in all: 2 drum tracks x 6 */
+#define GOV_PROPH 20                                 /* Prophet voices in all: 4 tracks x 5 */
 #define GOV_UNIT(c) (((c) * 7u) >> 3)                /* ticks per FX_COST unit: measured 0.66..0.86 (NOTES-J) */
-static uint32_t gov_w[4], gov_peak, gov_wait, gov_cool, gov_n;          /* gov_n: blocks measured so far (once the ISR reports, nothing is admitted before 4) */
+static uint32_t gov_w[8], gov_peak, gov_last, gov_wait, gov_cool, gov_vcool, gov_n;       /* gov_cool: effects, gov_vcool: voices */          /* gov_n: blocks measured so far (once the ISR reports, nothing is admitted before 4) */
 static uint8_t gov_on;                               /* the audio ISR reports (not in the host tests) */
-static uint32_t dv_cost = 4400;                      /* ticks of one drum voice in a block (measured while drums sound: voices.c; this is the emulator's figure) */
-static uint8_t gov_wi;
-static int dv_cap = GOV_DRUMS;                       /* drum voices allowed to sound at once, all drum tracks together */
+static uint32_t pv_cost = 3500;                      /* ticks of one Prophet voice in a block (measured while it sounds) */
+static uint32_t dv_cost = 3500;                      /* ticks of one drum voice in a block (measured while drums sound: voices.c; this is the emulator's figure) */
+static uint8_t gov_wi, gov_back[2];                  /* [0] effects, [1] voices */
+                    /* gov_back: back-off, 0..3: a shed soon after the previous one doubles the cool-down (no flapping at the border) */
+static uint32_t gov_since[2];                        /* blocks since the last shed */
+static uint32_t fx_alloc_blk;                        /* ticks the audio block spent in fx_alloc (a one-off: not load) */
+static int dv_cap = GOV_DRUMS, pv_cap = GOV_PROPH;          /* voices allowed to sound at once: drums (all drum tracks together) and Prophet voices (all Prophet tracks together) */
 struct { uint32_t fx, voices, steals, cap_min, unload; } gov;      /* activity counters (perf dump, loadtest) */
 static void gov_block(uint32_t d)                    /* end of an audio block: its length in ticks */
 {
 #ifndef NO_GOV
-    uint32_t m1 = 0, m2 = 0, v;
+    uint32_t sum = 0;
     int i;
-    gov_w[gov_wi++ & 3u] = d;
-    for (i = 0; i < 4; i++) { v = gov_w[i]; if (v > m1) { m2 = m1; m1 = v; } else if (v > m2) m2 = v; }
-    gov_peak = m2;
+    gov_w[gov_wi++ & 7u] = d;
+    for (i = 0; i < 8; i++) sum += gov_w[i];
+    gov_peak = sum >> 3;                              /* M: the mean of the last 8 blocks (was: the second longest of 4, which followed every drum hit and note-on and made the border flap) */
+    gov_last = d;
+    if (gov_since[0] < 1000000u) { gov_since[0]++; gov_since[1]++; }
     if (gov_n < 1000u) gov_n++;
     gov_on = 1;
     if (gov_wait) gov_wait--;
     if (gov_cool) gov_cool--;
+    if (gov_vcool) gov_vcool--;
 #else
     (void)d;
 #endif
+}
+static void gov_mark(int k, uint32_t *cd, uint32_t cool)       /* a shed of kind k happened: wait before the next, cool down before anything comes back (longer when it keeps happening) */
+{
+    if (gov_since[k] < 4u * GOV_COOL) { if (gov_back[k] < 3) gov_back[k]++; }
+    else if (gov_since[k] >= 12u * GOV_COOL) gov_back[k] = 0;
+    gov_since[k] = 0;
+    gov_wait = GOV_WAIT;
+    *cd = cool << gov_back[k];
 }
 static void fx_check(void) { memset(fx_run, 0, sizeof fx_run); }      /* after a load: every active slot is admitted again, in the order track 1 slot 1 ... track 4 slot 4 */
 

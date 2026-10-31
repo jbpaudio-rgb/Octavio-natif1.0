@@ -80,10 +80,10 @@ int main(void)
         for (t = 0; t < 4; t++) running += __builtin_popcount(fx_run[t]);
         CHECK(running == 16);
         refused0 = fx_refused;
-        for (i = 0; i < 4; i++) gov_block(GOV_P / 100u * 85u);                  /* the audio blocks take 85 % */
+        for (i = 0; i < 24; i++) gov_block(GOV_P / 100u * 60u);                  /* the audio blocks take 60 % */
         fx_begin(); fx_admit();
         running = 0; for (t = 0; t < 4; t++) running += __builtin_popcount(fx_run[t]);
-        printf("governor: 85 %% load -> %d of 16 slots left, track masks %x %x %x %x, %u refused\n", running, fx_run[0], fx_run[1], fx_run[2], fx_run[3], (unsigned)(fx_refused - refused0));
+        printf("governor: 60 %% load -> %d of 16 slots left, track masks %x %x %x %x, %u refused\n", running, fx_run[0], fx_run[1], fx_run[2], fx_run[3], (unsigned)(fx_refused - refused0));
         CHECK(running < 16 && running > 0 && fx_run[0] == 15 && fx_refused > refused0 && fx_slot_off(3, 3));
         r1 = running;
         fx_begin(); fx_admit();
@@ -92,16 +92,33 @@ int main(void)
         for (i = 0; i < (int)GOV_COOL / 2; i++) { gov_block(GOV_P / 100u * 40u); fx_begin(); fx_admit(); }
         running = 0; for (t = 0; t < 4; t++) running += __builtin_popcount(fx_run[t]);
         CHECK(running == r1);                                                   /* still cooling down */
-        for (i = 0; i < (int)GOV_COOL; i++) { gov_block(GOV_P / 100u * 40u); fx_begin(); fx_admit(); }
+        for (i = 0; i < (int)GOV_COOL * 8; i++) { gov_block(GOV_P / 100u * 40u); fx_begin(); fx_admit(); }      /* (a second shed soon after the first doubles the cool-down) */
         running = 0; for (t = 0; t < 4; t++) running += __builtin_popcount(fx_run[t]);
         CHECK(running == 16);                                                   /* quiet again: everything is back */
-        for (i = 0; i < 4; i++) gov_block(GOV_P / 100u * 70u);                  /* 70 %: over the admit line, under the shed line: a slot that appears now waits */
+        for (i = 0; i < 24; i++) gov_block(GOV_P / 100u * 52u);                  /* 52 %: over the admit line, under the shed line: a slot that appears now waits */
         fx_load_view();
         FXT[3].p[FX_FIRST[FXT[3].ord[0]] + FX_P[FXT[3].ord[0]].n - 1 - P_F0DRIVE] = 0; fx_load_view();
         fx_begin(); fx_admit();
         FXT[3].p[FX_FIRST[FXT[3].ord[0]] + FX_P[FXT[3].ord[0]].n - 1 - P_F0DRIVE] = 1000;
         fx_begin(); fx_admit();
         CHECK(!(fx_run[3] & 1) && fx_slot_off(3, 0));
+    }
+    /* emergency (M): one block over GOV_EMERG bypasses at once, though the 4-block window (second longest) is quiet and the wait is not over */
+    {
+        int q, i, running = 0;
+        fx_defaults();
+        for (t = 0; t < 4; t++) for (q = 0; q < FX_NSLOT; q++) FXT[t].p[FX_FIRST[q] + FX_P[q].n - 1 - P_F0DRIVE] = 1000;
+        fx_load_view();
+        for (i = 0; i < GOV_COOL + 8; i++) { gov_block(GOV_P / 100u * 40u); fx_begin(); fx_admit(); }
+        for (t = 0; t < 4; t++) running += __builtin_popcount(fx_run[t]);
+        CHECK(running == 16);
+        gov_wait = GOV_WAIT;
+        gov_block(GOV_P / 100u * 88u);
+        fx_begin(); fx_admit();
+        running = 0; for (t = 0; t < 4; t++) running += __builtin_popcount(fx_run[t]);
+        printf("emergency: one block at 88 %% with the window quiet -> %d of 16 slots left\n", running);
+        CHECK(running < 16);
+        for (i = 0; i < 24; i++) gov_block(GOV_P / 100u * 30u);
     }
     /* round trip */
     PV[P_F9CRUSH] = 123;
