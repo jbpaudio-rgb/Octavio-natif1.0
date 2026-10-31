@@ -1,4 +1,47 @@
-# NOTES-M — drums sur 2 pistes, Prophet polyphonique, correctif des glitchs
+# NOTES-M — drums sur 1 piste, Prophet polyphonique, volumes HOME, SELECT sur DSEQ (mise à jour 2)
+
+> **Mise à jour 2 (cette section prime sur le reste du document).** Décisions de l'utilisateur : **UNE seule piste de drums (piste 4), 6 voix** ; le passage à 4 voix est en attente (rien de fait dans `m7-M`, la variante B n'est que mesurée en §7). Les §1-8 ci-dessous décrivent l'état précédent (drums sur les pistes 3 et 4) : les chiffres « 2 pistes drums » ne valent plus pour le firmware actuel.
+
+## 0. Quatre corrections
+
+### 0.1 Fader de volume HOME sans effet (corrigé)
+**Cause** : `PV[P_VOL0..3]` n'était lu que par l'écran HOME ; le mixage utilisait `TK[t].vol`, que seul le chargement d'une scène écrivait (`voices_track_level`). Tourner le fader ne changeait donc rien au son. **Correctif** (`voices_render`) : le volume de piste est lu dans `PV[P_VOL0 + t]` à chaque bloc et appliqué en rampe sur le bloc, après le FX de la piste, donc l'ordre est moteur → gain Level de modulation → chaîne FX → volume → somme (comme le prototype `F(tb[i]) * t.vol`), pour les 4 moteurs.
+**Test** (`tests/state_test.c`, 7c) : rms proportionnel au volume (240 / 120 / 60 / 0 sur le Minimoog, le Prophet et les drums, tolérance +/-30 % : le bus a un `tanh`, et les moteurs ne sont pas rigoureusement stationnaires) ; **le test échoue (10 échecs) avec l'ancien code et passe avec le correctif**. Scène : volumes 300 / 650 enregistrés puis relus (`scene_save` / `scene_load`) ; les volumes sont dans la section MIX (0x07), **scènes seulement, comme le `q.vol` du prototype** : un preset ne les enregistre pas (non modifié, c'est la sémantique du prototype).
+**Émulateur** : `audio/volume-*.wav` (pvol_m Minimoog, pvol_p Prophet 2 notes, pvol_d drums) : le fader (HOME + K) descend, le rms par fenêtre de 0,3 s tombe à 0 en quatre crans (Minimoog 1644 -> 2383 -> 1234 -> 894 -> 382 -> 0 ; drums 4562 -> 2959 -> 2402 -> 924 -> 0).
+
+### 0.2 Prophet limité à 2-3 voix (corrigé)
+**Cause** : le gouverneur CPU. Avec Vactrol + Minimoog + drums actifs, effets par défaut et modulation (charge ~50 %), il retirait des voix aussi au Prophet (la classe « la plus chère » perdait des voix, plancher 2 voix en tout). Reproduit dans fm1-emu avec le vrai chemin des touches (5 touches tenues sur le Prophet piste 2, 3 autres pistes en jeu, gouverneur actif, `pk5`) : **avant (d716ede) 3 fondamentales sur 5** (F3 et G3 à 3 dB au-dessus de la médiane = absentes) ; **après 5 sur 5** (14-17 dB au-dessus de la médiane). Sans charge (firmware réel, 5 touches en même temps) le Prophet donnait déjà 5 voix : ce n'est donc ni le mode MONO/POLY, ni une limite par piste, ni le vol de voix.
+**Correctif** : ordre de délestage = effets, puis voix de drums jusqu'à un plancher de 2, et **le Prophet seulement sous charge sévère** (bloc > 80 % ou fenêtre > 70 %), jamais sous 3 voix. Sous charge normale le gouverneur ne touche plus aux accords.
+**Limite honnête** : l'attaque d'un accord de 5 notes coûte à elle seule ~+25 % de bloc d'un coup ; `pk5` montre un bloc à 75,7 % (11 blocs entre 65 et 70 %) à l'instant où l'accord est joué, le gouverneur retombe à ~51 % en quelques blocs en retirant des effets. Pas de perte de bloc (0 trou, 0 bloc rejoué).
+
+### 0.3 SELECT = voix de drum sur DSEQ + LED du clavier
+Sur la page DSEQ (séquenceur de drums), **SELECT seul** passe à la voix suivante / précédente (1 cran = 1 voix, bouclage 6 -> 1 et 1 -> 6) ; un toast « LANE n  kit voix » s'affiche, la lane sélectionnée est cerclée de rouge à l'écran (déjà le cas), et **la touche noire OPk de la voix s'allume** (`markSel()` du prototype : OPk = k-ième touche noire) ; idem sur les pages EDIT / ENV / ARP d'une piste drums (touche en lueur). Gestes inchangés : OPk tenu / double appui = lane tenue / verrouillée (un verrou suit SELECT), ARP + OPk, SEQ tenu + SELECT = type de la voix, ALGORITHM puis SELECT (5 s) = kit. Le prototype n'a pas SELECT = voix (c'est un ajout demandé).
+**Vérifié** : test hôte (`state_test` 7d) des 6 voix avec bouclage dans les deux sens, de l'état des LED (une seule touche noire, la bonne, pour chaque voix ; lueur en EDIT), SEQ + SELECT inchangé, verrou ; captures fm1-emu avant/après (`shots/dseq-select-before.png` : la lane reste BD ; `shots/dseq-select-after.png` : BD -> SD -> CH -> CP -> CB avec bouclage). Les LED réelles de l'émulateur ne sont pas exposées : seul le test hôte de `leds_update` les vérifie.
+
+### 0.4 Une seule piste de drums (piste 4)
+- Choix : **piste 4**, comme le prototype (piste 4 = drums par défaut) et l'état d'usine actuel ; les pistes 1-3 n'ont plus DRUM dans la liste ALGORITHM (note « TRACK n (DRUMS T4) ») ; un preset / une scène avec DRUM ailleurs charge un Minimoog.
+- Format : section **DSQ rev 3** (une piste, 6 lanes de 16 bits + 4 réglages x 6) ; DSQ rev 2 (2 pistes) et rev 1 (4 pistes) relues (seule la piste 4 est gardée, testé) ; sections moteur : 9 au lieu de 10 (plus de drums piste 3), renumérotation de la liste ; le test d'ancien enregistrement passe.
+- Gouverneur : 6 voix de drums au plus, plancher 2 ; budget FX/voix inchangé (seuils 56 / 51 / 47 / 80 %).
+- **RAM** : `DRM` 1 192 o (1 piste) contre 2 384 o (2 pistes) et 4 768 o (4 pistes, m6) : **−1 192 o récupérés vs le build précédent, −3 576 o vs m6**. RAM libre sous 0x01C74000 : 11 684 o (précédent 10 484, m6 12 916). Image flash : 568 104 o (précédent 567 912 : +192 o de code pour SELECT / LED / DSQ rev 3).
+
+### 0.5 Mesures avant / après (fm1-emu, firmware LOADTEST, 3,8-6 s ; bloc = 69 632 ticks)
+
+| Cas | Précédent (d716ede, 2 pistes drums) | Maintenant (1 piste drums) |
+|---|---|---|
+| Piste drums, 6 voix, coût brut | 21 868 (31 %) | 18 215-18 286 (26 %) |
+| **Pire cas** : Vactrol + Minimoog + Prophet 5 notes + drums + FX lourds + 24 routes, **brut** | 119,9 % moy., 125 % pire (2 pistes drums) | **89,7 % moy., 93,1 % pire** |
+| Même cas, **gouverné** | moy. 46,0 %, pire 62,0 % | **moy. 45,1 %, pire 51,8 %**, 7 slots FX retenus, 0 blocs > 75 % |
+| Cas utilisateur Vactrol + Minimoog joué + drums + FX + modulation (um_fx) | moy. 51,4 %, pire 63,8 % | moy. 50,9 %, pire 68,9 % (2 blocs à 65-70 % pendant l'installation, ensuite <= 56 %) |
+| 4 pistes : Vactrol + 2 Moog + drums (wm) | moy. 47,6 %, pire 55,9 % | moy. 47,1 %, pire 49,5 % |
+| 3 Prophet 5 notes + drums, effets, modulation (wc) | moy. 40,6 %, pire 67,4 % | moy. 43,9 %, pire 56,5 % (17 frontières perdues au démarrage seulement) |
+| Accord 5 touches sous charge (pk5) | 3 voix audibles | 5 voix, pire bloc 75,7 % à l'attaque de l'accord |
+
+Cible « pire bloc bien sous 55 % » : atteinte pour le pire cas gouverné (51,8 %), wm (49,5 %) et wc (56,5 %, à peine au-dessus) ; **pas atteinte** pour um_fx (68,9 % sur 2 blocs au démarrage) et pk5 (75,7 % à l'attaque d'un accord de 5 notes) : ce sont des pics ponctuels, pas de la charge soutenue (le palier est à 50-51 %).
+
+### 0.6 Non testé
+Puce réelle ; écoute ; LED physiques ; capture d'une page drums sur matériel ; le variant 4 voix (en attente, rien codé). Le test de volume est un test de rms avec tolérance (+/-30 %), pas une courbe exacte.
+
+---
 
 Branche `m7-M` (base `e8422b5`). Rien n'est poussé ni flashé. Tout est mesuré dans **fm1-emu** (le CPU de l'émulateur n'est pas la puce ; aucune écoute humaine). Unité : 1 bloc de 128 trames = 69 632 ticks = 100 %.
 

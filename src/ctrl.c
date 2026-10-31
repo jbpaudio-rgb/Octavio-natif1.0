@@ -82,7 +82,7 @@ static void itoa2(char *o, int v, int pad)         /* v >= 0, zero padded to `pa
 static const char *const ENG_TAG[CENG_N] = { "VACT", "MINI", "PRO70", "DRUM" };   /* dn(): the display name of each engine */
 static const char *etag(int t) { return t >= 0 && t < CENG_N ? ENG_TAG[t] : "???"; }
 static int cur_engine(void) { return voices_engine(sel); }
-static int ceng_n(void) { return sel >= DRUM_T0 ? CENG_N : CENG_N - 1; }       /* the engines the selected track offers: the drums run on tracks 3 and 4 only (2 drum machines, M) */
+static int ceng_n(void) { return sel >= DRUM_T0 ? CENG_N : CENG_N - 1; }       /* the engines the selected track offers: the drums run on track 4 only (one drum machine, M) */
 
 /* ---- toast / list ---- */
 static void toast(const char *a, const char *b, uint32_t ms)
@@ -471,7 +471,7 @@ static void ak_set(int32_t n)
     ap_q = (int)n;
     scopy(t, "ALGO \x02 T", sizeof t); itoa2(num, sel + 1, 0); sappend(t, num, sizeof t);
     scopy(nb, "TRACK ", sizeof nb); sappend(nb, num, sizeof nb);
-    if (ceng_n() < CENG_N) sappend(nb, " (DRUMS T3 T4)", sizeof nb);          /* the list has no DRUM entry here */
+    if (ceng_n() < CENG_N) sappend(nb, " (DRUMS T4)", sizeof nb);          /* the list has no DRUM entry here */
     alg_t = g_ms ? g_ms : 1;
     show_list(1, t, cur_engine(), ceng_n(), cur_engine() == ENG_DRUM ? "SELECT = KIT" : nb, g_ms);
 }
@@ -514,6 +514,13 @@ void ctrl_side(int role, int steps, uint32_t ms)
     g_ms = ms;
     if (role == ROLE_PRESETS) side_wheel(steps, ONE / 50, pk_get, pk_set, &pp_ws, &pp_wq);
     else if (role == ROLE_ALGO) side_wheel(steps, lane_h() >= 0 ? ONE / 2 : ONE / 50, ak_get, ak_set, &ap_ws, &ap_wq);
+    else if (pg == PGN_DSEQ && cur_engine() == ENG_DRUM && !pend && !type_held() && !kit_h() && steps != 0) {      /* SELECT alone on the drum sequencer: the next / previous voice (lane), wrapping; its black key lights (leds.c) and the grid shows it */
+        int v = ((int)dv[sel & 3] + steps) % 6;
+        if (v < 0) v += 6;
+        dv[sel & 3] = (uint8_t)v;
+        if (dq_latch >= 0) dq_latch = v;                                    /* a latched lane follows */
+        lane_toast(v, g_ms); bump();
+    }
     else {
         int w = pend ? ONE / (NCHN - 1) : pg == PGN_HOME ? ONE / 3 : type_held() ? ONE / 7 : kit_h() ? ONE / 2 : ONE / 50;
         side_wheel(steps, w, sk_get, sk_set, &sel_ws, &sel_wq);

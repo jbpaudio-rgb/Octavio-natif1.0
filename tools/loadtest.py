@@ -63,12 +63,12 @@ FX4 = "{{0,1,2,3},{0,1,2,3},{0,1,2,3},{0,1,2,3}}"           # overdrive, phaser,
 def G(eng, act, fx=False, xc="", ms=3800, keys=""):
     xc = "-DLT_ACTIVE=%d " % act + ("" if "NSRC" in xc else "-DLT_NOMOD ") + xc + " " + ("" if fx else "-DLT_FXMASK=0 ")
     return V(xc, ms=ms, keys=keys, eng=E(*eng), fx=FX4 if fx else None)
-S3 = ("VAC", "MOOG", "PROPH", "MOOG"); S21 = ("MOOG", "PROPH", "DRUM", "MOOG"); S12 = ("PROPH", "MOOG", "DRUM", "DRUM"); # the Minimoog (track 2, selected at boot) is played by hand: single notes repeated, held notes, chords; Vactrol and drums run on their own (arp / step clock, a little modulation)
+S3 = ("VAC", "MOOG", "PROPH", "MOOG"); S21 = ("MOOG", "PROPH", "MOOG", "DRUM"); S12 = ("PROPH", "MOOG", "MOOG", "DRUM"); # the Minimoog (track 2, selected at boot) is played by hand: single notes repeated, held notes, chords; Vactrol and drums run on their own (arp / step clock, a little modulation)
 PLAYM = ",".join(["1500-1800:n7", "1900-2200:n9", "2300-2600:n12", "2700-2800:n7", "2900-3000:n7", "3100-3200:n7", "3300-3400:n7", "3500-3600:n7",
                   "3700-4700:n7", "3750-4750:n12", "3800-4800:n14", "3850-4800:n16", "4900-4950:n5", "5000-5050:n8", "5100-5150:n10", "5200-5250:n13", "5300-5350:n5", "5400-5450:n8"])
 def M(xc="", fx=False, ms=6000, eng=None):
-    return G(eng or VMD, 5, fx, "-DLT_NSRC=2 -DLT_SEL=1 " + xc, ms=ms, keys=PLAYM)
-VMD = ("VAC", "MOOG", "DRUM", "PROPH"); S3B = ("MOOG", "PROPH", "MOOG", "PROPH")
+    return G(eng or VMD, 9, fx, "-DLT_NSRC=2 -DLT_SEL=1 " + xc, ms=ms, keys=PLAYM)
+VMD = ("VAC", "MOOG", "PROPH", "DRUM"); S3B = ("MOOG", "PROPH", "MOOG", "PROPH")
 SAVE = "3000:SAVE,3700:SAVE"
 VARIANTS = {
     # idle reference: the normal firmware (no LOADTEST), same key script -> UI cost without audio load
@@ -100,30 +100,42 @@ VARIANTS = {
     "r3syn_fx":   G(S3, 7, True, NOGOV), "r21_fx": G(S21, 7, True, NOGOV), "r12_fx": G(S12, 7, True, NOGOV),
     "g12_noarp":  G(S12, 7, True, "-DLT_NOARP"), "g3syn_noseq": G(S3, 7, True, "-DLT_NOSEQ"),
     # the user's case: Vactrol + Minimoog + drums (one track each), the fourth silent
-    "u_vmd":      G(VMD, 7), "u_vmd_fx": G(VMD, 7, True), "u_vmd_noseq": G(VMD, 7, True, "-DLT_NOSEQ"), "u_vmd_noarp": G(VMD, 7, True, "-DLT_NOARP"),
-    "u_vmd_mod":  G(VMD, 7, False, "-DLT_NSRC=2", keys=""), "u_vmd_fx_mod": G(VMD, 7, True, "-DLT_NSRC=2"),
-    "ur_vmd_mod": G(VMD, 7, False, NOGOV + "-DLT_NSRC=2"),
-    "dr1": G(("MOOG", "MOOG", "DRUM", "MOOG"), 4, False, NOGOV, ms=3000), "ph1c": G(("MOOG", "PROPH", "MOOG", "MOOG"), 2, False, NOGOV + "-DLT_CHORD=5", ms=3000), "ph3c": G(("MOOG", "PROPH", "MOOG", "MOOG"), 2, False, NOGOV + "-DLT_CHORD=3", ms=3000), "ph1cm": G(("MOOG", "PROPH", "MOOG", "MOOG"), 2, False, NOGOV + "-DLT_CHORD=1", ms=3000), "ph1": G(("MOOG", "PROPH", "MOOG", "MOOG"), 2, False, NOGOV, ms=3000),
+    "u_vmd":      G(VMD, 11), "u_vmd_fx": G(VMD, 11, True), "u_vmd_noseq": G(VMD, 11, True, "-DLT_NOSEQ"), "u_vmd_noarp": G(VMD, 11, True, "-DLT_NOARP"),
+    "u_vmd_mod":  G(VMD, 11, False, "-DLT_NSRC=2", keys=""), "u_vmd_fx_mod": G(VMD, 11, True, "-DLT_NSRC=2"),
+    "ur_vmd_mod": G(VMD, 11, False, NOGOV + "-DLT_NSRC=2"),
+    "dr1": G(("MOOG", "MOOG", "MOOG", "DRUM"), 8, False, NOGOV, ms=3000), "ph1c": G(("MOOG", "PROPH", "MOOG", "MOOG"), 2, False, NOGOV + "-DLT_CHORD=5", ms=3000), "ph3c": G(("MOOG", "PROPH", "MOOG", "MOOG"), 2, False, NOGOV + "-DLT_CHORD=3", ms=3000), "ph1cm": G(("MOOG", "PROPH", "MOOG", "MOOG"), 2, False, NOGOV + "-DLT_CHORD=1", ms=3000), "ph1": G(("MOOG", "PROPH", "MOOG", "MOOG"), 2, False, NOGOV, ms=3000),
     "mg1": G(("MOOG", "MOOG", "MOOG", "MOOG"), 2, False, NOGOV, ms=3000),
     # M: the new worst cases: two drum tracks (six voices each), Prophet tracks holding a 5-note chord (all their voices sound), heavy chains, 24 mod routes
-    "wc": V("-DLT_CHORD=5", eng=E("PROPH", "PROPH", "DRUM", "DRUM")), "wc_raw": V(NOGOV + "-DLT_CHORD=5", eng=E("PROPH", "PROPH", "DRUM", "DRUM")),
-    "wc_ui": V("-DLT_CHORD=5", ms=UI_MS, keys=UI, snap="1500,3000,4500", eng=E("PROPH", "PROPH", "DRUM", "DRUM")),
-    "wm": V("-DLT_CHORD=5", eng=E("VAC", "MOOG", "DRUM", "DRUM")), "wm_raw": V(NOGOV + "-DLT_CHORD=5", eng=E("VAC", "MOOG", "DRUM", "DRUM")),
+    "wc": V("-DLT_CHORD=5", eng=E("PROPH", "PROPH", "PROPH", "DRUM")), "wc_raw": V(NOGOV + "-DLT_CHORD=5", eng=E("PROPH", "PROPH", "PROPH", "DRUM")),
+    "wc_ui": V("-DLT_CHORD=5", ms=UI_MS, keys=UI, snap="1500,3000,4500", eng=E("PROPH", "PROPH", "PROPH", "DRUM")),
+    "wm": V("-DLT_CHORD=5", eng=E("VAC", "MOOG", "MOOG", "DRUM")), "wm_raw": V(NOGOV + "-DLT_CHORD=5", eng=E("VAC", "MOOG", "MOOG", "DRUM")),
     "wp4_raw": V(NOGOV + "-DLT_CHORD=5", eng=E("PROPH", "PROPH", "PROPH", "PROPH")), "wp4": V("-DLT_CHORD=5", eng=E("PROPH", "PROPH", "PROPH", "PROPH")),
-    "wc_nofx": V(NOGOV + "-DLT_CHORD=5 -DLT_FXMASK=0 -DLT_NOMOD", eng=E("PROPH", "PROPH", "DRUM", "DRUM")),
-    **{f"dv{v}": G(("MOOG", "MOOG", "DRUM", "MOOG"), 4, False, NOGOV + f"-DLT_DLANES={1 << v}", ms=2500) for v in range(6)},       # one drum voice at a time: its cost
+    "wc_nofx": V(NOGOV + "-DLT_CHORD=5 -DLT_FXMASK=0 -DLT_NOMOD", eng=E("PROPH", "PROPH", "PROPH", "DRUM")),
+    **{f"dv{v}": G(("MOOG", "MOOG", "MOOG", "DRUM"), 8, False, NOGOV + f"-DLT_DLANES={1 << v}", ms=2500) for v in range(6)},       # one drum voice at a time: its cost
     **{f"umb{b}": M(f"-DLT_BURN={b * 696}", True) for b in (0, 20, 40, 60)},      # the user's case (Vactrol + hand-played Minimoog + drums, default chains) on a machine slower by b % of a block
     **{f"umbn{b}": M(f"-DLT_BURN={b * 696} " + NOGOV, True) for b in (0, 20, 40, 60)},
-    **{f"wcb{b}": V(f"-DLT_CHORD=5 -DLT_BURN={b * 696}", eng=E("PROPH", "PROPH", "DRUM", "DRUM")) for b in (0, 20)},
+    **{f"wcb{b}": V(f"-DLT_CHORD=5 -DLT_BURN={b * 696}", eng=E("PROPH", "PROPH", "PROPH", "DRUM")) for b in (0, 20)},
     # M: the polyphonic Prophet alone (track 2, notes played from the keys): 5-note chord with staggered releases, then a sixth key (steal)
     "pchord": G(("MOOG", "PROPH", "MOOG", "MOOG"), 2, False, "-DLT_NSRC=0 -DLT_SEL=1 -DLT_NOARP -DLT_NOSEQ -DLT_NOMOD", ms=6500,
                 keys="1000-2500:n0,1000-2800:n2,1000-3100:n4,1000-3400:n7,1000-3700:n9,4300-5900:n0,4300-5900:n2,4300-5900:n4,4300-5900:n7,4300-5900:n9,5000-5500:n11"),
     # M: variants of the drum engine (NOTES-M): lanes 0-3 only (B), and the full worst case Minimoog + 5-note Prophet + two drum tracks + chains + 24 routes (wf, governed)
-    "drB": G(("MOOG", "MOOG", "DRUM", "MOOG"), 4, False, NOGOV + "-DLT_DLANES=15", ms=3000),
-    "wf": V("-DLT_CHORD=5", eng=E("MOOG", "PROPH", "DRUM", "DRUM")), "wfB": V("-DLT_CHORD=5 -DLT_DLANES=15", eng=E("MOOG", "PROPH", "DRUM", "DRUM")),
-    "wf_raw": V(NOGOV + "-DLT_CHORD=5", eng=E("MOOG", "PROPH", "DRUM", "DRUM")), "wfB_raw": V(NOGOV + "-DLT_CHORD=5 -DLT_DLANES=15", eng=E("MOOG", "PROPH", "DRUM", "DRUM")),
+    "drB": G(("MOOG", "MOOG", "MOOG", "DRUM"), 8, False, NOGOV + "-DLT_DLANES=15", ms=3000),
+    "wf": V("-DLT_CHORD=5", eng=E("VAC", "MOOG", "PROPH", "DRUM")), "wfB": V("-DLT_CHORD=5 -DLT_DLANES=15", eng=E("VAC", "MOOG", "PROPH", "DRUM")),
+    "wf_raw": V(NOGOV + "-DLT_CHORD=5", eng=E("VAC", "MOOG", "PROPH", "DRUM")), "wfB_raw": V(NOGOV + "-DLT_CHORD=5 -DLT_DLANES=15", eng=E("VAC", "MOOG", "PROPH", "DRUM")),
+    # M: HOME's track volume (fader K<track> on HOME, held note / drum pattern, wav rms per window must follow the volume)
+    "pvol_m": G(("MOOG", "MOOG", "MOOG", "MOOG"), 2, False, "-DLT_NSRC=0 -DLT_SEL=1 -DLT_NOARP -DLT_NOSEQ -DLT_NOMOD", ms=7500,
+                keys="1000-7500:n7,2000:HOME,2400:K2:-20,3600:K2:-20,4800:K2:-20,6000:K2:-20"),
+    "pvol_p": G(("MOOG", "PROPH", "MOOG", "MOOG"), 2, False, "-DLT_NSRC=0 -DLT_SEL=1 -DLT_NOARP -DLT_NOSEQ -DLT_NOMOD", ms=7500,
+                keys="1000-7500:n7,1000-7500:n9,2000:HOME,2400:K2:-20,3600:K2:-20,4800:K2:-20,6000:K2:-20"),
+    "pvol_d": G(("MOOG", "MOOG", "MOOG", "DRUM"), 8, False, "-DLT_NSRC=0 -DLT_SEL=3 -DLT_NOMOD", ms=7500,
+                keys="2000:HOME,2400:K4:-20,3600:K4:-20,4800:K4:-20,6000:K4:-20"),
+    "pvol_f": G(("MOOG", "MOOG", "MOOG", "MOOG"), 2, True, "-DLT_NSRC=0 -DLT_SEL=1 -DLT_NOARP -DLT_NOSEQ -DLT_NOMOD", ms=7500,
+                keys="1000-7500:n7,2000:HOME,2400:K2:-20,3600:K2:-20,4800:K2:-20,6000:K2:-20"),
+    # M: the user's Prophet test: Vactrol, Minimoog and drums play on their own (arp / step clock, default chains, 24 routes), a 5-key chord is held on the Prophet (track 2) from the keys
+    "pk5": G(("VAC", "PROPH", "MOOG", "DRUM"), 13, True, "-DLT_NSRC=2 -DLT_SEL=1", ms=7000,
+             keys="2500-6000:n0,2500-6000:n2,2500-6000:n4,2500-6000:n7,2500-6000:n9"),
     "um": M(), "um_fx": M(fx=True), "umr": M(NOGOV), "umr_fx": M(NOGOV, True),
-    "ur_vmd_fx":  G(VMD, 7, True, NOGOV), "ur_vmd": G(VMD, 7, False, NOGOV),
+    "ur_vmd_fx":  G(VMD, 11, True, NOGOV), "ur_vmd": G(VMD, 11, False, NOGOV),
     "gov_save_ui":     V(ms=6500, keys=SAVE),                              # a preset SAVE (flash erase + program with the interrupts off) under load
     "raw_save_ui":     V(NOGOV, ms=6500, keys=SAVE),
 }

@@ -28,8 +28,8 @@ typedef struct {
 } drum_t;
 
 #define DRUM_FADE 32                                    /* samples of the ramp that takes a drum voice away (a choke, the governor) */
-#define NDRUM 2                                         /* drum machines: only tracks 3 and 4 (t = 2, 3) can run the drum engine (DRM[t - 2]) */
-#define DRUM_T0 2
+#define NDRUM 1                                         /* one drum machine: only track 4 (t = 3) can run the drum engine */
+#define DRUM_T0 3
 static drum_t DRM[NDRUM];
 static inline drum_t *dp(int t) { return (unsigned)(t - DRUM_T0) < (unsigned)NDRUM ? &DRM[t - DRUM_T0] : 0; }
 static const uint8_t DKV[12] = {0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5};

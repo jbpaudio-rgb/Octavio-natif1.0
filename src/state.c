@@ -14,12 +14,12 @@
  *   0x08 TRK    4 engine ids (one per track) + the track that owns the (single) Vactrol          raw bytes
  *   0x09 TARP   the 4 tracks' arpeggiators (voices_arp: 4 x ARP_COUNT)
  *   0x0A ARPS   (added later, rev 1) each track's arpeggiator position: latched chord in order, step, phase (4 x ARP_STATE_N raw bytes)
- *   0x10 + 3 * track + (engine - 1)   ENGINE  the Minimoog / Prophet / drum parameters of that track (10 sections: the drum engine runs on tracks 3 and 4 only, M)
+ *   0x10 + 3 * track + (engine - 1)   ENGINE  the Minimoog / Prophet / drum parameters of that track (9 sections: the drum engine runs on track 4 only, M)
  *   0x40..0x4F  per-track effects (agent H: 0x40 FXB)
  *   0x41 MODT   (rev 2; rev 1 had no gate word) the modulation matrix of each track: LFO / S&H (dest, shape, rate, amount, sync), sequencer lines, then the track's 16 sequencer gate bits: 4 x 55 values.
  *               A destination is an index of the master list (dst.c); 0x02 / 0x05 stay the selected track's view.
- *   0x42 DSQ    (rev 2, M) the drum sequencer of the two drum tracks (tracks 3 and 4): 6 lanes of 16 step bits, then swing / humanize / chance / accent of the 6 voices.
- *               rev 1 (four drum tracks, read only): its tracks 3 and 4 are applied, the first two are dropped.
+ *   0x42 DSQ    (rev 3, M) the drum sequencer of the one drum track (track 4): 6 lanes of 16 step bits, then swing / humanize / chance / accent of the 6 voices.
+ *               rev 2 (two drum tracks) and rev 1 (four): read only, their track 4 is applied, the others are dropped.
  * Value sections: enc u8 | nvals u8 | body. enc 0: nvals x int16 raw. enc 1: sparse, (index u8, int16) pairs for the values that
  * differ from the factory value, every other value is the factory value. The writer picks the shorter. A section whose rev or
  * nvals is not the one this firmware has is skipped (the layout it describes is gone), a section that is missing leaves
@@ -37,9 +37,10 @@
 #define ST_NSEC 28                                  /* the sections this firmware knows (the last one, DSQ rev 1, is only read) */
 #define ST_MAX 3700u                                /* the largest body state_save() can produce (checked by tests) */
 
-enum { SK_PV, SK_ENG, SK_SQ, SK_TARP, SK_TRK, SK_ARPS, SK_FXB, SK_MODT, SK_DSQ, SK_SQT, SK_DSQ1 };
+enum { SK_PV, SK_ENG, SK_SQ, SK_TARP, SK_TRK, SK_ARPS, SK_FXB, SK_MODT, SK_DSQ, SK_SQT, SK_DSQ1, SK_DSQ2 };
 #define ST_MODT_N (4 * MODT_N)
-#define ST_DSQ_N (2 * 30)
+#define ST_DSQ_N 30
+#define ST_DSQ2_N (2 * 30)
 #define ST_DSQ1_N (4 * 30)
 static int st_modt_seen;                              /* a MODT section was applied by this state_load */
 uint32_t fxbank_save(uint8_t *b); int fxbank_load(const uint8_t *b, uint32_t n);   /* fxstate.c: the 4 tracks' effect chains (agent H) */
@@ -74,12 +75,13 @@ static int st_sec(int i, secd_t *s)                 /* the i-th section this fir
 {
     if (i < 0 || i >= ST_NSEC) return 0;
     s->scene = 0; s->t = s->e = 0; s->a = 0;
-    if (i == 27) { s->id = 0x42; s->rev = 1; s->kind = SK_DSQ1; s->n = ST_DSQ1_N; }
-    else if (i >= 23) { s->id = (uint8_t)(0x44 + i - 23); s->rev = 1; s->kind = SK_SQT; s->n = ST_SQ_N; s->t = (uint8_t)(i - 23); }
-    else if (i == 22) { s->id = 0x42; s->rev = 2; s->kind = SK_DSQ; s->n = ST_DSQ_N; }
-    else if (i == 21) { s->id = 0x41; s->rev = 2; s->kind = SK_MODT; s->n = ST_MODT_N; }
-    else if (i == 20) { s->id = 0x40; s->rev = 1; s->kind = SK_FXB; s->n = 0; }
-    else if (i == 19) { s->id = 0x0A; s->rev = 1; s->kind = SK_ARPS; s->n = 0; }
+    if (i == 27) { s->id = 0x42; s->rev = 2; s->kind = SK_DSQ2; s->n = ST_DSQ2_N; }          /* read only: the two drum tracks of rev 2 */
+    else if (i == 26) { s->id = 0x42; s->rev = 1; s->kind = SK_DSQ1; s->n = ST_DSQ1_N; }       /* read only: four drum tracks */
+    else if (i >= 22) { s->id = (uint8_t)(0x44 + i - 22); s->rev = 1; s->kind = SK_SQT; s->n = ST_SQ_N; s->t = (uint8_t)(i - 22); }
+    else if (i == 21) { s->id = 0x42; s->rev = 3; s->kind = SK_DSQ; s->n = ST_DSQ_N; }
+    else if (i == 20) { s->id = 0x41; s->rev = 2; s->kind = SK_MODT; s->n = ST_MODT_N; }
+    else if (i == 19) { s->id = 0x40; s->rev = 1; s->kind = SK_FXB; s->n = 0; }
+    else if (i == 18) { s->id = 0x0A; s->rev = 1; s->kind = SK_ARPS; s->n = 0; }
     else if (i == 0) { s->id = 0x08; s->rev = 1; s->kind = SK_TRK; s->n = 5; }
     else if (i <= 6) {
         s->id = PVR[i - 1].id; s->rev = PVR[i - 1].rev; s->scene = PVR[i - 1].scene; s->kind = SK_PV;
@@ -87,9 +89,10 @@ static int st_sec(int i, secd_t *s)                 /* the i-th section this fir
     } else if (i == 7) { s->id = 0x06; s->rev = 1; s->kind = SK_SQ; s->n = ST_SQ_N; }
     else if (i == 8) { s->id = 0x09; s->rev = 1; s->kind = SK_TARP; s->n = ST_TARP_N; }
     else {
-        int k = i - 9;                                /* the 12 (track, engine) pairs, without the drums of tracks 1 and 2 (their sections 0x12 and 0x15 are not written) */
+        int k = i - 9;                                /* the 12 (track, engine) pairs, without the drums of tracks 1-3 (their sections 0x12, 0x15, 0x18 are not written) */
         if (k >= 2) k++;
         if (k >= 5) k++;
+        if (k >= 8) k++;
         s->t = (uint8_t)(k / 3); s->e = (uint8_t)(ENG_MOOG + k % 3);
         s->id = (uint8_t)(0x10 + k); s->rev = 1; s->kind = SK_ENG;
         s->n = (uint8_t)(s->e == ENG_MOOG ? MG_COUNT : s->e == ENG_PROPH ? PR_COUNT : ST_DRUM_N);
@@ -111,7 +114,7 @@ static int st_get(const secd_t *s, int i)
     case SK_SQ: return ui_seq_get_t(0, i / 16, i % 16);
     case SK_SQT: return ui_seq_get_t(s->t, i / 16, i % 16);
     case SK_MODT: return modt_get(i);
-    case SK_DSQ: { int t = DRUM_T0 + i / 30, r = i % 30; return r < 6 ? (int16_t)drum_gates(t, r) : voices_param_get(t, ENG_DRUM, st_dsq_id(r)); }
+    case SK_DSQ: { int t = DRUM_T0, r = i % 30; return r < 6 ? (int16_t)drum_gates(t, r) : voices_param_get(t, ENG_DRUM, st_dsq_id(r)); }
     default: return voices_arp_get(i / ARP_COUNT, i % ARP_COUNT);
     }
 }
@@ -123,7 +126,7 @@ static int st_def(const secd_t *s, int i)
     case SK_SQ: return st_def_sq[i];
     case SK_SQT: return s->t ? 0 : st_def_sq[i];
     case SK_MODT: return modt_def(i);
-    case SK_DSQ: case SK_DSQ1: { int r = i % 30; return r < 6 ? 0 : ((r - 6) % 4 == DR_CHANCE - DR_SW) ? 1000 : 0; }
+    case SK_DSQ: case SK_DSQ1: case SK_DSQ2: { int r = i % 30; return r < 6 ? 0 : ((r - 6) % 4 == DR_CHANCE - DR_SW) ? 1000 : 0; }
     default: return ARP_DEF[i % ARP_COUNT];
     }
 }
@@ -147,9 +150,9 @@ static void st_put(const secd_t *s, int i, int v)
     case SK_SQ: { int t; for (t = 0; t < 4; t++) ui_seq_set_t(t, i / 16, i % 16, v < -1000 ? -1000 : v > 1000 ? 1000 : v); break; }      /* legacy: shared by the tracks */
     case SK_SQT: ui_seq_set_t(s->t, i / 16, i % 16, v < -1000 ? -1000 : v > 1000 ? 1000 : v); break;
     case SK_MODT: modt_put(i, v); st_modt_seen = 1; break;
-    case SK_DSQ: case SK_DSQ1: {
-        int t = i / 30 + (s->kind == SK_DSQ ? DRUM_T0 : 0), r = i % 30;
-        if (t < DRUM_T0) break;                      /* rev 1: the drum tracks 1 and 2 no longer exist */
+    case SK_DSQ: case SK_DSQ1: case SK_DSQ2: {
+        int t = i / 30 + (s->kind == SK_DSQ ? DRUM_T0 : s->kind == SK_DSQ2 ? 2 : 0), r = i % 30;
+        if (t != DRUM_T0) break;                     /* rev 1 / 2: only the sequencer of the one drum track (track 4) is kept */
         if (r < 6) drum_gates_set(t, r, (uint16_t)v); else voices_param(t, ENG_DRUM, st_dsq_id(r), v < 0 ? 0 : v > 1000 ? 1000 : v);
         break;
     }
@@ -164,7 +167,7 @@ static void st_trk_apply(const uint8_t *b)
     vac_note_off();                                 /* the Vactrol may change track: let go of its note */
     for (t = 0; t < 4; t++) {
         int e = b[t] < ENG_N ? b[t] : t;
-        if (e == ENG_DRUM && t < DRUM_T0) e = ENG_MOOG;       /* a record from before M had drums on track 1 / 2: only tracks 3 and 4 can, the track gets the Minimoog */
+        if (e == ENG_DRUM && t < DRUM_T0) e = ENG_MOOG;       /* a record from before M had drums on track 1 / 2: only track 4 can, the track gets the Minimoog */
         voices_set_engine(t, e);
         PV[P_TYP0 + t] = (int16_t)e;                /* HOME shows it */
     }
@@ -226,7 +229,7 @@ static uint32_t state_save(uint8_t *o, uint32_t cap, int scene)
     mod_commit();                                   /* the selected track's matrix (PV) into MODT before it is written */
     for (i = 0; st_sec(i, &s); i++) {
         if (s.scene && !scene) continue;
-        if (s.kind == SK_SQ || s.kind == SK_DSQ1) continue;       /* legacy sections: read only */
+        if (s.kind == SK_SQ || s.kind == SK_DSQ1 || s.kind == SK_DSQ2) continue;       /* legacy sections: read only */
         if (s.kind == SK_ARPS && !(voices_arp_get(0, ARP_MODE) | voices_arp_get(1, ARP_MODE) | voices_arp_get(2, ARP_MODE) | voices_arp_get(3, ARP_MODE))) continue;   /* no arpeggiator on: no position to keep */
         k = st_enc(o + w, cap - w, &s);
         if (!k) return 0;

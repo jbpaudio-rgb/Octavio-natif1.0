@@ -111,7 +111,9 @@ uint32_t fx_refused;                                 /* counts the slots the bud
 #define GOV_SETTLE 16u                              /* blocks measured before the governor acts at all (the start-up burst is not a load) */
 #define GOV_WAIT 12u                                 /* blocks between two sheds: the 4-block window must show the effect of the last one */
 #define GOV_COOL 480u                                /* blocks (1.4 s) after a shed before anything comes back */
-#define GOV_DRUMS 12                                 /* drum voices in all: 2 drum tracks x 6 */
+#define GOV_DRUMS 6                                  /* drum voices in all: one drum track x 6 */
+#define GOV_DMIN 2                                   /* the governor leaves at least this many drum voices sounding */
+#define GOV_PMIN 3                                   /* ... and this many Prophet voices (taken only under a severe load) */
 #define GOV_PROPH 20                                 /* Prophet voices in all: 4 tracks x 5 */
 #define GOV_UNIT(c) (((c) * 7u) >> 3)                /* ticks per FX_COST unit: measured 0.66..0.86 (NOTES-J) */
 static uint32_t gov_w[8], gov_peak, gov_last, gov_wait, gov_cool, gov_vcool, gov_n;       /* gov_cool: effects, gov_vcool: voices */          /* gov_n: blocks measured so far (once the ISR reports, nothing is admitted before 4) */

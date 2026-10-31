@@ -97,7 +97,7 @@ void voices_set_engine(int t, int e)
 {
     t &= 3;
     if (e == TK[t].eng) return;
-    if (e == ENG_DRUM && t < DRUM_T0) return;              /* only tracks 3 and 4 can run the drum engine (2 drum machines in all) */
+    if (e == ENG_DRUM && t < DRUM_T0) return;              /* only track 4 can run the drum engine (one drum machine) */
     eng_off(t);
     if (e == ENG_VAC) {                                    /* the Vactrol moves to this track */
         eng_off(vac_owner);
@@ -456,13 +456,13 @@ static int gov_resume_prophet(void)                   /* a held note the governo
 static void gov_voices(void)
 {
     int nd = gov_nd(), np = gov_np();
-    if (gov_n >= GOV_SETTLE && ((gov_peak > GOV_SHED && !gov_wait) || gov_last > GOV_EMERG) && !(fx_run[0] | fx_run[1] | fx_run[2] | fx_run[3]) && nd + np > 2) {       /* no effect left to bypass: fewer voices */
+    int severe = gov_last > GOV_EMERG || gov_peak > GOV_P / 100u * 70u;               /* a real overrun is near: only then does the Prophet lose voices */
+    if (gov_n >= GOV_SETTLE && ((gov_peak > GOV_SHED && !gov_wait) || gov_last > GOV_EMERG) && !(fx_run[0] | fx_run[1] | fx_run[2] | fx_run[3]) && (nd > GOV_DMIN || (severe && np > GOV_PMIN))) {       /* no effect left to bypass: fewer voices */
         uint32_t over = (gov_last > gov_peak ? gov_last : gov_peak) - GOV_AIM, freed = 0;
         int guard;
-        for (guard = 0; guard < 24 && freed < over && nd + np > 2; guard++) {
-            int pro = np > 0 && (nd < 2 || (uint32_t)np * pv_cost >= (uint32_t)nd * dv_cost);       /* the class that costs most right now loses a voice */
-            if (pro) { np--; pv_cap = np < pv_cap ? np : pv_cap; freed += pv_cost; }
-            else if (nd > 0) { nd--; dv_cap = nd < dv_cap ? nd : dv_cap; freed += dv_cost; }
+        for (guard = 0; guard < 24 && freed < over; guard++) {                    /* order: effects (above), then drum voices down to GOV_DMIN, and the Prophet (down to GOV_PMIN) only when severe: a chord of five keys is the instrument's point */
+            if (nd > GOV_DMIN) { nd--; dv_cap = nd < dv_cap ? nd : dv_cap; freed += dv_cost; }
+            else if (severe && np > GOV_PMIN) { np--; pv_cap = np < pv_cap ? np : pv_cap; freed += pv_cost; }
             else break;
         }
         gov_mark(1, &gov_vcool, GOV_COOL / 8u);
@@ -552,7 +552,13 @@ void voices_render(int32_t *out, int n)
             for (i = 0; i < n; i++) { int32_t a = tmp[i] < 0 ? -tmp[i] : tmp[i]; if (a > pk) pk = a; }
             ui_peak(t, pk > 32767 ? 32767 : pk);
         }
-        for (i = 0; i < n; i++) acc[i] += (int64_t)tmp[i] * TK[t].vol;
+        {                                       /* the track volume = HOME's fader (PV[P_VOL0 + t]), read every block and ramped over it (a step would zipper) */
+            int32_t v0 = TK[t].vol, v1 = PV[P_VOL0 + t], rq = 65536 / n;
+            v1 = (v1 < 0 ? 0 : v1 > 1000 ? 1000 : v1) * 32767 / 1000;
+            TK[t].vol = (int16_t)v1;
+            if (v0 == v1) for (i = 0; i < n; i++) acc[i] += (int64_t)tmp[i] * v1;
+            else for (i = 0; i < n; i++) acc[i] += (int64_t)tmp[i] * (v0 + (int32_t)(((int64_t)(v1 - v0) * ((i + 1) * rq)) >> 16));
+        }
     }
     for (i = 0; i < n; i++) {
         int32_t s = (int32_t)(((acc[i] >> 15) * 34406) >> 15);            /* * 1.05 (1.5 * .7) */
