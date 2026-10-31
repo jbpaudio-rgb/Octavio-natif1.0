@@ -325,11 +325,11 @@ static void tab_press(int t)
     } else if (t == CB_EDIT) {
         if (e == ENG_VAC) pg = PGN_GLO;                 /* Vactrol: the FM page is named GLO internally */
         else if (e == ENG_DRUM) { if (pg == PGN_EDIT) dv[sel & 3] = (uint8_t)((dv[sel & 3] + 1) % 6); pg = PGN_EDIT; }
-        else pg = pg == PGN_EDIT ? PGN_OSC1 : (pg >= PGN_OSC1 && pg < PGN_OSC4) ? pg + 1 : PGN_EDIT;
+        else pg = pg == PGN_EDIT ? PGN_ENV2 : PGN_EDIT;                /* Minimoog / Prophet: EDIT again steps the filter pages FILTER -> CONTOUR / FILTER ENV -> FILTER (the oscillators: GLO, or EDIT/GLO + OPk) */
     } else {
         if (e == ENG_VAC) pg = PGN_EDIT;
         else if (e == ENG_DRUM) pg = pg == PGN_GLO ? PGN_GLO2 : PGN_GLO;
-        else pg = PGN_GLO;
+        else pg = pg == PGN_GLO ? PGN_OSC1 : (pg >= PGN_OSC1 && pg < PGN_OSC4) ? pg + 1 : PGN_GLO;      /* Minimoog / Prophet: GLO again steps MIXER -> OSC1..OSC4 -> MIXER (EDIT: FILTER -> OSC1..4) */
     }
 }
 
