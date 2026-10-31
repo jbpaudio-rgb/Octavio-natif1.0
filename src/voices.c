@@ -1,5 +1,8 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 /* The voice layer: tracks, key routing, arpeggiator, mix. See voices.h. */
+#ifndef ENGINE_TRIM_Q15
+#define ENGINE_TRIM_Q15 19661          /* 0.6 */
+#endif
 #include "voices.h"
 #include "params.h"
 #include "ui.h"
@@ -594,6 +597,8 @@ void voices_render(int32_t *out, int n)
             } break;
         default: act = 0; break;
         }
+        if (act && TK[t].eng != ENG_PROPH)      /* ENGINE_TRIM: every engine sits 4.4 dB lower (the Prophet's own trim is in its voice sum, ahead of its soft limit) so that a 5-note chord does not saturate */
+            for (i = 0; i < n; i++) tmp[i] = (int32_t)(((int64_t)tmp[i] * ENGINE_TRIM_Q15) >> 15);
 #ifndef NO_PERF
         if (perf.blocks > PERF_WARM) { uint32_t d = PERF_NOW() - te0; perf.te_sum[t] += d; if (d > perf.te_max[t]) perf.te_max[t] = d; }
 #endif

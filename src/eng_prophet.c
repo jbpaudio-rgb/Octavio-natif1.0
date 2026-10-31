@@ -2,6 +2,9 @@
 /* The prototype's Prophet engine in fixed point: oscillator A (saw / triangle / pulse mix, sync) and B (tuned and
  * detuned against A), sub oscillator, noise, two ADSRs (amplifier / filter), a soft four-pole low-pass with feedback
  * (resonance) and poly-mod (osc B into the cutoff). Q15 audio, Q30 envelopes, Q16 pitches. */
+#ifndef ENGINE_TRIM_Q15
+#define ENGINE_TRIM_Q15 19661          /* 0.6 */
+#endif
 #include "voices.h"
 
 #define PR_NV 5                                    /* voices per Prophet track (a Prophet-5 has five) */
@@ -318,7 +321,7 @@ void proph_render(int t, int32_t *out, int n)
     for (i = 0; i < n; i++) out[i] = 0;
     for (i = 0; i < PR_NV; i++) if (m->V[i].a.st && !m->V[i].sus) proph_voice(m, &m->V[i], out, n, cutc, tua, tub);
     for (i = 0; i < n; i++) {                                           /* the voices' sum: the DC blocker (once, not per voice), then a soft limit (slope 1 near zero): no clipping whatever the chord */
-        int32_t o = out[i];
+        int32_t o = (int32_t)(((int64_t)out[i] * ENGINE_TRIM_Q15) >> 15);          /* the engine trim (voices.c): the sum enters the soft limit lower, a chord stays in its linear part */
         m->dcs += (int32_t)(((int64_t)((o << 8) - m->dcs) * 4294967) >> 32);          /* .001 */
         o -= m->dcs >> 8;
         out[i] = c_tanh(o);
