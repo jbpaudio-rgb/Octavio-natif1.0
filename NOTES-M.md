@@ -167,3 +167,27 @@ Pas de test ECO dédié (seulement les mesures du banc de charge) ; fxbank_test 
 
 ### DSEQ : lane agrandie supprimée
 SELECT change la voix drum sans afficher le toast "LANE n" (qui masquait le séquenceur) ; toutes les lanes ont la même taille, la voix sélectionnée est marquée (cadre rouge + étiquette en gras). Captures : `shots/dseq-select-BEFORE-toast.png` (avant), `shots/dseq-lanes-AFTER.png` (après : BD -> SD -> CH -> CP -> CB).
+
+## Mise à jour 4 : MAX TRACKS (réglage TEMPORAIRE de stabilité)
+
+**Geste** : **HOME maintenu + PLAY** fait tourner 4 -> 3 -> 2 -> 1 -> 4 ; toast « MAX TRACKS n / TEMPORARY ». Affiché aussi dans le HUD debug (HOME + REC), dernière ligne, en rouge si < 4. Réglage **global, non sauvegardé** (ni preset, ni scène, aucun changement de format) ; défaut 4 à chaque démarrage. Captures : `shots/max-tracks-hud.png` (HUD à 4, puis toast 3, HUD à 3, toast 2, HUD à 2).
+
+**Sémantique** : au plus N pistes rendent du son. Priorité : la **piste sélectionnée** toujours, puis les **numéros les plus bas** (choix simple et prévisible, pas de « dernière jouée »). Une piste hors ensemble n'est **pas rendue du tout** (moteur et effets : coût nul, `continue` avant le moteur) ; à la sortie / entrée de l'ensemble son niveau suit une rampe de un bloc (128 échantillons, ~3 ms). Changer de piste sélectionnée recalcule l'ensemble au bloc suivant. Les notes jouées sur une piste coupée sont **acceptées mais inaudibles** (elles ne réaffectent rien) ; l'arp et le séquenceur continuent d'avancer (horloge cohérente) ; un Prophet/drums coupé garde donc ses voix « actives » gelées et elles reprennent (avec rampe) au retour de la piste. La queue des effets d'une piste coupée est gelée, pas finie.
+
+**Retrait** : tout est derrière `FEATURE_MAXTRACKS` (défini à 1 dans `src/fxstate.c`, mettre 0 ou supprimer les blocs). Lignes / fonctions touchées (grep `MAXTRACKS`) :
+- `src/fxstate.c` l.11-21 : bloc `MAXTRACKS begin/end` (`FEATURE_MAXTRACKS`, `MAXTR_DEF`, `static uint8_t max_tracks`) ; l.151 : champ `hud.mt`.
+- `src/voices.c` : bloc l.530-541 (`mt_prev`, `mt_mask()`) ; dans `voices_render` : 3 insertions `#if FEATURE_MAXTRACKS` (calcul de l'ensemble, `continue` si hors ensemble, rampe avant `fx_track`).
+- `src/ctrl.c` l.382 : début de `ctrl_button` (HOME + PLAY, toast).
+- `src/overlay.c` l.125 : dernière ligne de `draw_hud`.
+- `tests/state_test.c` l.686 (test du cycle) ; `tools/loadtest.py` : variantes `mt1..mt4`, `mtchg`, `mthome`.
+
+**Coût CPU** (fm1-emu, sans gouverneur, Vactrol + Minimoog (sélectionné, joué) + Prophet (accord 5 notes) + drums (toutes les lanes), effets par défaut, 6 s, bloc de 128 = 100 %) :
+| N | pistes rendues | moyenne | pire bloc |
+|---|---|---|---|
+| 1 | Minimoog | 16,2 % | 16,5 % |
+| 2 | + Vactrol | 24,4 % | 24,9 % |
+| 3 | + Prophet | 50,6 % | 51,3 % |
+| 4 | + drums | 81,3 % | 82,4 % |
+(Sans gouverneur ; avec lui, le cas N=4 est ramené par les effets / ECO / drums comme en mise à jour 3.) Le Prophet à 5 voix et les drums pleins sont les deux gros postes : N=2 ou 3 retire l'un d'eux.
+
+**Clics au changement de N pendant que ça joue** (`mtchg` : HOME + PLAY trois fois, 4 -> 3 -> 2 -> 1, tout en jouant) : 12 clics contre 13 pour le témoin sans PLAY (`mthome`), les plus gros pics sont identiques (1,98 s : la touche HOME elle-même, avec un bloc à 100 % dans ce test brut sans gouverneur à 81 %) : aucun clic ajouté par les rampes. Le test `mtchg` a 3 « trous » (fenêtres silencieuses) : ce sont les pistes coupées (silence voulu) et les notes ignorées pendant HOME maintenu, pas des pertes de blocs. Non testé : écoute humaine, silicium, émulateur de l'utilisateur. `state_test` (avec test 7e MAX TRACKS) et `fxbank_test` verts.

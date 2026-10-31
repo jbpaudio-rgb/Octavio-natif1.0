@@ -527,6 +527,18 @@ void hud_block(uint32_t t_in, uint32_t d)             /* end of an audio block (
     }
 }
 #endif
+/* MAXTRACKS begin: the selected track always plays, then the lowest-numbered others, up to max_tracks.  A track outside the set is not rendered at all
+ * (engine and FX cost nothing); its level ramps to 0 over the first block (no click) and back up over one block when it re-enters. */
+#if FEATURE_MAXTRACKS
+static uint8_t mt_prev = 15;
+static unsigned mt_mask(void)
+{
+    unsigned m = 1u << (ctrl_track() & 3); int c = 1, t;
+    for (t = 0; t < NTRK && c < max_tracks; t++) if (!((m >> t) & 1)) { m |= 1u << t; c++; }
+    return m;
+}
+#endif
+/* MAXTRACKS end */
 void voices_render(int32_t *out, int n)
 {
 #ifdef LT_BURN
@@ -541,12 +553,18 @@ void voices_render(int32_t *out, int n)
 #ifndef NO_GOV
     gov_voices();                               /* after the step clock: this block's hits count */
 #endif
+#if FEATURE_MAXTRACKS /* MAXTRACKS */
+    unsigned mt_cur = mt_mask(), mt_was = mt_prev; mt_prev = (uint8_t)mt_cur; hud.mt = max_tracks;
+#endif
     for (t = 0; t < NTRK; t++) {
         int act = 1;
 #ifndef NO_PERF
         uint32_t te0;
 #endif
         arp_tick(t, n);
+#if FEATURE_MAXTRACKS /* MAXTRACKS */
+        if (!((mt_cur | mt_was) >> t & 1)) continue;            /* outside the set for more than a block: free */
+#endif
 #ifndef NO_PERF
         te0 = PERF_NOW();
 #endif
@@ -589,6 +607,12 @@ void voices_render(int32_t *out, int n)
                 for (i = 0; i < n; i++) tmp[i] = (int32_t)(((int64_t)tmp[i] * (g0 + (int32_t)(((int64_t)(g1 - g0) * ((i + 1) * rq)) >> 16))) >> 15);
             lvl_prev[t] = g1;
         }
+#if FEATURE_MAXTRACKS /* MAXTRACKS */
+        if ((mt_cur ^ mt_was) >> t & 1) {                       /* entering / leaving: a one-block ramp */
+            int up = (mt_cur >> t) & 1, rq = 65536 / n;
+            for (i = 0; i < n; i++) { int32_t g = (int32_t)(((i + 1) * rq) >> 1); if (!up) g = 32768 - g; tmp[i] = (int32_t)(((int64_t)tmp[i] * g) >> 15); }
+        }
+#endif
         fx_track(t, tmp, n, act);               /* the track's effects (fxdsp.c), then the track volume as the prototype: F(tb[i]) * t.vol */
         {                                       /* HOME's meter: this block's peak of the track */
             int32_t pk = 0;

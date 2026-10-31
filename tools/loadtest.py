@@ -146,6 +146,9 @@ VARIANTS = {
     "u3hud": dict(G(("VAC", "MOOG", "PROPH", "DRUM"), 13, True, "-DLT_NSRC=2 -DLT_CHORD=5 -DLT_DLANES=15 -DLT_DGATE=0x5555 -DLT_DDEC=500", ms=5200, keys="1500-2200:HOME,1700-1800:REC"), snap="3000,4800"),
     "u3ne": G(("VAC", "MOOG", "PROPH", "DRUM"), 13, True, "-DLT_NSRC=2 -DLT_CHORD=5 -DGOV_ECO=0"),
     "u3er": G(("VAC", "MOOG", "PROPH", "DRUM"), 13, True, NOGOV + "-DLT_NSRC=2 -DLT_CHORD=5 -DLT_ECO"),
+    **{f"mt{n}": G(VMD, 15, True, f"-DLT_NSRC=2 -DLT_SEL=1 -DLT_CHORD=5 -DMAXTR_DEF={n} " + NOGOV, ms=6000, keys=PLAYM) for n in (1, 2, 3, 4)},              # MAX TRACKS n (raw cost, no governor), Vactrol + Minimoog (selected) + Prophet + drums, default chains
+    "mtchg": dict(G(VMD, 15, True, "-DLT_NSRC=2 -DLT_SEL=1 -DLT_CHORD=5 " + NOGOV, ms=6000, keys=PLAYM), keys=PLAYM + ",2000-3300:HOME,2100:PLAY,2500:PLAY,2900:PLAY"),   # HOME + PLAY three times while it plays: 4 -> 3 -> 2 -> 1
+    "mthome": dict(G(VMD, 15, True, "-DLT_NSRC=2 -DLT_SEL=1 -DLT_CHORD=5 " + NOGOV, ms=6000, keys=PLAYM), keys=PLAYM + ",2000-3300:HOME"),   # control: HOME held, no PLAY
     "um": M(), "um_fx": M(fx=True), "umr": M(NOGOV), "umr_fx": M(NOGOV, True),
     "ur_vmd_fx":  G(VMD, 11, True, NOGOV), "ur_vmd": G(VMD, 11, False, NOGOV),
     "gov_save_ui":     V(ms=6500, keys=SAVE),                              # a preset SAVE (flash erase + program with the interrupts off) under load

@@ -379,6 +379,12 @@ void ctrl_button(int t, int down, uint32_t ms)
         if (!down) { hud.on = !hud.on; chord = 1; bump(); }
         return;
     }
+#if FEATURE_MAXTRACKS /* MAXTRACKS */
+    if (t == CB_PLAY && ((bdn >> CB_HOME) & 1)) {     /* HOME held + PLAY: MAX TRACKS 4 -> 3 -> 2 -> 1 -> 4, toast */
+        if (!down) { char a[24] = "MAX TRACKS "; a[11] = (char)('0' + (max_tracks = (uint8_t)(max_tracks <= 1 ? 4 : max_tracks - 1))); a[12] = 0; toast(a, "TEMPORARY", ms); chord = 1; bump(); }
+        return;
+    }
+#endif
     if (latchable(t)) {
         if (down) {                                 /* onpointerdown */
             if ((lt >> t) & 1) {                    /* a locked button: this press unlocks it */

@@ -122,7 +122,11 @@ static void draw_hud(void)
       p = " PRO "; for (i = 0; p[i]; i++) s[k++] = p[i]; put_n(c, hud.cp, 0); for (i = 0; c[i]; i++) s[k++] = c[i];
       p = hud.eco ? " ECO  FPS " : "  FPS "; for (i = 0; p[i]; i++) s[k++] = p[i]; put_n(c, hud.fps, 0); for (i = 0; c[i]; i++) s[k++] = c[i]; s[k] = 0; }
     gfx_text(F_OV_HINT, s, 4 * 64, 55, C_GREY, 0, 0, SCR_W);
+    #if FEATURE_MAXTRACKS /* MAXTRACKS */
+    { char m[40] = "MAX TRACKS n  PLAY=CHG REC=HIDE"; m[11] = (char)('0' + hud.mt); gfx_text(F_OV_HINT, m, 4 * 64, 66, hud.mt < 4 ? C_RED : 0x6a6862u, 0, 0, SCR_W); }
+#else
     gfx_text(F_OV_HINT, "HOME + REC = HIDE", 4 * 64, 66, 0x6a6862u, 0, 0, SCR_W);
+#endif
 }
 
 void overlay_draw(void)

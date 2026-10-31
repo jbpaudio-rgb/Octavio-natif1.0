@@ -683,6 +683,13 @@ int main(int argc, char **argv)
         CHECK(rec == 1 && hud.on == 0, "REC alone: rec %d", rec);
         rec = 0; pg = PGN_GLO;
         printf("debug indicator: HOME + REC toggles it\n");
+#if FEATURE_MAXTRACKS
+        { int k, seq[5], t0 = 8000;                                  /* MAXTRACKS: HOME held + PLAY steps 4 -> 3 -> 2 -> 1 -> 4, never saved */
+          max_tracks = 4;
+          for (k = 0; k < 5; k++) { ctrl_button(CB_HOME, 1, t0); ctrl_button(CB_PLAY, 1, t0 + 10); ctrl_button(CB_PLAY, 0, t0 + 50); ctrl_button(CB_HOME, 0, t0 + 100); seq[k] = max_tracks; t0 += 1000; }
+          CHECK(seq[0] == 3 && seq[1] == 2 && seq[2] == 1 && seq[3] == 4 && seq[4] == 3, "MAX TRACKS cycle %d %d %d %d %d", seq[0], seq[1], seq[2], seq[3], seq[4]);
+          max_tracks = 4; printf("MAX TRACKS: HOME + PLAY cycles 4-3-2-1\n"); }
+#endif
     }
     /* 8. a record written by tools/mkflashrec.py (an independent encoder) boots and loads: run with the image as argv[1] */
     if (argc > 1) {

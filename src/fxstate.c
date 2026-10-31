@@ -8,6 +8,17 @@
  * does it every block).  Included from main.c after params.c and before voices.c / ctrl.c / ui.c. */
 
 #define FX_NTRK 4
+/* MAXTRACKS begin (temporary stability setting, see NOTES-M.md "MAX TRACKS": delete every MAXTRACKS block + the 4 call sites to remove it) */
+#ifndef FEATURE_MAXTRACKS
+#define FEATURE_MAXTRACKS 1
+#endif
+#ifndef MAXTR_DEF
+#define MAXTR_DEF 4                                  /* default (-DMAXTR_DEF=n only for the load tests) */
+#endif
+#if FEATURE_MAXTRACKS
+static uint8_t max_tracks = MAXTR_DEF;                       /* global, not saved: at most this many tracks are rendered at once (1..4) */
+#endif
+/* MAXTRACKS end */
 #define FX_NSLOT 4                                   /* effects in a track's chain (the prototype has 6: see NOTES-H) */
 #define FX_NP 53                                     /* P_F0DRIVE .. P_F15MIX (52 knobs) + P_F5SYNC */
 #define FXBANK_VER 1
@@ -137,6 +148,7 @@ struct {
     uint32_t acc, mx, n, jmx, last_in;                   /* the running window */
     uint32_t fps, nfr, nfr0;                             /* LCD frames per second */
     uint8_t np, nd, nm, run, off, cd, cp, eco;                /* Prophet voices, drum voices, Minimoog tracks sounding; FX slots running / bypassed; the governor's drum and Prophet voice caps */
+    uint8_t mt;                                          /* MAXTRACKS: the limit (the HUD shows it) */
     uint32_t irqoff;                                     /* longest span (ticks) the main loop found interrupts disabled in the last second: not measured here, 0 */
 } hud;
 #define HUD_P 69632u
