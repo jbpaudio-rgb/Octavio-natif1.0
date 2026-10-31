@@ -21,6 +21,12 @@
 #ifndef LT_ACTIVE                                   /* bit t: track t plays (arp / step gates / drum lanes); the others are silent */
 #define LT_ACTIVE 15
 #endif
+#ifndef LT_DGATE
+#define LT_DGATE 0xFFFFu                                /* the steps of a lane that is on (a realistic pattern: 0x5555 = every 8th note) */
+#endif
+#ifndef LT_DDEC
+#define LT_DDEC 900                                     /* drum decay knob: long decays overlap the six voices (the worst case) */
+#endif
 #ifndef LT_DLANES                                   /* bit v: drum lane v has its 16 steps on */
 #define LT_DLANES 63
 #endif
@@ -33,6 +39,9 @@
 
 static void lt_setup(void)
 {
+#ifdef LT_ECO
+    pv_eco = 1;                                                                        /* the Prophet at half rate (the governor's ECO) from the start */
+#endif
     static const uint8_t ENG[4] = LT_ENG;
     static const uint8_t ord[4][FX_NSLOT] = LT_FX;
     static const uint8_t SDST[3][2] = { { 1, 3 }, { 81, 78 }, { 98, 88 } };            /* engine parameters: Vactrol fold / freq, Moog cutoff / osc 1 pitch, Prophet cutoff / wave */
@@ -75,8 +84,8 @@ static void lt_setup(void)
             int v;
             drum_set(t, DR_ID(0, DR_KIT), t % 3);
             for (v = 0; v < 6; v++) {
-                drum_gates_set(t, v, ((LT_ACTIVE >> t & 1) && (LT_DLANES >> v & 1)) ? 0xFFFFu : 0u);
-                drum_set(t, DR_ID(v, DR_DECAY), 900);                                   /* long decays: the six voices overlap */
+                drum_gates_set(t, v, ((LT_ACTIVE >> t & 1) && (LT_DLANES >> v & 1)) ? (uint16_t)LT_DGATE : 0u);
+                drum_set(t, DR_ID(v, DR_DECAY), LT_DDEC);                                   /* long decays: the six voices overlap */
                 drum_set(t, DR_ID(v, DR_CHANCE), 1000);
                 drum_set(t, DR_ID(v, DR_LEVEL), 700);
             }

@@ -138,3 +138,32 @@ On ne dépasse pas les 13 Ko RAM / 14 Ko XIP annoncés ; il reste 10,5 Ko RAM.
 - La combinaison wc (2 Prophet à 5 notes + 2 drums) tourne à 40 % mais le gouverneur plafonne les voix à 2-3 pendant ~1 s au démarrage avant de se stabiliser.
 - Pas de capture d'écran d'une piste drums.
 - Le banc `tools/loadtest.py run <variante>` reproduit tout (variantes `wc wm wf pchord drB um_fx` ; env `JIELI_TOOLCHAIN AC79_SDK LT_OUT`).
+
+## Mise à jour 3 : charge, glitch à 3 pistes, indicateur debug, DSEQ
+
+**Honnêteté d'abord** : l'objectif "pire bloc <= 35 % dans fm1-emu" pour Vactrol + Drum + Prophet 5 notes n'est **pas atteint**. Le plancher brut des moteurs (sans gouverneur) est d'environ 47-69 % selon le motif ; avec le gouverneur : u3 (3 pistes, motif drums chargé) moyenne 37,2 % / pire bloc 49,4 % ; pk5 (5 notes Prophet) 43,6 / 62,1 % (avant : 78,7 %). Rien n'a été testé dans l'émulateur web de l'utilisateur, ni sur silicium, ni à l'oreille.
+
+### Indicateur de charge DEBUG
+Geste : **HOME maintenu + REC** (bascule). Panneau en haut de l'écran, 6 lignes : CPU moyen / pire bloc sur 1 s / pire depuis le début ; LOST (frontières perdues), ISR JITTER ; VOICES (Prophet, drums, Minimoog) ; FX (en marche / bypassés par le gouverneur) ; CAPS (plafonds drums / Prophet, fps UI) ; "ECO" affiché quand le Prophet est en demi-cadence. Test hôte `state_test` 7e. Capture : `shots/hud-debug.png`. Demander à l'utilisateur de lire ces chiffres dans SON émulateur.
+Note : "ALL" (pire depuis le début) inclut le pic du premier bloc, à ignorer.
+
+### Profil par fonction (u3r : 3 pistes, tous les motifs, sans gouverneur, instructions par bloc de 128 trames, `tools/profile.py`)
+drum_render 119,6k (23,8 %) ; voix Prophet (inlinée, 2 symboles) 132k (26 %) ; fx0-fx3 125k (24,9 %) ; exc 26k ; met 20k ; vac_render 19,7k ; timer5 (scan touches) 18,7k ; exp2_fx 10,9k ; le reste < 1 %. Avant : drums ~35 % de l'ISR (drum_render 125k + exc 27k + met 21k), Prophet 23 %, FX 26 %.
+Optimisations : suiveur drums tous les 4 échantillons, flanger/chorus à cadence contrôle (cible de retard tous les 8 échantillons, rampe linéaire), `c_tanh` inline, gain voix Prophet par bloc. Gain brut modeste : environ -7 % (FX -19 %). Le vrai gain vient de **ECO** : voix Prophet calculées à demi-cadence + interpolation (-39 % sur le Prophet, rien au-dessus de 11 kHz, images ~ -70 dB entre 15 et 22 kHz), qui conserve la polyphonie.
+
+### Gouverneur : ordre et planchers
+Seuils : shed 50 %, aim 44 %, admit 40 %, urgence 75 % (moyenne des 8 derniers blocs). Ordre de réduction : 1) effets, 2) ECO (Prophet demi-cadence, déclenché de façon prédictive au début d'un accord), 3) voix drums (plancher 2), 4) voix Prophet **seulement si charge sévère** (moyenne > 70 % ou un bloc > 75 %), plancher **3**, avec fondu et suspension/reprise des notes tenues. Le Prophet garde donc ses 5 voix tant qu'ECO + FX + drums suffisent. Si l'émulateur de l'utilisateur est vraiment > 70 % moyen, le plancher à 3 voix reste atteignable : le panneau debug montre alors VOICES PRO 3 et CAPS.
+
+### (c) Dessin écran, scan touches, IRQ coupées
+Plus long passage interruptions coupées mesuré : 1 169 instructions (5 microsecondes, fin dans isr_timer5). L'ISR audio rend chaque demi-bloc interruptions activées, le timer 10 kHz s'imbrique, la boucle UI est préemptée : dessin LCD et scan touches ne retardent pas le remplissage. Seul un coût ISR > un bloc cause un underrun (pointe mesurée à 77 % d'un bloc en u3r). Le gouverneur en dents de scie : filtré par moyenne sur 8 blocs, attente GOV_SETTLE/GOV_WAIT et refroidissement à pas croissant ; pas de basculement observé dans les runs.
+
+### (d) Test objectif de glitch (clics du wav : spikes de dérivée seconde > 6x la moyenne locale + 700, trous, blocs répétés, frontières perdues ; `tools/loadtest.py`)
+| cas | clics avant (2c2cab0) | clics après | trous |
+|---|---|---|---|
+| u3 (Vactrol + Prophet tenus + drums en séquence) | 15 | 248 | 0 |
+| pk5 | n/d | 37 | 0 |
+**Régression non résolue** : le nombre de clics de u3 monte (15 -> 248) parce que le gouverneur vole des voix drums (105 voix volées) dans ce motif extrême (toutes les lanes pleines). Contre-vérification : sans gouverneur ECO forcé = 14 clics ; sans ECO mais gouverné = 217 ; allonger le fondu de vol de 32 à 128 échantillons ne change rien (248), donc retiré. C'est le compromis choisi (pas de dépassement du bloc, plus de vol drums). Ce motif (6 lanes pleines à chaque pas) est pire que l'usage normal ; non vérifié à l'oreille. Piste restante : voler le Prophet en ECO avant les drums, ou baisser GOV_DMIN.
+Pas de test ECO dédié (seulement les mesures du banc de charge) ; fxbank_test et state_test verts.
+
+### DSEQ : lane agrandie supprimée
+SELECT change la voix drum sans afficher le toast "LANE n" (qui masquait le séquenceur) ; toutes les lanes ont la même taille, la voix sélectionnée est marquée (cadre rouge + étiquette en gras). Captures : `shots/dseq-select-BEFORE-toast.png` (avant), `shots/dseq-lanes-AFTER.png` (après : BD -> SD -> CH -> CP -> CB).

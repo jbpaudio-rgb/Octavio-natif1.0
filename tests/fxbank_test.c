@@ -89,13 +89,13 @@ int main(void)
         fx_begin(); fx_admit();
         running = 0; for (t = 0; t < 4; t++) running += __builtin_popcount(fx_run[t]);
         CHECK(running == r1);                                                   /* one shed per GOV_WAIT blocks */
-        for (i = 0; i < (int)GOV_COOL / 2; i++) { gov_block(GOV_P / 100u * 40u); fx_begin(); fx_admit(); }
+        for (i = 0; i < (int)GOV_COOL / 2; i++) { gov_block(GOV_P / 100u * 30u); fx_begin(); fx_admit(); }
         running = 0; for (t = 0; t < 4; t++) running += __builtin_popcount(fx_run[t]);
         CHECK(running == r1);                                                   /* still cooling down */
-        for (i = 0; i < (int)GOV_COOL * 8; i++) { gov_block(GOV_P / 100u * 40u); fx_begin(); fx_admit(); }      /* (a second shed soon after the first doubles the cool-down) */
+        for (i = 0; i < (int)GOV_COOL * 8; i++) { gov_block(GOV_P / 100u * 30u); fx_begin(); fx_admit(); }      /* (a second shed soon after the first doubles the cool-down) */
         running = 0; for (t = 0; t < 4; t++) running += __builtin_popcount(fx_run[t]);
         CHECK(running == 16);                                                   /* quiet again: everything is back */
-        for (i = 0; i < 24; i++) gov_block(GOV_P / 100u * 52u);                  /* 52 %: over the admit line, under the shed line: a slot that appears now waits */
+        for (i = 0; i < 24; i++) gov_block(GOV_P / 100u * 44u);                  /* 52 %: over the admit line (40 %), under the shed line (50 %): a slot that appears now waits */
         fx_load_view();
         FXT[3].p[FX_FIRST[FXT[3].ord[0]] + FX_P[FXT[3].ord[0]].n - 1 - P_F0DRIVE] = 0; fx_load_view();
         fx_begin(); fx_admit();
@@ -109,7 +109,7 @@ int main(void)
         fx_defaults();
         for (t = 0; t < 4; t++) for (q = 0; q < FX_NSLOT; q++) FXT[t].p[FX_FIRST[q] + FX_P[q].n - 1 - P_F0DRIVE] = 1000;
         fx_load_view();
-        for (i = 0; i < GOV_COOL + 8; i++) { gov_block(GOV_P / 100u * 40u); fx_begin(); fx_admit(); }
+        for (i = 0; i < GOV_COOL + 8; i++) { gov_block(GOV_P / 100u * 30u); fx_begin(); fx_admit(); }
         for (t = 0; t < 4; t++) running += __builtin_popcount(fx_run[t]);
         CHECK(running == 16);
         gov_wait = GOV_WAIT;

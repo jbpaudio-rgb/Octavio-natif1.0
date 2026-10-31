@@ -375,6 +375,10 @@ void ctrl_button(int t, int down, uint32_t ms)
 {
     now_ms = ms;
     if (t < 0 || t >= CB_COUNT) return;
+    if (t == CB_REC && ((bdn >> CB_HOME) & 1)) {      /* HOME held + REC: the debug indicator (CPU load, lost blocks, voices, effects) over any page */
+        if (!down) { hud.on = !hud.on; chord = 1; bump(); }
+        return;
+    }
     if (latchable(t)) {
         if (down) {                                 /* onpointerdown */
             if ((lt >> t) & 1) {                    /* a locked button: this press unlocks it */
@@ -519,7 +523,7 @@ void ctrl_side(int role, int steps, uint32_t ms)
         if (v < 0) v += 6;
         dv[sel & 3] = (uint8_t)v;
         if (dq_latch >= 0) dq_latch = v;                                    /* a latched lane follows */
-        lane_toast(v, g_ms); bump();
+        bump();                                                             /* no toast: the grid shows the voice (red frame, bright label), every lane keeps its size */
     }
     else {
         int w = pend ? ONE / (NCHN - 1) : pg == PGN_HOME ? ONE / 3 : type_held() ? ONE / 7 : kit_h() ? ONE / 2 : ONE / 50;

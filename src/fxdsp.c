@@ -58,6 +58,7 @@ static inline int32_t fxk(int id) { return (int32_t)FVAL(id) * 32768 / 1000; }  
 static inline int32_t lfo01(uint32_t ph) { return (32768 + sin_q15(ph)) >> 1; }           /* .5 + .5 sin */
 
 typedef struct {
+    uint32_t fld_t, chd1_t, chd2_t;      /* the flanger's / chorus' delay targets (control rate) */
     uint32_t lf[5];                      /* the prototype's lf[0..4]: phaser, flanger, chorus, tape wow, tape flutter */
     /* phaser */ int32_t px1[4], py1[4], pfb, pa; int32_t pa_c;
     /* flanger */ dl_t fl;
@@ -176,16 +177,23 @@ static void fx2(fxst_t *st, int32_t *x, int n)                              /* F
 {
     int32_t m = mixk(2) >> 1, fb = FXM(fxk(P_F2FB), 27853), dep = fxk(P_F2DEPTH), i;
     uint32_t inc = INC_MHZ(50 + PVI(P_F2RATE) * 3);                    /* .05 + rate * 3 Hz */
+    uint32_t dt = st->fld_t, d = dt, dd = 0;                           /* the delay time follows the LFO at control rate: a new target every 8 samples, a linear ramp to it */
     for (i = 0; i < n; i++) {
-        int32_t y = x[i], l, w;
-        uint32_t d;
-        st->lf[1] += inc;
-        l = lfo01(st->lf[1]);
-        d = 2312110u + (uint32_t)(((int64_t)FXM(dep, l) * 11560550) >> 15);
+        int32_t y = x[i], w;
+        if ((i & 7) == 0) {
+            uint32_t d1;
+            st->lf[1] += inc * 8u;
+            d1 = 2312110u + (uint32_t)(((int64_t)FXM(dep, lfo01(st->lf[1])) * 11560550) >> 15);
+            if (!dt) dt = d1;
+            d = dt; dt = d1;
+            dd = (uint32_t)(((int32_t)(dt - d)) >> 3);
+        }
+        d += dd;
         w = drd(&st->fl, d);
         dwr(&st->fl, y + FXM(w, fb));
         x[i] = y + FXM(w - y, m);
     }
+    st->fld_t = dt;
 }
 
 static void fx3(fxst_t *st, int32_t *x, int n)                              /* Chorus */
@@ -193,14 +201,24 @@ static void fx3(fxst_t *st, int32_t *x, int n)                              /* C
     int32_t m = mixk(3) >> 1, i;
     uint32_t inc = INC_MHZ(200 + PVI(P_F3RATE) * 5 / 2);               /* .2 + rate * 2.5 Hz */
     uint32_t dd = (uint32_t)(((int64_t)fxk(P_F3DEPTH) * 17340826) >> 15);
+    uint32_t t1 = st->chd1_t, t2 = st->chd2_t, d1 = t1, d2 = t2, s1 = 0, s2 = 0;      /* control rate: the two delay times get a target every 8 samples and ramp linearly to it */
     for (i = 0; i < n; i++) {
-        int32_t y = x[i], a1, a2, w;
-        st->lf[2] += inc;
-        a1 = lfo01(st->lf[2]); a2 = lfo01(st->lf[2] + 1417339207u);
+        int32_t y = x[i], w;
+        if ((i & 7) == 0) {
+            uint32_t n1, n2;
+            st->lf[2] += inc * 8u;
+            n1 = 52022477u + (uint32_t)(((int64_t)dd * lfo01(st->lf[2])) >> 15);
+            n2 = 69363302u + (uint32_t)(((int64_t)dd * lfo01(st->lf[2] + 1417339207u)) >> 15);
+            if (!t1) { t1 = n1; t2 = n2; }
+            d1 = t1; d2 = t2; t1 = n1; t2 = n2;
+            s1 = (uint32_t)(((int32_t)(t1 - d1)) >> 3); s2 = (uint32_t)(((int32_t)(t2 - d2)) >> 3);
+        }
+        d1 += s1; d2 += s2;
         dwr(&st->ch, y);
-        w = (drd(&st->ch, 52022477u + (uint32_t)(((int64_t)dd * a1) >> 15)) + drd(&st->ch, 69363302u + (uint32_t)(((int64_t)dd * a2) >> 15))) >> 1;
+        w = (drd(&st->ch, d1) + drd(&st->ch, d2)) >> 1;
         x[i] = y + FXM(w - y, m);
     }
+    st->chd1_t = t1; st->chd2_t = t2;
 }
 
 static void fx4(fxst_t *st, int32_t *x, int n)                              /* Micro pitch */

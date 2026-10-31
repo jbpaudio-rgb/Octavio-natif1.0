@@ -294,7 +294,7 @@ void drum_render(int t, int32_t *out, int n)
             else if (P->fl_t > 0) { V->fh += M16(x - V->fh, P->fl_c); x = x - V->fh; }
             V->t++;
             ax = x < 0 ? -x : x;
-            V->e = (ax << 8) > M16(V->e, 65470) ? (ax << 8) : M16(V->e, 65470);       /* the output follower in Q23: in Q15 its decay stalled at 1 LSB / sample and killed quiet low-pitched voices at the zero crossings */
+            if (!(V->t & 3)) V->e = (ax << 8) > M16(V->e, 65272) ? (ax << 8) : M16(V->e, 65272);       /* every 4th sample (65470^4): the follower only gates the voice's end and ranks it for the governor */       /* the output follower in Q23: in Q15 its decay stalled at 1 LSB / sample and killed quiet low-pitched voices at the zero crossings */
             x = M15(M15(x, P->g), V->vel);
             if (V->kill) { x = (x * (int32_t)V->kill) >> 5; if (!--V->kill) V->on = 0; }          /* fading out: 32 .. 1 / 32 */
             if (ty == 2 || ty == 3) x = M15(x, Q(1.9) / 2) * 2;

@@ -80,10 +80,56 @@ static void draw_toast(void)
     if (b[0]) text_c(F_OV_SM, b, 120, 89 + 2 + 10 + 21 + 4 + 10, C_RED, 17);
 }
 
+static void put_n(char *o, uint32_t v, int pad)           /* unsigned, space padded to pad */
+{
+    char t[12]; int n = 0, i = 0;
+    do { t[n++] = (char)('0' + v % 10u); v /= 10u; } while (v && n < 11);
+    while (n + i < pad) o[i++] = ' ';
+    while (n) o[i++] = t[--n];
+    o[i] = 0;
+}
+static void hud_pct(char *o, uint32_t pm)                 /* permille -> "41.5" */
+{
+    char a[12]; put_n(a, pm / 10u, 0);
+    { int k = 0; while (a[k]) { o[k] = a[k]; k++; } o[k++] = '.'; o[k++] = (char)('0' + pm % 10u); o[k] = 0; }
+}
+static void draw_hud(void)
+{
+    char s[40], a[12], b[12], c[12]; int i, k;
+    if (!hud.on) return;
+    gfx_rect(0, 0, SCR_W, 70, 0x000000u, 256);
+    gfx_rect(0, 69, SCR_W, 1, C_RED, 256);
+    hud_pct(a, hud.avg); hud_pct(b, hud.max); hud_pct(c, hud.maxall);
+    s[0] = 0; k = 0;
+    { const char *p = "CPU AVG "; for (i = 0; p[i]; i++) s[k++] = p[i]; for (i = 0; a[i]; i++) s[k++] = a[i];
+      p = " MAX "; for (i = 0; p[i]; i++) s[k++] = p[i]; for (i = 0; b[i]; i++) s[k++] = b[i];
+      p = " ALL "; for (i = 0; p[i]; i++) s[k++] = p[i]; for (i = 0; c[i]; i++) s[k++] = c[i]; s[k++] = '%'; s[k] = 0; }
+    gfx_text(F_OV_HINT, s, 4 * 64, 11, C_PAPER, 0, 0, SCR_W);
+    hud_pct(a, hud.jit); hud_pct(b, hud.jitall);
+    k = 0; { const char *p = "LOST "; for (i = 0; p[i]; i++) s[k++] = p[i]; put_n(c, hud.uf, 0); for (i = 0; c[i]; i++) s[k++] = c[i];
+      p = "  ISR JITTER "; for (i = 0; p[i]; i++) s[k++] = p[i]; for (i = 0; a[i]; i++) s[k++] = a[i];
+      p = " ALL "; for (i = 0; p[i]; i++) s[k++] = p[i]; for (i = 0; b[i]; i++) s[k++] = b[i]; s[k++] = '%'; s[k] = 0; }
+    gfx_text(F_OV_HINT, s, 4 * 64, 22, hud.uf ? C_RED : C_GREY, 0, 0, SCR_W);
+    k = 0; { const char *p = "VOICES PRO "; for (i = 0; p[i]; i++) s[k++] = p[i]; put_n(c, hud.np, 0); for (i = 0; c[i]; i++) s[k++] = c[i];
+      p = " DRUM "; for (i = 0; p[i]; i++) s[k++] = p[i]; put_n(c, hud.nd, 0); for (i = 0; c[i]; i++) s[k++] = c[i];
+      p = " MOOG "; for (i = 0; p[i]; i++) s[k++] = p[i]; put_n(c, hud.nm, 0); for (i = 0; c[i]; i++) s[k++] = c[i]; s[k] = 0; }
+    gfx_text(F_OV_HINT, s, 4 * 64, 33, C_GREY, 0, 0, SCR_W);
+    k = 0; { const char *p = "FX RUN "; for (i = 0; p[i]; i++) s[k++] = p[i]; put_n(c, hud.run, 0); for (i = 0; c[i]; i++) s[k++] = c[i];
+      p = " BYPASSED "; for (i = 0; p[i]; i++) s[k++] = p[i]; put_n(c, hud.off, 0); for (i = 0; c[i]; i++) s[k++] = c[i];
+      p = " (GOV "; for (i = 0; p[i]; i++) s[k++] = p[i]; put_n(c, gov.fx, 0); for (i = 0; c[i]; i++) s[k++] = c[i]; s[k++] = ')'; s[k] = 0; }
+    gfx_text(F_OV_HINT, s, 4 * 64, 44, C_GREY, 0, 0, SCR_W);
+    k = 0; { const char *p = "CAPS DRUM "; for (i = 0; p[i]; i++) s[k++] = p[i]; put_n(c, hud.cd, 0); for (i = 0; c[i]; i++) s[k++] = c[i];
+      p = " PRO "; for (i = 0; p[i]; i++) s[k++] = p[i]; put_n(c, hud.cp, 0); for (i = 0; c[i]; i++) s[k++] = c[i];
+      p = hud.eco ? " ECO  FPS " : "  FPS "; for (i = 0; p[i]; i++) s[k++] = p[i]; put_n(c, hud.fps, 0); for (i = 0; c[i]; i++) s[k++] = c[i]; s[k] = 0; }
+    gfx_text(F_OV_HINT, s, 4 * 64, 55, C_GREY, 0, 0, SCR_W);
+    gfx_text(F_OV_HINT, "HOME + REC = HIDE", 4 * 64, 66, 0x6a6862u, 0, 0, SCR_W);
+}
+
 void overlay_draw(void)
 {
     int o = ctrl_overlay();
     if (o == OV_LIST) draw_list();
     else if (o == OV_NAME) draw_name();
     draw_toast();
+    draw_hud();
 }

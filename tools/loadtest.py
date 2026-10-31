@@ -134,6 +134,18 @@ VARIANTS = {
     # M: the user's Prophet test: Vactrol, Minimoog and drums play on their own (arp / step clock, default chains, 24 routes), a 5-key chord is held on the Prophet (track 2) from the keys
     "pk5": G(("VAC", "PROPH", "MOOG", "DRUM"), 13, True, "-DLT_NSRC=2 -DLT_SEL=1", ms=7000,
              keys="2500-6000:n0,2500-6000:n2,2500-6000:n4,2500-6000:n7,2500-6000:n9"),
+    # M3: the user's three tracks: Vactrol + Prophet (5-note chord held) + drums in sequence, default chains, a little modulation (u3 governed, u3r raw)
+    "u3": G(("VAC", "MOOG", "PROPH", "DRUM"), 13, True, "-DLT_NSRC=2 -DLT_CHORD=5"),
+    "u3r": G(("VAC", "MOOG", "PROPH", "DRUM"), 13, True, NOGOV + "-DLT_NSRC=2 -DLT_CHORD=5"),
+    # M3: the same with a plausible drum pattern (BD SD CH OH, every 8th note, moderate decay): what a player really sets up
+    "u3d": G(("VAC", "MOOG", "PROPH", "DRUM"), 13, True, "-DLT_NSRC=2 -DLT_CHORD=5 -DLT_DLANES=15 -DLT_DGATE=0x5555 -DLT_DDEC=500"),
+    "u3dr": G(("VAC", "MOOG", "PROPH", "DRUM"), 13, True, NOGOV + "-DLT_NSRC=2 -DLT_CHORD=5 -DLT_DLANES=15 -DLT_DGATE=0x5555 -DLT_DDEC=500"),
+    "pchord_eco": G(("MOOG", "PROPH", "MOOG", "MOOG"), 2, False, NOGOV + "-DLT_ECO -DLT_NSRC=0 -DLT_SEL=1 -DLT_NOARP -DLT_NOSEQ -DLT_NOMOD", ms=6500,
+                keys="1000-2500:n0,1000-2800:n2,1000-3100:n4,1000-3400:n7,1000-3700:n9,4300-5900:n0,4300-5900:n2,4300-5900:n4,4300-5900:n7,4300-5900:n9,5000-5500:n11"),
+    "ph5": G(("MOOG", "PROPH", "MOOG", "MOOG"), 2, False, NOGOV + "-DLT_CHORD=5", ms=3000), "ph5e": G(("MOOG", "PROPH", "MOOG", "MOOG"), 2, False, NOGOV + "-DLT_CHORD=5 -DLT_ECO", ms=3000),
+    "u3hud": dict(G(("VAC", "MOOG", "PROPH", "DRUM"), 13, True, "-DLT_NSRC=2 -DLT_CHORD=5 -DLT_DLANES=15 -DLT_DGATE=0x5555 -DLT_DDEC=500", ms=5200, keys="1500-2200:HOME,1700-1800:REC"), snap="3000,4800"),
+    "u3ne": G(("VAC", "MOOG", "PROPH", "DRUM"), 13, True, "-DLT_NSRC=2 -DLT_CHORD=5 -DGOV_ECO=0"),
+    "u3er": G(("VAC", "MOOG", "PROPH", "DRUM"), 13, True, NOGOV + "-DLT_NSRC=2 -DLT_CHORD=5 -DLT_ECO"),
     "um": M(), "um_fx": M(fx=True), "umr": M(NOGOV), "umr_fx": M(NOGOV, True),
     "ur_vmd_fx":  G(VMD, 11, True, NOGOV), "ur_vmd": G(VMD, 11, False, NOGOV),
     "gov_save_ui":     V(ms=6500, keys=SAVE),                              # a preset SAVE (flash erase + program with the interrupts off) under load
@@ -154,6 +166,7 @@ def build(name):
     addr = re.search(r"^([0-9a-f]+) .*\sperf$", syms, re.M).group(1)
     bss_end = re.search(r"^([0-9a-f]+) .*\s_bss_end$", syms, re.M).group(1)
     json.dump(dict(perf=addr, bss_end=bss_end), open(os.path.join(d, "syms.json"), "w"))
+    open(os.path.join(d, "symtab.txt"), "w").write(syms)                      # tools/profile.py maps the emulator's PC trace to functions with it
     return d, addr
 
 def start(name):

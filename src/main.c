@@ -139,6 +139,9 @@ void fm1_alnk0_irq(void)
         perf.audio_sum += perf.audio_last;
         if (perf.audio_last > perf.audio_max) perf.audio_max = perf.audio_last;
         if (++perf.blocks > 200 && perf.audio_last > perf.audio_max_w) perf.audio_max_w = perf.audio_last;      /* worst block after the first 0.6 s (allocation and start-up excluded) */
+#ifndef NO_GOV
+        hud_block(t_blk, perf.audio_last);
+#endif
         gov_block(perf.audio_last > fx_alloc_blk ? perf.audio_last - fx_alloc_blk : perf.audio_last);       /* the CPU governor (fxstate.c); a chain's one-off allocation is not load */
         fx_alloc_blk = 0;
 #ifndef NO_PERF
@@ -458,7 +461,7 @@ static void app_main(void)
 #ifndef NO_PERF
                 {
                     uint32_t tf = fm1_ticks(), d;
-                    lcd_frame(y0, y1);
+                    lcd_frame(y0, y1); hud.nfr++;
                     d = fm1_ticks() - tf;
                     if (perf.blocks > PERF_WARM) {
                         perf.frame_n++; perf.frame_sum += d; perf.rows_sum += (uint32_t)(y1 - y0);
@@ -469,7 +472,7 @@ static void app_main(void)
                     perf.last_frame = tf;
                 }
 #else
-                lcd_frame(y0, y1);
+                lcd_frame(y0, y1); hud.nfr++;
 #endif
             }
         }

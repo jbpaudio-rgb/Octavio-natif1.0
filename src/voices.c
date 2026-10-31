@@ -413,6 +413,9 @@ uint32_t voices_gate_mask(void)
     return m;
 }
 
+#ifndef GOV_ECO
+#define GOV_ECO 1                                     /* 0: the governor never goes to the Prophet's half rate (A/B tests) */
+#endif
 #ifndef NO_GOV
 /* Voice governor (NOTES-M): with no effect left to bypass, the voices sounding in all are capped, drum voices (dv_cap, all drum tracks) and Prophet voices (pv_cap,
  * all Prophet tracks) alike: the class that costs most right now (voices sounding x measured ticks per voice) loses a voice first, so neither is taken before
@@ -423,6 +426,7 @@ static int gov_nd(void)
     for (t = DRUM_T0; t < NTRK; t++) if (TK[t].eng == ENG_DRUM) for (v = 0; v < 6; v++) n += DRM[t - DRUM_T0].V[v].on && !DRM[t - DRUM_T0].V[v].kill;
     return n;
 }
+static int gov_nsus(void) { int t, n = 0; for (t = 0; t < NTRK; t++) if (TK[t].eng == ENG_PROPH) n += proph_nsuspended(t); return n; }
 static int gov_np(void)
 {
     int t, n = 0;
@@ -456,12 +460,18 @@ static int gov_resume_prophet(void)                   /* a held note the governo
 static void gov_voices(void)
 {
     int nd = gov_nd(), np = gov_np();
+    static int np_prev;
+    if (GOV_ECO && np > np_prev && !pv_eco && gov_n >= GOV_SETTLE && gov_peak + (uint32_t)(np - np_prev) * pv_cost > GOV_SHED) {         /* a chord starts: the voices it adds would push the load over the line, and the 8-block mean would only notice later: half rate at once */
+        pv_eco = 1; gov_mark(1, &gov_vcool, GOV_COOL / 8u); gov.voices++;
+    }
+    np_prev = np;
     int severe = gov_last > GOV_EMERG || gov_peak > GOV_P / 100u * 70u;               /* a real overrun is near: only then does the Prophet lose voices */
-    if (gov_n >= GOV_SETTLE && ((gov_peak > GOV_SHED && !gov_wait) || gov_last > GOV_EMERG) && !(fx_run[0] | fx_run[1] | fx_run[2] | fx_run[3]) && (nd > GOV_DMIN || (severe && np > GOV_PMIN))) {       /* no effect left to bypass: fewer voices */
+    if (gov_n >= GOV_SETTLE && ((gov_peak > GOV_SHED && !gov_wait) || gov_last > GOV_EMERG) && !(fx_run[0] | fx_run[1] | fx_run[2] | fx_run[3]) && ((GOV_ECO && !pv_eco && np > 0) || nd > GOV_DMIN || (severe && np > GOV_PMIN))) {       /* no effect left to bypass: fewer voices */
         uint32_t over = (gov_last > gov_peak ? gov_last : gov_peak) - GOV_AIM, freed = 0;
         int guard;
         for (guard = 0; guard < 24 && freed < over; guard++) {                    /* order: effects (above), then drum voices down to GOV_DMIN, and the Prophet (down to GOV_PMIN) only when severe: a chord of five keys is the instrument's point */
-            if (nd > GOV_DMIN) { nd--; dv_cap = nd < dv_cap ? nd : dv_cap; freed += dv_cost; }
+            if (GOV_ECO && !pv_eco && np > 0) { pv_eco = 1; freed += (uint32_t)np * pv_cost * 45u / 100u; }       /* effects first (above), then the Prophet goes to half rate (keeps all its voices) */
+            else if (nd > GOV_DMIN) { nd--; dv_cap = nd < dv_cap ? nd : dv_cap; freed += dv_cost; }       /* then the drum voices, down to GOV_DMIN */
             else if (severe && np > GOV_PMIN) { np--; pv_cap = np < pv_cap ? np : pv_cap; freed += pv_cost; }
             else break;
         }
@@ -470,7 +480,8 @@ static void gov_voices(void)
         if (!gov.cap_min || (uint32_t)(dv_cap + pv_cap) < gov.cap_min) gov.cap_min = (uint32_t)(dv_cap + pv_cap);
     } else if (!gov_vcool && !(perf.blocks & 15u)) {                              /* the class that lost more comes back first */
         int fd = dv_cap * 100 / GOV_DRUMS, fp = pv_cap * 100 / GOV_PROPH;
-        if (fp <= fd && pv_cap < GOV_PROPH && gov_peak + pv_cost * 3u / 2u <= GOV_ADMIT) pv_cap++;
+        if (pv_eco && pv_cap >= GOV_PROPH && !gov_nsus() && gov_peak + (uint32_t)gov_np() * pv_cost * 6u / 10u <= GOV_ADMIT) pv_eco = 0;        /* quality comes back after polyphony */
+        else if (fp <= fd && pv_cap < GOV_PROPH && gov_peak + pv_cost * 3u / 2u <= GOV_ADMIT) pv_cap++;
         else if (fd < fp && dv_cap < GOV_DRUMS && gov_peak + dv_cost * 3u / 2u <= GOV_ADMIT) dv_cap++;
     }
     nd = gov_nd(); np = gov_np();
@@ -483,6 +494,38 @@ void fx_track(int t, int32_t *x, int n, int act);          /* fxdsp.c: the track
 int fx_awake(int t);
 #ifdef LT_BURN                                  /* load test: a busy wait of LT_BURN ticks in every audio block = a machine that is slower by that much (NOTES-M) */
 static void lt_burn(void) { uint32_t t0 = PERF_NOW(); while (PERF_NOW() - t0 < (uint32_t)(LT_BURN)) ; }
+#endif
+#ifndef NO_GOV
+void hud_block(uint32_t t_in, uint32_t d)             /* end of an audio block (main.c): the debug indicator's counters */
+{
+    uint32_t gap = t_in - hud.last_in, dev;
+    if (hud.last_in) {
+        if (gap > HUD_P * 3u / 2u) hud.uf += (gap + HUD_P / 2u) / HUD_P - 1u;
+        dev = gap > HUD_P ? gap - HUD_P : HUD_P - gap;
+        if (dev > hud.jmx) hud.jmx = dev;
+    }
+    hud.last_in = t_in;
+    hud.acc += d; hud.n++;
+    if (d > hud.mx) hud.mx = d;
+    if (hud.n >= 344u) {                                              /* one second */
+        int t, q;
+        hud.avg = (hud.acc / hud.n) * 1000u / HUD_P;
+        hud.max = hud.mx * 1000u / HUD_P;
+        if (hud.max > hud.maxall) hud.maxall = hud.max;
+        hud.jit = hud.jmx * 1000u / HUD_P;
+        if (hud.jit > hud.jitall) hud.jitall = hud.jit;
+        hud.np = (uint8_t)gov_np(); hud.nd = (uint8_t)gov_nd();
+        hud.nm = 0; hud.run = hud.off = 0;
+        for (t = 0; t < NTRK; t++) {
+            if (TK[t].eng == ENG_MOOG && moog_active(t)) hud.nm++;
+            for (q = 0; q < 8; q++) { hud.run += (uint8_t)(fx_run[t] >> q & 1); hud.off += (uint8_t)(fx_off[t] >> q & 1); }
+        }
+        hud.cd = (uint8_t)dv_cap; hud.cp = (uint8_t)pv_cap; hud.eco = pv_eco;
+        hud.fps = hud.nfr - hud.nfr0; hud.nfr0 = hud.nfr;
+        hud.acc = hud.mx = hud.n = hud.jmx = 0;
+        hud.ver++;
+    }
+}
 #endif
 void voices_render(int32_t *out, int n)
 {

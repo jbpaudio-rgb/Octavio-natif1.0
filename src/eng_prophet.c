@@ -7,7 +7,7 @@
 #define PR_NV 5                                    /* voices per Prophet track (a Prophet-5 has five) */
 typedef struct {                                   /* one voice: oscillator phases, filter, envelopes, noise */
     uint32_t pa, pb, so;
-    int32_t note, drift, fbf, z[4], dcs, vel, vel_s;
+    int32_t note, drift, fbf, z[4], dcs, vel, vel_s, oq;      /* oq: the last half-rate sample (ECO) */
     adsr_t a, f;
     noise_t n;
     uint16_t age;                                  /* allocation order: the oldest gated voice is stolen first */
@@ -226,10 +226,12 @@ static inline int32_t proph_osc(uint32_t ph, uint32_t inc, uint32_t rd, const in
     return (int32_t)(s >> 15);
 }
 
+static uint8_t pv_eco;                             /* ECO (the governor, voices.c): the voices are computed at half the sample rate and interpolated: ~45 % cheaper, nothing above 11 kHz, polyphony kept */
+
 /* one voice over the block, added into out[] */
 static void proph_voice(proph_t *m, pvoice_t *v, int32_t *out, int n, const int32_t *cutc, const int32_t *tua, const int32_t *tub)
 {
-    int i = 0, j, ch = 0;
+    int i = 0, j, ch = 0, eco = pv_eco;
     int32_t rq = 65536 / n, vel0 = v->vel_s, fade = v->fade == 1 ? 65536 : 0, fin = v->fade == 2;
     v->drift = (int32_t)(((int64_t)(v->drift + (c_rand15() >> 11)) * 65503) >> 16);
     while (i < n) {
@@ -237,23 +239,24 @@ static void proph_voice(proph_t *m, pvoice_t *v, int32_t *out, int n, const int3
         uint32_t incA, incB, incS = 0, rdA, rdB, rdS = 0, g0;
         int cnt = n - i < 8 ? n - i : 8;
         int32_t velc = vel0 + (int32_t)(((int64_t)(v->vel - vel0) * ((i + cnt) * rq)) >> 16);
+        int32_t vg = (int32_t)(((int64_t)velc * m->olvl) >> 15);
         xa = C_L2_MINC + (int32_t)(((int64_t)(base + v->drift + tua[ch]) * 21845) >> 18) + m->rnga;
         xb = C_L2_MINC + (int32_t)(((int64_t)(base - v->drift + tub[ch]) * 21845) >> 18) + m->rngb;
-        incA = exp2_fx(xa, 0); incB = exp2_fx(xb, 0);
+        incA = exp2_fx(xa, 0) << eco; incB = exp2_fx(xb, 0) << eco;
         rdA = c_rd(incA); rdB = c_rd(incB);
         if (m->usesub) {
             xs = C_L2_MINC + (int32_t)(((int64_t)base * 21845) >> 18) + m->subo;
-            incS = exp2_fx(xs, 0); rdS = c_rd(incS);
+            incS = exp2_fx(xs, 0) << eco; rdS = c_rd(incS);
         }
         lx0 = C_L2_FC0 + 92735 /* log2(80/30): 2pi * 40 / FS */ + cutc[ch] + (int32_t)(((int64_t)base * 4369) >> 16) +
               (int32_t)(((int64_t)m->env16 * ef) >> 30);               /* 2pi fc / FS with fc = 40 * ... */
         g0 = 0;
         if (!m->p[PR_PM]) {
-            int32_t x16 = (int32_t)exp2_fx(lx0, 16);
+            int32_t x16 = (int32_t)(exp2_fx(lx0, 16) << eco);
             if (x16 > 164707 || x16 < 0) x16 = 164707;                 /* fc <= .4 FS : 2 pi * .4 */
             g0 = c_expm((uint32_t)x16);
         }
-        for (j = 0; j < cnt; j++, i++) {
+        for (j = 0; j < cnt; j += 1 + eco, i += 1 + eco) {
             int32_t a = 0, b = 0, sub = 0, nz = 0, sg, ea, x, o, g, k = m->k16;
             v->pb += incB;
             if (v->pb < incB && m->sync) v->pa = 0;
@@ -266,8 +269,9 @@ static void proph_voice(proph_t *m, pvoice_t *v, int32_t *out, int n, const int3
             sg = (int32_t)(((int64_t)a * m->lva + (int64_t)b * m->lvb + (int64_t)sub * m->lvs + (int64_t)nz * m->lvn) >> 15);
             sg = (int32_t)(((int64_t)sg * 14746) >> 15);                 /* * .45 */
             ea = c_adsr(&v->a, m->ai, m->dc, m->sus, m->rc);
+            if (eco) ea = c_adsr(&v->a, m->ai, m->dc, m->sus, m->rc);          /* half rate: the envelope still advances 2 samples */
             if (m->p[PR_PM]) {
-                int32_t x16 = (int32_t)exp2_fx(lx0 + (int32_t)(((int64_t)m->pm16 * b) >> 15), 16);
+                int32_t x16 = (int32_t)(exp2_fx(lx0 + (int32_t)(((int64_t)m->pm16 * b) >> 15), 16) << eco);
                 if (x16 > 164707 || x16 < 0) x16 = 164707;
                 g = (int32_t)c_expm((uint32_t)x16);
             } else
@@ -279,12 +283,12 @@ static void proph_voice(proph_t *m, pvoice_t *v, int32_t *out, int n, const int3
             v->z[2] += (int32_t)(((int64_t)((v->z[1] - v->z[2]) >> 5) * g) >> 11);
             v->z[3] += (int32_t)(((int64_t)((v->z[2] - v->z[3]) >> 5) * g) >> 11);
             o = (int32_t)(((int64_t)(v->z[3] >> 5) * (65536 + (k >> 1))) >> 16);      /* * (1 + k * .5) */
-            o = (int32_t)(((int64_t)o * (ea >> 15)) >> 15);
-            o = (int32_t)(((int64_t)o * velc) >> 15);
-            o = (int32_t)(((int64_t)o * m->olvl) >> 15);                          /* * 1.8 * .6 = 1.08 * level */
-            if (fade) { fade -= rq; o = (int32_t)(((int64_t)o * (fade < 0 ? 0 : fade)) >> 16); }      /* the governor takes the voice: a linear fade over the block */
+            o = (int32_t)(((int64_t)o * (int32_t)(((int64_t)(ea >> 15) * vg) >> 15)) >> 15);        /* amplitude envelope * (velocity * level, once per chunk): 1.8 * .6 = 1.08 * level */
+            if (fade) { fade -= rq << eco; o = (int32_t)(((int64_t)o * (fade < 0 ? 0 : fade)) >> 16); }      /* the governor takes the voice: a linear fade over the block */
             else if (fin) o = (int32_t)(((int64_t)o * (i + 1) * rq) >> 16);                         /* ... or gives it back: a linear fade in */
-            out[i] += o;
+            if (eco) { out[i] += (v->oq + o) >> 1; out[i + 1] += o; }
+            else out[i] += o;
+            v->oq = o;
         }
         ch++;
     }

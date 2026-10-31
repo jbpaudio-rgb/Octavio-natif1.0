@@ -15,7 +15,7 @@ static inline uint32_t c_rand32(void) { c_rand15(); return c_rng; }
 
 static inline uint32_t c_mulhi(uint32_t a, uint32_t b) { return (uint32_t)(((uint64_t)a * b) >> 32); }
 
-static int32_t c_tanh(int32_t x15)                    /* tanh, Q15 in (clipped at +-4) and out */
+static inline int32_t c_tanh(int32_t x15)                    /* tanh, Q15 in (clipped at +-4) and out */
 {
     int32_t x = x15 >> 3, i, f, a;                    /* Q12 */
     if (x > 16383) x = 16383;

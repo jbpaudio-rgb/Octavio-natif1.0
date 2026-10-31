@@ -671,6 +671,19 @@ int main(int argc, char **argv)
         printf("drum sequencer: SELECT steps the voice with wrap, its OP key lights, SEQ + SELECT unchanged\n");
         state_defaults();
     }
+    /* 7e. M: the debug indicator: HOME held + REC toggles it, REC alone still records */
+    {
+        state_defaults();
+        hud.on = 0; rec = 0;
+        ctrl_button(CB_HOME, 1, 5000); ctrl_button(CB_REC, 1, 5010); ctrl_button(CB_REC, 0, 5050); ctrl_button(CB_HOME, 0, 5100);
+        CHECK(hud.on == 1 && rec == 0 && ctrl_page() != PGN_HOME, "HOME + REC: indicator %d, rec %d, page %d", hud.on, rec, ctrl_page());
+        ctrl_button(CB_HOME, 1, 6000); ctrl_button(CB_REC, 1, 6010); ctrl_button(CB_REC, 0, 6050); ctrl_button(CB_HOME, 0, 6100);
+        CHECK(hud.on == 0, "HOME + REC again does not hide the indicator");
+        ctrl_button(CB_REC, 1, 7000); ctrl_button(CB_REC, 0, 7050);
+        CHECK(rec == 1 && hud.on == 0, "REC alone: rec %d", rec);
+        rec = 0; pg = PGN_GLO;
+        printf("debug indicator: HOME + REC toggles it\n");
+    }
     /* 8. a record written by tools/mkflashrec.py (an independent encoder) boots and loads: run with the image as argv[1] */
     if (argc > 1) {
         FILE *f = fopen(argv[1], "rb");

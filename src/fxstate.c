@@ -97,16 +97,16 @@ uint32_t fx_refused;                                 /* counts the slots the bud
 #define GOV_P 69660u                                 /* one audio block in TIMER4 ticks */
 #endif
 #ifndef GOV_SHED
-#define GOV_SHED (GOV_P / 100u * 56u)                /* M: was 74 %.  The fm1-emu tick is not the silicon's (nor another emulator's): the ceiling leaves room for a machine up to ~1.7x slower */
+#define GOV_SHED (GOV_P / 100u * 50u)                /* M: was 74 %.  The fm1-emu tick is not the silicon's (nor another emulator's): the ceiling leaves room for a machine up to ~1.7x slower */
 #endif
 #ifndef GOV_ADMIT
-#define GOV_ADMIT (GOV_P / 100u * 47u)
+#define GOV_ADMIT (GOV_P / 100u * 40u)
 #endif
 #ifndef GOV_AIM
-#define GOV_AIM (GOV_P / 100u * 51u)                 /* a shed removes enough to land about here */
+#define GOV_AIM (GOV_P / 100u * 44u)                 /* a shed removes enough to land about here */
 #endif
 #ifndef GOV_EMERG
-#define GOV_EMERG (GOV_P / 100u * 80u)               /* one block this long: shed now, without waiting for the window or the wait (the ISR is about to overrun) */
+#define GOV_EMERG (GOV_P / 100u * 75u)               /* one block this long: shed now, without waiting for the window or the wait (the ISR is about to overrun) */
 #endif
 #define GOV_SETTLE 16u                              /* blocks measured before the governor acts at all (the start-up burst is not a load) */
 #define GOV_WAIT 12u                                 /* blocks between two sheds: the 4-block window must show the effect of the last one */
@@ -126,6 +126,20 @@ static uint32_t gov_since[2];                        /* blocks since the last sh
 static uint32_t fx_alloc_blk;                        /* ticks the audio block spent in fx_alloc (a one-off: not load) */
 static int dv_cap = GOV_DRUMS, pv_cap = GOV_PROPH;          /* voices allowed to sound at once: drums (all drum tracks together) and Prophet voices (all Prophet tracks together) */
 struct { uint32_t fx, voices, steals, cap_min, unload; } gov;      /* activity counters (perf dump, loadtest) */
+/* The debug indicator (HOME held + REC toggles it): what the audio block costs, measured by the device's own timer, over the last second and since boot, so the numbers
+ * can be read on any emulator or on the silicon.  Published by the audio ISR once per ~1 s (344 blocks); drawn by overlay.c. */
+struct {
+    uint8_t on;                                          /* the panel is shown */
+    uint32_t ver;                                        /* counts the publications (the screen redraws on a change) */
+    uint32_t avg, max, maxall;                           /* permille of a block: mean / worst of the last second, worst since boot */
+    uint32_t uf;                                         /* audio boundaries lost (an ISR entry more than 1.5 blocks after the previous one) */
+    uint32_t jit, jitall;                                /* the ISR entry spacing deviating from one block: worst of the last second / since boot, permille of a block */
+    uint32_t acc, mx, n, jmx, last_in;                   /* the running window */
+    uint32_t fps, nfr, nfr0;                             /* LCD frames per second */
+    uint8_t np, nd, nm, run, off, cd, cp, eco;                /* Prophet voices, drum voices, Minimoog tracks sounding; FX slots running / bypassed; the governor's drum and Prophet voice caps */
+    uint32_t irqoff;                                     /* longest span (ticks) the main loop found interrupts disabled in the last second: not measured here, 0 */
+} hud;
+#define HUD_P 69632u
 static void gov_block(uint32_t d)                    /* end of an audio block: its length in ticks */
 {
 #ifndef NO_GOV
