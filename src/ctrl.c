@@ -348,7 +348,11 @@ static void btn(int t, uint32_t ms)                /* btn(): a button's action (
         if (t == CB_HOME) { pend = 0; bump(); }
     }
     if (t == CB_ENV || t == CB_EDIT || t == CB_GLO) tab_press(t);
-    else if (t == CB_FX) { if (pg == PGN_FX) fxo = (fxo + 1) % FX_NSLOT; else pg = PGN_FX; }
+    else if (t == CB_FX) {                          /* FX: the FX ORDER overview (the 4 slots, their Mix on K1..K4), then each slot's page in turn, then back to the overview */
+        if (pg == PGN_FX) { fxo = (fxo + 1) % FX_NSLOT; if (fxo == 0) pg = PGN_FXO; }
+        else if (pg == PGN_FXO) pg = PGN_FX;
+        else pg = PGN_FXO;
+    }
     else if (t == CB_LFO) { if (pg == PGN_LFO) src = (src + 1) % 6; else pg = PGN_LFO; }
     else if (t == CB_HOME) pg = PGN_HOME;
     else if (t == CB_SEQ) {
@@ -610,8 +614,9 @@ int ctrl_op_key(int o)                              /* the prototype's black-key
         chord = 1; arp_sub = o;
     } else if (pg == PGN_SEQ && HELD(CB_SEQ) && o < 6) {                       /* SEQ held + OP1..OP6: the line of the pitch sequencer */
         chord = 1; ui_seq_select(o, -1);
-    } else if (o == 7 && (pg == PGN_FX || pg == PGN_FXO) && !h_edit && !h_glo && !h_env) {       /* OP8: FX ORDER, only from the effects menu (the prototype opens it from any page; restricted on request) */
-        pg = PGN_FXO;
+    } else if (o == 7 && (pg == PGN_FX || pg == PGN_FXO) && !h_edit && !h_glo && !h_env) {       /* OP8 no longer opens FX ORDER (it is the FX button's first page): nothing, no note */
+        chord = 1;
+        return 1;
     } else if (o < 4 && (e == ENG_MOOG || e == ENG_PROPH) && (h_edit || h_glo)) {
         int np = PGN_OSC1 + o;
         chord = 1; pg = pg == np ? PGN_GLO : np;
@@ -661,6 +666,7 @@ void ctrl_seq_release(int w, uint32_t ms)
 }
 /* FX ORDER's K1 (the prototype's hidden "fxpos" slider: 1/50 of its range per detent, six slots -> .1 slot): moves the selection; with SEL held
  * the selected effect moves with it (splice), and releasing SEL is then no press. */
+int ctrl_sel_held(void) { return sel_down; }
 void ctrl_fxo_knob(int steps)
 {
     int i, n = steps < 0 ? -steps : steps;

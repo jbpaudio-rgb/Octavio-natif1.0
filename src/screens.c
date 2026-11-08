@@ -200,6 +200,15 @@ static void fxo_draw(void)
             gfx_rect(bb0, y + 24, bb1 - bb0, 23, MB_BG, 256);
         }
         gfx_text(F_MBI, lab, cx64 - (wi >> 1) + 141, y + 17, tcol, 31, x0 + 2, x1 - 2);
+        {   /* the slot's Mix: a percentage at the right of the label and a bar along the tile's foot (K1..K4 edit it) */
+            int mv = PV[fx_mix_pid(i)], pc = (mv + 5) / 10, bw = 101 * (mv < 0 ? 0 : mv > 1000 ? 1000 : mv) / 1000;
+            char pt[5]; int q = 0; int32_t w64;
+            if (pc >= 100) pt[q++] = '1', pt[q++] = '0', pt[q++] = '0'; else { if (pc >= 10) pt[q++] = (char)('0' + pc / 10); pt[q++] = (char)('0' + pc % 10); }
+            pt[q] = 0;
+            w64 = ui_strlen(pt) * (FONTS[F_MBI].adv64 + 31);
+            gfx_text(F_MBI, pt, (x1 - 9) * 64 - w64, y + 17, tcol, 31, x0 + 2, x1 - 2);
+            if (bw > 0) gfx_rect(x0 + 2, y + 45, bw, 3, fx_slot_off(fx_view, i) ? 0x77736cu : sel ? COL_TEXT : COL_RED, 256);
+        }
         gfx_text(F_MBB, fx, cx64 - (wb >> 1) + 141, y + 39, fx_slot_off(fx_view, i) ? 0x77736cu : sel ? 0xffffffu : COL_TEXT, 31, x0 + 2, x1 - 2);
     }
 }

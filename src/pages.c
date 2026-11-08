@@ -19,6 +19,7 @@ static const struct { uint8_t n; uint8_t l[4]; } FX_P[16] = {
     { 3, { L_TIME, L_FB, L_MIX } }, { 3, { L_SIZE, L_HOLD, L_MIX } }, { 4, { L_WOW, L_DRIVE, L_AGE, L_MIX } }, { 3, { L_DECAY, L_SHIFT, L_MIX } } };
 static const uint8_t FX_FIRST[16] = { P_F0DRIVE, P_F1RATE, P_F2RATE, P_F3RATE, P_F4CENTS, P_F5TIME, P_F6SIZE, P_F7SIZE, P_F8FREQ, P_F9CRUSH, P_F10FREQ,
                                       P_F11LEN, P_F12TIME, P_F13SIZE, P_F14WOW, P_F15DECAY };
+static int fx_mix_pid(int slot) { int e = fxs[slot & 3] & 15; return FX_FIRST[e] + FX_P[e].n - 1; }      /* the Mix knob of the effect in slot `slot` */
 static const uint8_t LFO_BASE[6] = { P_M0T, P_M1T, P_M2T, P_M10T, P_M3T, P_M11T };       /* dest, shape|smooth, rate, amount, sync */
 
 /* cell k of the LFO / FX page: the parameter id (-1: a dimmed, empty cell), its label and whether it is dimmed */

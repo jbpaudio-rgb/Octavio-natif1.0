@@ -95,7 +95,15 @@ static int enc_cnt(int id)                     /* number of values of a paramete
 void ui_encoder(int k, int steps)              /* one detent = 1/50 of the range, like the prototype's wheel */
 {
     int i, n = steps < 0 ? -steps : steps;
-    if (page == PG_FXO) { if (k == 0) ctrl_fxo_knob(steps); dirty_all = 1; return; }     /* FX ORDER: K1 = the hidden "fxpos" slider (SEL held: move the effect) */
+    if (page == PG_FXO) {                      /* FX ORDER: K1..K4 = the Mix of slots 1..4; SEL held + K1 moves the selected effect along the chain */
+        if (ctrl_sel_held()) { if (k == 0) ctrl_fxo_knob(steps); }
+        else if (k < FX_NSLOT) {
+            int id = fx_mix_pid(k);
+            for (i = 0; i < n; i++) param_set_n(id, param_n_q16(id) + (steps < 0 ? -1 : 1) * (65536 / 40));
+            ui_params_changed();
+        }
+        dirty_all = 1; return;
+    }     /* FX ORDER: K1 = the hidden "fxpos" slider (SEL held: move the effect) */
     if (ep_on()) { ep_encoder(k, steps); dirty_top = 1; return; }
     if (ep_strips()) { epm_encoder(k, steps); dirty_top = 1; return; }
     for (i = 0; i < n; i++) {
