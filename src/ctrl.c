@@ -375,16 +375,22 @@ void ctrl_button(int t, int down, uint32_t ms)
 {
     now_ms = ms;
     if (t < 0 || t >= CB_COUNT) return;
-    if (t == CB_REC && ((bdn >> CB_HOME) & 1)) {      /* HOME held + REC: the debug indicator (CPU load, lost blocks, voices, effects) over any page */
-        if (!down) { hud.on = !hud.on; chord = 1; bump(); }
-        return;
-    }
+    {   /* HOME held + REC / PLAY act on the PRESS of REC / PLAY, and HOME counts as held when the hardware says so (hw) as well as when its press was taken: on the real FM-1 the main loop can be busy
+         * for ~0.2 s with a redraw, both releases then arrive in one pass, HOME's first (button order), and a chord that waited for the release of REC found HOME already up and did nothing (octavio-first-device-test) */
+        static uint8_t swallow;                      /* bit 0: REC's release belongs to the chord, bit 1: PLAY's */
+        int sw = t == CB_REC ? 1 : t == CB_PLAY ? 2 : 0;
+        if (sw && !down && (swallow & sw)) { swallow &= (uint8_t)~sw; return; }
+        if (t == CB_REC && down && HELD(CB_HOME)) {      /* the debug indicator (CPU load, lost blocks, voices, effects) over any page */
+            hud.on = !hud.on; chord = 1; swallow |= 1; bump();
+            return;
+        }
 #if FEATURE_MAXTRACKS /* MAXTRACKS */
-    if (t == CB_PLAY && ((bdn >> CB_HOME) & 1)) {     /* HOME held + PLAY: MAX TRACKS 4 -> 3 -> 2 -> 1 -> 4, toast */
-        if (!down) { char a[24] = "MAX TRACKS "; a[11] = (char)('0' + (max_tracks = (uint8_t)(max_tracks <= 1 ? 4 : max_tracks - 1))); a[12] = 0; toast(a, "TEMPORARY", ms); chord = 1; bump(); }
-        return;
-    }
+        if (t == CB_PLAY && down && HELD(CB_HOME)) {     /* MAX TRACKS 4 -> 3 -> 2 -> 1 -> 4, toast */
+            char a[24] = "MAX TRACKS "; a[11] = (char)('0' + (max_tracks = (uint8_t)(max_tracks <= 1 ? 4 : max_tracks - 1))); a[12] = 0; toast(a, "TEMPORARY", ms); chord = 1; swallow |= 2; bump();
+            return;
+        }
 #endif
+    }
     if (latchable(t)) {
         if (down) {                                 /* onpointerdown */
             if ((lt >> t) & 1) {                    /* a locked button: this press unlocks it */
