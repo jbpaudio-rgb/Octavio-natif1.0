@@ -52,6 +52,10 @@ extern uint32_t _rt_start[], _rt_end[], _rt_load[];
 static volatile uint32_t ms;
 static uint32_t boots_ok;
 static struct { uint32_t magic, pending, failed; } guard __attribute__((section(".noinit")));
+/* Boot trace for a start that never reaches the main loop (first real-FM-1 test: after a power-off the FM-1 stays dark and ends in the chip's update mode):
+ * [0] magic, [1] the stage this attempt has reached, [2] the stage the previous attempt had reached, [3] attempts since the last good start.  Read with tools/fm1_peek.py in update mode. */
+volatile uint32_t octavio_boot[4] __attribute__((section(".noinit")));
+#define BOOT_STAGE(n) do { octavio_boot[1] = (n); fm1_wdt_feed(); } while (0)
 
 /* ---- audio: ALNK0 double buffer, 128 frames a half ---- */
 #define HALF_FRAMES 128u
@@ -357,6 +361,7 @@ static void perf_stack_scan(void)                    /* bytes below the deepest 
 static void app_main(void)
 {
     uint32_t i, last_adc = 0, last_frame = 0;
+    octavio_boot[1] = 2;
     {
         uint32_t f = irq_save();
         flash_ok = FL_FAR(fl_jedec_ram)() == 0x856014u;
@@ -364,26 +369,41 @@ static void app_main(void)
         if (flash_ok)
             ota_boot_cleanup();
     }
+    BOOT_STAGE(3);
     lcd_init();
+    BOOT_STAGE(4);
     ui_init();
+    BOOT_STAGE(5);
     vac_init();
+    BOOT_STAGE(6);
     voices_init();
+    BOOT_STAGE(7);
     ctrl_init(ms);
+    BOOT_STAGE(8);
     persist_boot();
+    BOOT_STAGE(9);
 #ifdef LOADTEST
     lt_setup();                                 /* the worst-case state of NOTES-J */
 #endif
     fm1_input_init();
+    BOOT_STAGE(10);
     fm1_adc_init();
+    BOOT_STAGE(11);
     for (i = 0; i < 2u * HALF_WORDS; i++)
         abuf[i] = 0;
     fm1_audio_init(abuf, HALF_WORDS, isr_alnk0, 3);
+    BOOT_STAGE(12);
     usb_start();
+    BOOT_STAGE(13);
     fm1_timer5_start(isr_timer5, 4);
+    BOOT_STAGE(14);
     fm1_guard_lock_top();
     fm1_irq_enable_all();
+    BOOT_STAGE(15);
     lcd_frame(0, SCR_H);
+    BOOT_STAGE(16);
     fm1_lcd_backlight(1);
+    BOOT_STAGE(17);
     for (;;) {
         uint32_t now = ms, pr, rel;
         fm1_wdt_feed();
@@ -411,6 +431,7 @@ static void app_main(void)
         }
         if (!boots_ok && now > 2000u) {
             boots_ok = 1;
+            octavio_boot[1] = 20; octavio_boot[3] = 0;
             guard.pending = 0;
             guard.failed = 0;
         }
@@ -485,6 +506,8 @@ void fm1_cstart(void)
     uint32_t *s, *d;
     fm1_time_init();
     fm1_wdt_arm(0x0D);
+    if (octavio_boot[0] != 0x4F425354u) { octavio_boot[0] = 0x4F425354u; octavio_boot[1] = 0; octavio_boot[2] = 0; octavio_boot[3] = 0; }
+    octavio_boot[2] = octavio_boot[1]; octavio_boot[3]++; octavio_boot[1] = 1;
     if (guard.magic != 0x4F435431u) {
         guard.magic = 0x4F435431u;
         guard.failed = 0;
