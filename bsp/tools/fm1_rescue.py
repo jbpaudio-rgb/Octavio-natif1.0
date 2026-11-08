@@ -36,7 +36,8 @@ import time
 import urllib.request
 
 VID, PID = 0x4C4A, 0x8057
-STOCK_SHA256 = "db1642b2b6fa5c2cccb11ffd13878068bb28601678d3644049f99dc40e7edb8a"
+STOCK_SHA256 = "db1642b2b6fa5c2cccb11ffd13878068bb28601678d3644049f99dc40e7edb8a"      # M-VAVE V15 (flash entry [0, 0x93000))
+STOCK016_SHA256 = "d017fb65e70aca97ee29d944470c3515a74581df5c0576bf70de917c7b2b61d5"   # M-VAVE 016, the file on m-vave.com now (flash entry [0, 0xA9000)); added for this rescue
 LOADER_URL = ("https://raw.githubusercontent.com/kagaimiq/jl-uboot-tool/"
               "c32b28e7a04f873f526ba929cb1bae9f05442fe9/data/loaderblobs/usb/wl82loader.bin")
 LOADER_SHA256 = "d41da6126760c9d66660bcc0cac8d27d221806c5e369a8036921efe68dca5376"
@@ -255,7 +256,7 @@ def rescue(dev, image, loader, write, backup_dir, say=print, confirm=None):
     say(f"  backup saved: {path} ({time.time() - t0:.1f} s)")
     diff = [a for a in range(0, APP_END, SECTOR) if image[a:a + SECTOR] != now[a:a + SECTOR]]
     low = [a for a in diff if a < WRITE_MIN]
-    if low:
+    if low and WRITE_MIN >= 0x4000:
         raise Fail("the protected head of the flash differs from V15 (sectors "
                    + " ".join(f"{a:#06x}" for a in low) + "): not writing; send this output and the backup")
     say(f"  {len(diff)} of {APP_END // SECTOR} firmware sectors differ from V15")
@@ -386,14 +387,25 @@ def main():
     ap.add_argument("--write", action="store_true", help="write V15 (without it: check and back up only)")
     ap.add_argument("--ask", action="store_true", help="after the check and the backup, ask before writing")
     ap.add_argument("--loader", help="a local wl82loader.bin instead of downloading it")
+    ap.add_argument("--official", action="store_true", help="also replace the head [0, 0x4000) by the package's (restores the official firmware completely; needs the 016 file)")
+    ap.add_argument("--raw", action="store_true", help="the file is a raw flash image [0, 0xA9000) (an experiment), not a package")
     ap.add_argument("--wait", type=float, default=120, help="seconds to wait for the FM-1 (default 120)")
     ap.add_argument("--tries", type=int, default=5, help="attempts if it drops out mid-way (default 5)")
     args = ap.parse_args()
     try:
+        global APP_END, WRITE_MIN
         raw = open(args.package, "rb").read()
-        if hashlib.sha256(raw).hexdigest() != STOCK_SHA256:
-            raise Fail(f"{args.package} is not M-VAVE's FM-1 V15 package (sha256 mismatch)")
-        image = package_flash_image(raw)
+        if args.official:
+            WRITE_MIN = 0
+        if args.raw:
+            APP_END = 0xA9000
+            image = raw
+        else:
+            h = hashlib.sha256(raw).hexdigest()
+            if h not in (STOCK_SHA256, STOCK016_SHA256):
+                raise Fail(f"{args.package} is not M-VAVE's FM-1 V15 or 016 package (sha256 mismatch)")
+            image = package_flash_image(raw)
+            if h == STOCK016_SHA256: APP_END = 0xA9000          # the 016 firmware is larger; the write window follows it
         if len(image) != APP_END:
             raise Fail("unexpected flash entry size")
         loader = get_loader(args.loader)
