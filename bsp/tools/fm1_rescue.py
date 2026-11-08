@@ -389,6 +389,7 @@ def main():
     ap.add_argument("--loader", help="a local wl82loader.bin instead of downloading it")
     ap.add_argument("--official", action="store_true", help="also replace the head [0, 0x4000) by the package's (restores the official firmware completely; needs the 016 file)")
     ap.add_argument("--raw", action="store_true", help="the file is a raw flash image [0, 0xA9000) (an experiment), not a package")
+    ap.add_argument("--pause", action="store_true", help="after the FM-1 is found, wait for Return (to let go of a short on the flash chip)")
     ap.add_argument("--wait", type=float, default=120, help="seconds to wait for the FM-1 (default 120)")
     ap.add_argument("--tries", type=int, default=5, help="attempts if it drops out mid-way (default 5)")
     args = ap.parse_args()
@@ -419,6 +420,8 @@ def main():
         backup_dir = os.path.dirname(os.path.abspath(args.package))
         for attempt in range(1, args.tries + 1):
             bot = open_device(usb, args.wait)
+            if args.pause:
+                input("\n  FM-1 FOUND. Let go of the wire/tweezers now, then press Return: ")
             try:
                 rescue(Uboot(bot), image, loader, args.write, backup_dir,
                        say=lambda *a, **k: print(*a, **k, flush=True),
