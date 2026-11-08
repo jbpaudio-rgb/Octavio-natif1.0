@@ -575,6 +575,17 @@ void fm1_cstart(void)
         *d = *s;
     for (s = _rt_load, d = _rt_start; d < _rt_end; s++, d++)
         *d = *s;
+#ifdef BOOTLOG
+    boot_log(0xC0);                             /* cstart got this far (flash driver is in RAM now) */
+    boot_log(fm1_p33_read(FM1_P3_RST_SRC) & 0x7Fu);
+    boot_log(*(volatile uint32_t *)0x10014u & 0x7Fu);   /* system clock source */
+    boot_log(*(volatile uint32_t *)0x119A8u & 0x7Fu);   /* PLL1 */
+    boot_log(*(volatile uint32_t *)0x119ACu & 0x7Fu);
+    boot_log((*(volatile uint32_t *)0x119ACu >> 7) & 0x7Fu);
+    boot_log(*(volatile uint32_t *)0x10008u & 0x7Fu);   /* HSB/LSB dividers */
+    boot_log((*(volatile uint32_t *)0x10008u >> 8) & 0x7Fu);
+    boot_log((*(volatile uint32_t *)0x10008u >> 16) & 0x7Fu);
+#endif
 #ifndef NO_PERF
     perf_stack_paint();
     perf.magic = 0x4A504552u;
