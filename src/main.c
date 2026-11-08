@@ -55,7 +55,45 @@ static struct { uint32_t magic, pending, failed; } guard __attribute__((section(
 /* Boot trace for a start that never reaches the main loop (first real-FM-1 test: after a power-off the FM-1 stays dark and ends in the chip's update mode):
  * [0] magic, [1] the stage this attempt has reached, [2] the stage the previous attempt had reached, [3] attempts since the last good start.  Read with tools/fm1_peek.py in update mode. */
 volatile uint32_t octavio_boot[4] __attribute__((section(".noinit")));
+#ifdef BOOTLOG
+/* flash trail of every start (survives UBOOT and power loss): sector 0xE7000, one byte per event, appended, never erased
+ * until full.  A start = 0xA0, the reset reason (P33 RST_SRC & 0x7F), stages 3..17 as they are reached, 0xB0 at the healthy point. */
+#define BL_BASE 0xE7000u
+static uint32_t bl_pos = 0xFFFFFFFFu;
+static void boot_log(uint32_t code)
+{
+    uint8_t b = (uint8_t)code, c[64];
+    uint32_t f, took, i;
+    if (bl_pos == 0xFFFFFFFFu) {
+        bl_pos = 0;
+        while (bl_pos < 0x1000u) {
+            f = irq_save();
+            FL_FAR(fl_read_ram)(BL_BASE + bl_pos, c, 64);
+            irq_restore(f);
+            for (i = 0; i < 64u && c[i] != 0xFFu; i++)
+                ;
+            bl_pos += i;
+            if (i < 64u)
+                break;
+        }
+        if (bl_pos >= 0xF00u) {
+            f = irq_save();
+            FL_FAR(fl_erase4k_ram)(BL_BASE, &took);
+            irq_restore(f);
+            bl_pos = 0;
+        }
+    }
+    if (bl_pos >= 0x1000u)
+        return;
+    f = irq_save();
+    FL_FAR(fl_prog_ram)(BL_BASE + bl_pos, &b, 1, &took);
+    irq_restore(f);
+    bl_pos++;
+}
+#define BOOT_STAGE(n) do { octavio_boot[1] = (n); fm1_wdt_feed(); boot_log(n); fm1_wdt_feed(); } while (0)
+#else
 #define BOOT_STAGE(n) do { octavio_boot[1] = (n); fm1_wdt_feed(); } while (0)
+#endif
 
 /* ---- audio: ALNK0 double buffer, 128 frames a half ---- */
 #define HALF_FRAMES 128u
@@ -369,6 +407,12 @@ static void app_main(void)
         if (flash_ok)
             ota_boot_cleanup();
     }
+#ifdef BOOTLOG
+    fm1_reset_reason();
+    boot_log(0xA0);
+    boot_log(fm1_boot.p3_rst & 0x7Fu);
+    boot_log(fm1_boot.wdt_con & 0x7Fu);
+#endif
     BOOT_STAGE(3);
     lcd_init();
     BOOT_STAGE(4);
@@ -432,6 +476,9 @@ static void app_main(void)
         if (!boots_ok && now > 2000u) {
             boots_ok = 1;
             octavio_boot[1] = 20; octavio_boot[3] = 0;
+#ifdef BOOTLOG
+            boot_log(0xB0);
+#endif
             guard.pending = 0;
             guard.failed = 0;
         }
