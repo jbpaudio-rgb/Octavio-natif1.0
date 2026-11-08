@@ -83,6 +83,15 @@ void ui_octave(int d)
 }
 int ui_note_of_key(int key) { return 53 + key + 12 * oct; }
 
+static int enc_cnt(int id)                     /* number of values of a parameter that is a short list (0: a continuous one) */
+{
+    const pdesc_t *d = &PD[id];
+    if (dst_kind_of(id)) { int c, sq = dst_kind_of(id) == 2; dst_ft = (int8_t)mod_view; c = dst_count(voices_engine(voices_sel()), sq); dst_ft = -1; return c; }
+    if (d->kind == PK_SELECT) return d->nopt;
+    if (d->kind == PK_CHECK) return 2;
+    if (d->step > 0) { int c = (d->max - d->min) / d->step + 1; return c <= 32 ? c : 0; }
+    return 0;
+}
 void ui_encoder(int k, int steps)              /* one detent = 1/50 of the range, like the prototype's wheel */
 {
     int i, n = steps < 0 ? -steps : steps;
@@ -97,6 +106,14 @@ void ui_encoder(int k, int steps)              /* one detent = 1/50 of the range
         g = pn_q16(id);
         int32_t base = (wheel_p[k] == id && g == wheel_g[k]) ? wheel[k] : g;      /* Math.abs(get() - wq) < 1e-9 ? ws : get() */
         int32_t nv = base + (steps < 0 ? -1 : 1) * (65536 / 50);
+        {   /* a parameter with few values (a wave, an octave, a mode, a destination list ...): one detent = one value.  The prototype's 1/50 of the range per detent needs 17 to 50 clicks to leave a 2..4 value choice (first test on the real FM-1: those knobs "did not change") */
+            int cnt = enc_cnt(id);
+            if (cnt >= 2) {
+                int idx = (int)(((int64_t)g * (cnt - 1) + 32768) >> 16) + (steps < 0 ? -1 : 1);
+                idx = idx < 0 ? 0 : idx > cnt - 1 ? cnt - 1 : idx;
+                nv = (int32_t)(((int64_t)idx * 65536 + (cnt - 1) / 2) / (cnt - 1));
+            }
+        }
         if (nv < 0) nv = 0;
         if (nv > 65536) nv = 65536;
         pset_n(id, nv);

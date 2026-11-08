@@ -400,7 +400,7 @@ void ctrl_button(int t, int down, uint32_t ms)
                 return;
             }
             dn_ |= (uint16_t)(1u << t);
-            if (ms - lu[t] < LATCH_MS && !chord) { lt |= (uint16_t)(1u << t); }
+            if (ms - lu[t] < LATCH_MS && !chord && (t == CB_HOME || t == CB_ARP || t == CB_SEQ)) { lt |= (uint16_t)(1u << t); }          /* the double-tap latch only where no repeated press has a meaning: ENV / EDIT / GLO / FX / LFO cycle their pages on a repeated press (a quick second press used to latch the button instead) */
             bdn |= (uint16_t)(1u << t);
             if (((bdn >> CB_HOME) & 1) && ((bdn >> CB_EDIT) & 1)) { chord = 1; pg = pg == PGN_MENU ? PGN_MENU2 : PGN_MENU; ui_goto(pg); }
             else if (((bdn >> CB_HOME) & 1) && ((bdn >> CB_GLO) & 1)) { chord = 1; pg = PGN_TEMPO; ui_goto(pg); }
@@ -667,7 +667,7 @@ void ctrl_fxo_knob(int steps)
     norm_pg();
     if (pg != PGN_FXO) return;
     for (i = 0; i < n; i++) {
-        int base = (fxo_ws >= 0 && fxo_wq == fxo) ? fxo_ws : fxo << 16, nv = base + (steps < 0 ? -6554 : 6554), s;
+        int base = (fxo_ws >= 0 && fxo_wq == fxo) ? fxo_ws : fxo << 16, nv = base + (steps < 0 ? -65536 : 65536), s;          /* one detent = one slot */
         nv = nv < 0 ? 0 : nv > (FX_NSLOT - 1) << 16 ? (FX_NSLOT - 1) << 16 : nv;
         fxo_ws = nv;
         s = (nv + 32768) >> 16;

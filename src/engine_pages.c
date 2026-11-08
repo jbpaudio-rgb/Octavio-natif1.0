@@ -206,6 +206,15 @@ static void ep_encoder(int k, int steps)        /* one detent = 1/50 of the rang
         g = ep_n_q16(id);
         base = (ep_wheel_id[k] == id + 1000 * EP.eng && g == ep_wg[k]) ? ep_wheel[k] : g;
         nv = base + (steps < 0 ? -1 : 1) * (65536 / 50);
+        {   /* few values (an oscillator's octave, the noise type, a wave ...): one detent = one value (see ui_encoder) */
+            const epd_t *dd = ep_desc(id);
+            int cnt = dd->fmt == EF_SEL ? dd->nopt : (dd->step > 0 && 1000 / dd->step + 1 <= 32) ? 1000 / dd->step + 1 : 0;
+            if (cnt >= 2) {
+                int idx = (int)(((int64_t)g * (cnt - 1) + 32768) >> 16) + (steps < 0 ? -1 : 1);
+                idx = idx < 0 ? 0 : idx > cnt - 1 ? cnt - 1 : idx;
+                nv = (int32_t)(((int64_t)idx * 65536 + (cnt - 1) / 2) / (cnt - 1));
+            }
+        }
         if (nv < 0) nv = 0;
         if (nv > 65536) nv = 65536;
         ep_set_n(id, nv);
