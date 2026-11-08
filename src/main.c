@@ -116,6 +116,7 @@ void fm1_alnk0_irq(void)
         }
 #endif
         voices_keys(now);                           /* kOnT / kOffT of the selected track (the bank keys: voices.c) */
+        { uint32_t m = now; int c = 0; hud.keys = now; while (m) { c += (int)(m & 1u); m >>= 1; } if (c > hud.kmax) hud.kmax = (uint8_t)c; hud.btn = fm1_in.buttons; }
 #ifdef BENCH
         bench_tick();
 #endif

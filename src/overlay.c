@@ -97,8 +97,8 @@ static void draw_hud(void)
 {
     char s[40], a[12], b[12], c[12]; int i, k;
     if (!hud.on) return;
-    gfx_rect(0, 0, SCR_W, 70, 0x000000u, 256);
-    gfx_rect(0, 69, SCR_W, 1, C_RED, 256);
+    gfx_rect(0, 0, SCR_W, 82, 0x000000u, 256);
+    gfx_rect(0, 81, SCR_W, 1, C_RED, 256);
     hud_pct(a, hud.avg); hud_pct(b, hud.max); hud_pct(c, hud.maxall);
     s[0] = 0; k = 0;
     { const char *p = "CPU AVG "; for (i = 0; p[i]; i++) s[k++] = p[i]; for (i = 0; a[i]; i++) s[k++] = a[i];
@@ -122,6 +122,15 @@ static void draw_hud(void)
       p = " PRO "; for (i = 0; p[i]; i++) s[k++] = p[i]; put_n(c, hud.cp, 0); for (i = 0; c[i]; i++) s[k++] = c[i];
       p = hud.eco ? " ECO  FPS " : "  FPS "; for (i = 0; p[i]; i++) s[k++] = p[i]; put_n(c, hud.fps, 0); for (i = 0; c[i]; i++) s[k++] = c[i]; s[k] = 0; }
     gfx_text(F_OV_HINT, s, 4 * 64, 55, C_GREY, 0, 0, SCR_W);
+    {   /* what the scan reports: the note keys down (hex, bit n = key n, bit 0 = F3), the most at once so far, the buttons down (hex) */
+        static const char HX[] = "0123456789ABCDEF";
+        const char *p = "KEYS "; k = 0; for (i = 0; p[i]; i++) s[k++] = p[i];
+        for (i = 6; i >= 0; i--) s[k++] = HX[(hud.keys >> (4 * i)) & 15u];
+        p = " MAX "; for (i = 0; p[i]; i++) s[k++] = p[i]; put_n(c, hud.kmax, 0); for (i = 0; c[i]; i++) s[k++] = c[i];
+        p = " BTN "; for (i = 0; p[i]; i++) s[k++] = p[i];
+        for (i = 3; i >= 0; i--) s[k++] = HX[(hud.btn >> (4 * i)) & 15u];
+        s[k] = 0; gfx_text(F_OV_HINT, s, 4 * 64, 77, C_GREY, 0, 0, SCR_W);
+    }
     #if FEATURE_MAXTRACKS /* MAXTRACKS */
     { char m[40] = "MAX TRACKS n  PLAY=CHG REC=HIDE"; m[11] = (char)('0' + hud.mt); gfx_text(F_OV_HINT, m, 4 * 64, 66, hud.mt < 4 ? C_RED : 0x6a6862u, 0, 0, SCR_W); }
 #else
