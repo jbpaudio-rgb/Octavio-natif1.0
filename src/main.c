@@ -551,6 +551,10 @@ static void app_main(void)
 void fm1_cstart(void)
 {
     uint32_t *s, *d;
+#ifdef BOOTLOG
+    FM1_LCD_PA_OUT &= ~FM1_LCD_BL;              /* beacon: backlight on at the very first instructions of cstart */
+    FM1_LCD_PA_DIR &= ~FM1_LCD_BL;
+#endif
     fm1_time_init();
     fm1_wdt_arm(0x0D);
     if (octavio_boot[0] != 0x4F425354u) { octavio_boot[0] = 0x4F425354u; octavio_boot[1] = 0; octavio_boot[2] = 0; octavio_boot[3] = 0; }
