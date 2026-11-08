@@ -22,19 +22,43 @@ static struct { int16_t m[MODM_N], q[MODQ_N]; } MODT[4];
 static uint16_t SQG[4] = { 0x5555u, 0, 0, 0 };     /* the synth sequencer's gate steps of each track (the prototype's TRX[t].GT) */
 static uint8_t mod_view;                               /* the track whose matrix is in PV[] */
 
-static int dst_count(int eng, int sq) { return DSTLN[eng & 3] + (sq ? 3 : 0); }
+/* The effect destinations are only those of the effects in the track's chain (its 4 FX slots): dst_ft is the track the lists are
+ * seen for (-1: no filter, all 52 effect knobs as the master list has them).  Effect e owns FXN[e] consecutive effect knobs. */
+static int8_t dst_ft = -1;
+static const uint8_t FXN[16] = { 3, 4, 4, 3, 2, 3, 3, 4, 4, 3, 3, 3, 3, 3, 4, 4 };
+static int dst_fx_of(int k) { int e, a = 0; for (e = 0; e < 16; e++) { a += FXN[e]; if (k < a) return e; } return 15; }
+static int dst_ok(int val)                             /* is the destination (a master index) offered for dst_ft */
+{
+    int e, s;
+    if (dst_ft < 0 || val <= 0 || val >= N_DST || DSTM[val].kind != DK_FX) return 1;
+    e = dst_fx_of(DSTM[val].a);
+    for (s = 0; s < FX_NSLOT; s++) if (FXT[dst_ft].ord[s] == e) return 1;
+    return 0;
+}
+static int dst_count(int eng, int sq)
+{
+    int i, n = 0;
+    for (i = 0; i < DSTLN[eng & 3]; i++) n += dst_ok(DSTL[eng & 3][i]);
+    return n + (sq ? 3 : 0);
+}
 static int dst_at(int eng, int sq, int pos)            /* the stored value of list position pos */
 {
-    if (!sq) return DSTL[eng & 3][pos];
-    return pos < 4 ? pos : DSTL[eng & 3][pos - 3] + 3;
-}
-static int dst_pos(int eng, int sq, int val)           /* list position of a stored value, -1: the engine does not have it */
-{
     int i;
+    if (sq) { if (pos < 4) return pos; pos -= 3; }
+    for (i = 0; i < DSTLN[eng & 3]; i++) if (dst_ok(DSTL[eng & 3][i]) && pos-- == 0) return DSTL[eng & 3][i] + (sq && i ? 3 : 0);
+    return 0;
+}
+static int dst_pos(int eng, int sq, int val)           /* list position of a stored value, -1: the engine (or the chain) does not have it */
+{
+    int i, p = 0;
     if (val < 0) return -1;
     if (sq) { if (val < 4) return val; val -= 3; }
     else if (val == 0) return 0;
-    for (i = 1; i < DSTLN[eng & 3]; i++) if (DSTL[eng & 3][i] == val) return sq ? i + 3 : i;
+    for (i = 0; i < DSTLN[eng & 3]; i++) {
+        if (!dst_ok(DSTL[eng & 3][i])) continue;
+        if (i > 0 && DSTL[eng & 3][i] == val) return sq ? p + 3 : p;
+        p++;
+    }
     return -1;
 }
 static int dst_kind_of(int id)                         /* 1: an LFO / S&H destination, 2: a sequencer line's, 0: neither */
@@ -45,33 +69,41 @@ static int dst_kind_of(int id)                         /* 1: an LFO / S&H destin
 }
 static int32_t dst_n_q16(int id, int eng)              /* the knob position of the destination in the engine's list */
 {
-    int sq = dst_kind_of(id) == 2, n = dst_count(eng, sq), p = dst_pos(eng, sq, PV[id]);
+    int sq = dst_kind_of(id) == 2, n, p;
+    dst_ft = (int8_t)mod_view;
+    n = dst_count(eng, sq); p = dst_pos(eng, sq, PV[id]);
+    dst_ft = -1;
     if (p < 0) p = 0;
     return n > 1 ? (int32_t)(((int64_t)p << 16) / (n - 1)) : 0;
 }
 static void dst_set_n(int id, int eng, int32_t n_q16)
 {
-    int sq = dst_kind_of(id) == 2, c = dst_count(eng, sq), p = (int)(((int64_t)n_q16 * (c - 1) + 32768) >> 16);
+    int sq = dst_kind_of(id) == 2, c, p;
+    dst_ft = (int8_t)mod_view;
+    c = dst_count(eng, sq); p = (int)(((int64_t)n_q16 * (c - 1) + 32768) >> 16);
     p = p < 0 ? 0 : p >= c ? c - 1 : p;
     PV[id] = (int16_t)dst_at(eng, sq, p);
+    dst_ft = -1;
 }
 
 /* ---- the matrix per track ---- */
 static void mod_commit(void) { memcpy(MODT[mod_view].m, &PV[P_M0T], sizeof MODT[0].m); memcpy(MODT[mod_view].q, &PV[P_M4T], sizeof MODT[0].q); }
 static void mod_load_view(void) { memcpy(&PV[P_M0T], MODT[mod_view].m, sizeof MODT[0].m); memcpy(&PV[P_M4T], MODT[mod_view].q, sizeof MODT[0].q); }
-static void mod_fix(int eng, int16_t *m, int16_t *q)   /* rebuildDst(): a destination the engine does not have goes back to None */
+static void mod_fix(int t, int eng, int16_t *m, int16_t *q)   /* rebuildDst(): a destination the engine (or the track's effect chain) does not have goes back to None */
 {
     int i;
+    dst_ft = (int8_t)t;
     for (i = 0; i < 6; i++) {
         if (dst_pos(eng, 0, m[5 * i]) < 0) m[5 * i] = 0;
         if (dst_pos(eng, 1, q[4 * i]) < 0) q[4 * i] = 0;
     }
+    dst_ft = -1;
 }
 static void mod_fix_track(int t)                       /* the engine of track t changed */
 {
     t &= 3;
-    if (t == mod_view) mod_fix(voices_engine(t), &PV[P_M0T], &PV[P_M4T]);
-    else mod_fix(voices_engine(t), MODT[t].m, MODT[t].q);
+    if (t == mod_view) mod_fix(t, voices_engine(t), &PV[P_M0T], &PV[P_M4T]);
+    else mod_fix(t, voices_engine(t), MODT[t].m, MODT[t].q);
 }
 static void mod_defaults(void)
 {
@@ -95,9 +127,10 @@ static void mod_post_load(int have_modt)               /* after a preset / scene
 {
     int t;
     if (have_modt) mod_load_view(); else mod_commit();
-    for (t = 0; t < 4; t++) mod_fix(voices_engine(t), MODT[t].m, MODT[t].q);
+    for (t = 0; t < 4; t++) mod_fix(t, voices_engine(t), MODT[t].m, MODT[t].q);
     mod_load_view();
 }
+void mod_fix_all(void) { int t; for (t = 0; t < 4; t++) mod_fix_track(t); }       /* an effect chain changed */
 /* the record section (state.c SK_MODT): index i = track * MODT_N + (0..29 matrix, 30..53 lines) */
 static int modt_get(int i) { int t = i / MODT_N, r = i % MODT_N; return r == MODM_N + MODQ_N ? (int16_t)SQG[t] : r < MODM_N ? MODT[t].m[r] : MODT[t].q[r - MODM_N]; }
 static int modt_def(int i) { int r = i % MODT_N; return r == MODM_N + MODQ_N ? (i / MODT_N ? 0 : 0x5555) : r < MODM_N ? PD[P_M0T + r].def : PD[P_M4T + r - MODM_N].def; }

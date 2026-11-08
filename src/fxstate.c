@@ -205,6 +205,7 @@ void fx_select(int t)                                /* the selected track chang
 /* assign effect e to slot `slot` of the selected track, as the prototype (the effect already in the chain swaps places).
  * 1: done, -1: invalid.  The CPU budget is not checked here: an effect costs CPU only while its Mix > 0, and it is admitted
  * (or bypassed, dimmed on the FX ORDER page) by fx_begin. */
+void mod_fix_all(void);                              /* dst.c: modulation destinations of an effect that left the chain go back to None */
 int fx_assign(int slot, int e)
 {
     fxt_t *T = &FXT[fx_view];
@@ -214,6 +215,7 @@ int fx_assign(int slot, int e)
     for (s = 0; s < FX_NSLOT; s++) if (T->ord[s] == e) j = s;
     if (j >= 0) T->ord[j] = T->ord[slot];
     T->ord[slot] = (uint8_t)e;
+    mod_fix_all();
     return 1;
 }
 /* the prototype's FX ORDER reordering (fxs.splice(from, 1) then splice(to, 0, e)): the effect of slot `from` goes to slot `to`, the ones between shift by one.

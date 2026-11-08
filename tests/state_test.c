@@ -173,6 +173,7 @@ static void randomize(int density, int seed_engines)
             while (r--) voices_render(tmpb, 128);
         }
     for (t = 0; t < 4; t++) for (i = 0; i < 96; i++) if ((int)(rnd() % 100u) < density) ui_seq_set_t(t, i / 16, i % 16, rr(-1000, 1000));
+    mod_fix_all();                              /* destinations of an effect that is not in the chain go back to None, as the firmware does */
 }
 
 static uint32_t T = 5000;
@@ -202,6 +203,7 @@ static void reboot(void)                  /* RAM pools wiped, everything rebuilt
     persist_boot();
 }
 
+static int bad_fx;
 int main(int argc, char **argv)
 {
     static snap_t A, B, C, G;
@@ -267,6 +269,12 @@ int main(int argc, char **argv)
             for (k = 0; k < dst_count(e, 1); k++) { int v = dst_at(e, 1, k); if (dst_pos(e, 1, v) != k) bad++; }
         }
         CHECK(!bad, "destination lists inconsistent (%d)", bad);
+        {   /* the effect destinations follow the track's chain */
+            int e0, k, nfx = 0, all = dst_count(0, 0), v; dst_ft = 0;
+            for (k = 0; k < dst_count(0, 0); k++) { v = dst_at(0, 0, k); if (dst_pos(0, 0, v) != k) bad_fx++; if (DSTM[v].kind == DK_FX) { nfx++; e0 = dst_fx_of(DSTM[v].a); if (e0 > 3) bad_fx++; } }
+            CHECK(bad_fx == 0 && nfx == 3 + 4 + 4 + 3, "only the effects of the 4 chain slots are destinations");
+            k = dst_count(0, 0); dst_ft = -1; CHECK(k == all - 52 + 14 && dst_count(0, 0) == all, "the filtered list drops the 38 effect knobs of effects outside the chain");
+        }
         CHECK(dst_count(0, 0) == 70 && dst_pos(0, 0, 10) == 10 && dst_pos(0, 1, 2) == 2, "the Vactrol list is not the one saved presets use");
         voices_set_engine(0, ENG_VAC); voices_set_engine(3, ENG_MOOG);
         voices_select(0); mod_select(0);
