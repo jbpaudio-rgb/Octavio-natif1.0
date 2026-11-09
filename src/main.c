@@ -551,6 +551,7 @@ static void app_main(void)
 void fm1_cstart(void)
 {
     uint32_t *s, *d;
+    fm1_wdt_arm(0x0D);                          /* first of all: whatever hangs after this, the watchdog and the boot guard bring the FM-1 back to update mode */
 #ifdef BOOTLOG
     FM1_LCD_PA_OUT &= ~FM1_LCD_BL;              /* beacon: backlight on at the very first instructions of cstart */
     FM1_LCD_PA_DIR &= ~FM1_LCD_BL;
@@ -558,7 +559,6 @@ void fm1_cstart(void)
     fm1_time_init();
     fm1_vdc14_raise(7);                         /* M-VAVE's firmware raises the core supplies to these as it starts; the boot loader */
     fm1_sysvdd_raise(15);                       /* leaves 3 and 11, which some units do not run 360 MHz code on (felucca-bsp fm1_sys.h) */
-    fm1_wdt_arm(0x0D);
     if (octavio_boot[0] != 0x4F425354u) { octavio_boot[0] = 0x4F425354u; octavio_boot[1] = 0; octavio_boot[2] = 0; octavio_boot[3] = 0; }
     octavio_boot[2] = octavio_boot[1]; octavio_boot[3]++; octavio_boot[1] = 1;
     if (guard.magic != 0x4F435431u) {
