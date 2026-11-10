@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 /* PROTOTYPE (size / load measurement, not wired to the UI): a monophonic wavetable engine.
- * 16 single-cycle waves of 256 samples are computed once, in RAM, from harmonic recipes (no table in flash): waves 0..7
+ * 16 single-cycle waves of 128 samples are computed once, in RAM, from harmonic recipes (no table in flash): waves 0..7
  * morph from a soft sine towards a saw, 8..11 are the odd-harmonic family (towards a square), 12..15 put a formant peak
  * on the spectrum. WAVE (position) sweeps the table with linear interpolation between two neighbouring waves and
  * between samples. Two oscillators (the second detuned by DETUNE), a sine sub-oscillator, a two-pole low-pass that
@@ -8,7 +8,7 @@
 #include "voices.h"                                    /* cdsp.c is already included by eng_moog.c */
 
 #define WT_N 16
-#define WT_L 256
+#define WT_L 128
 enum { WV_POS, WV_PENV, WV_RNG, WV_TUNE, WV_DET, WV_SUB, WV_CUT, WV_ENV, WV_ATK, WV_DEC, WV_SUS, WV_REL,
        WV_FATK, WV_FDEC, WV_FSUS, WV_LVL, WV_COUNT };
 
@@ -27,14 +27,14 @@ typedef struct {
 } wave_t;
 
 static wave_t WV[4];
-static int16_t WT[WT_N][WT_L + 1];                     /* 8.5 KB of RAM, built on the first use; [WT_L] = [0] so the interpolation needs no wrap */
+static int16_t WT[WT_N][WT_L + 1];                     /* 4.1 KB of RAM, computed at boot; [WT_L] = [0] so the interpolation needs no wrap */
 static uint8_t wt_built;
 static const int16_t WV_DEF[WV_COUNT] = { 300, 400, 2, 500, 250, 200, 650, 350, 10, 450, 650, 300, 10, 400, 300, 1000 };
 static const int16_t WV_MAX[WV_COUNT] = { 1000, 1000, 4, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000 };
 
-static int32_t wsin(uint32_t turns256)                  /* sine of (turns256 / 256) of a turn, Q15 */
+static int32_t wsin(uint32_t turns128)                  /* sine of (turns128 / 128) of a turn, Q15 */
 {
-    return SIN_TAB[(turns256 & 255u) * 4u];
+    return SIN_TAB[(turns128 & 127u) * 8u];
 }
 
 static void wt_build(void)
@@ -65,7 +65,7 @@ static void wt_build(void)
 
 static inline int32_t wt_read(uint32_t ph, int32_t pos16)      /* ph: Q32 turn; pos16: wave position in Q16 (0 .. 15) */
 {
-    int w = pos16 >> 16, wf = (pos16 >> 8) & 255, i = (int)(ph >> 24), f = (int)((ph >> 16) & 255);
+    int w = pos16 >> 16, wf = (pos16 >> 8) & 255, i = (int)(ph >> 25), f = (int)((ph >> 17) & 255);
     const int16_t *a = WT[w], *b = WT[w < WT_N - 1 ? w + 1 : w];
     int32_t va = a[i] + (((int32_t)a[i + 1] - a[i]) * f >> 8), vb = b[i] + (((int32_t)b[i + 1] - b[i]) * f >> 8);
     return va + (((vb - va) * wf) >> 8);
@@ -110,6 +110,7 @@ void wave_init(int t)
 {
     wave_t *m = &WV[t];
     int i;
+    if (!wt_built) wt_build();                          /* computed once at boot (~64k sine lookups): never inside the audio block, where it would drop it */
     for (i = 0; i < (int)sizeof(*m); i++) ((uint8_t *)m)[i] = 0;
     for (i = 0; i < WV_COUNT; i++) m->p[i] = WV_DEF[i];
     m->note16 = 60 << 16;
@@ -120,7 +121,6 @@ void wave_init(int t)
 void wave_on(int t, int note, int vel15)
 {
     wave_t *m = &WV[t];
-    if (!wt_built) wt_build();                          /* the tables are computed at the first note, not at boot */
     m->vel = vel15;
     m->note16 = note << 16;
     m->gate = 1;
