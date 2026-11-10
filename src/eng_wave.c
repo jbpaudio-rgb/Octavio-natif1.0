@@ -27,19 +27,21 @@ typedef struct {
 } wave_t;
 
 static wave_t WV[4];
-static int16_t WT[WT_N][WT_L + 1];                     /* 4.1 KB of RAM, computed at boot; [WT_L] = [0] so the interpolation needs no wrap */
+/* band-limited levels (mip-maps): level 0 holds harmonics 1..31 in 128 samples, then 1..15 in 64, 1..7 in 32, 1..3 in 16: an oscillator
+ * reads the richest level whose highest harmonic stays under half the sample rate, so the notes do not fold back (alias). */
+#define WT_LV 4
+static const uint16_t WT_BASE[WT_LV] = { 0, 16 * 129, 16 * 129 + 16 * 65, 16 * 129 + 16 * 65 + 16 * 33 };
+static const uint8_t WT_BITS[WT_LV] = { 7, 6, 5, 4 };
+static const uint8_t WT_HMAX[WT_LV] = { 31, 15, 7, 3 };
+static const uint32_t WT_INC[WT_LV - 1] = { 2147483648u / 31u, 2147483648u / 15u, 2147483648u / 7u };     /* an increment below this: the level is clean */
+static int16_t WT[16 * 129 + 16 * 65 + 16 * 33 + 16 * 17];                 /* 7.8 KB of RAM, computed at boot; each wave's last point repeats its first, so the interpolation needs no wrap */
 static uint8_t wt_built;
 static const int16_t WV_DEF[WV_COUNT] = { 300, 400, 2, 500, 250, 200, 650, 350, 10, 450, 650, 300, 10, 400, 300, 1000 };
 static const int16_t WV_MAX[WV_COUNT] = { 1000, 1000, 4, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000 };
 
-static int32_t wsin(uint32_t turns128)                  /* sine of (turns128 / 128) of a turn, Q15 */
-{
-    return SIN_TAB[(turns128 & 127u) * 8u];
-}
-
 static void wt_build(void)
 {
-    int w, i, h;
+    int w, i, h, lv;
     for (w = 0; w < WT_N; w++) {
         int32_t amp[32], peak = 1;
         for (h = 1; h < 32; h++) {
@@ -50,23 +52,29 @@ static void wt_build(void)
             amp[h] = a;
         }
         amp[0] = 0;
-        for (i = 0; i < WT_L; i++) {
-            int32_t s = 0, a;
-            for (h = 1; h < 32; h++) s += (int32_t)(((int64_t)amp[h] * wsin((uint32_t)(h * i))) >> 12);
-            WT[w][i] = (int16_t)s;
-            a = s < 0 ? -s : s;
-            if (a > peak) peak = a;
+        for (lv = 0; lv < WT_LV; lv++) {                     /* level 0 first: its peak sets the gain of every level of the wave, so they share their loudness */
+            int n = 1 << WT_BITS[lv];
+            int16_t *t = WT + WT_BASE[lv] + w * (n + 1);
+            for (i = 0; i < n; i++) {
+                int32_t s = 0;
+                for (h = 1; h <= WT_HMAX[lv]; h++)
+                    s += (int32_t)(((int64_t)amp[h] * SIN_TAB[((uint32_t)(h * i) & (uint32_t)(n - 1)) * (1024u / (uint32_t)n)]) >> 12);
+                if (lv == 0) { int32_t a = s < 0 ? -s : s; if (a > peak) peak = a; }
+                t[i] = (int16_t)(((int32_t)s * 28000) / peak);
+            }
+            t[n] = t[0];
         }
-        for (i = 0; i < WT_L; i++) WT[w][i] = (int16_t)(((int32_t)WT[w][i] * 28000) / peak);
-        WT[w][WT_L] = WT[w][0];
     }
     wt_built = 1;
 }
 
-static inline int32_t wt_read(uint32_t ph, int32_t pos16)      /* ph: Q32 turn; pos16: wave position in Q16 (0 .. 15) */
+static inline int wt_level(uint32_t inc) { return inc < WT_INC[0] ? 0 : inc < WT_INC[1] ? 1 : inc < WT_INC[2] ? 2 : 3; }
+
+static inline int32_t wt_read(int lv, uint32_t ph, int32_t pos16)      /* ph: Q32 turn; pos16: wave position in Q16 (0 .. 15) */
 {
-    int w = pos16 >> 16, wf = (pos16 >> 8) & 255, i = (int)(ph >> 25), f = (int)((ph >> 17) & 255);
-    const int16_t *a = WT[w], *b = WT[w < WT_N - 1 ? w + 1 : w];
+    int bits = WT_BITS[lv], n = 1 << bits;
+    int w = pos16 >> 16, wf = (pos16 >> 8) & 255, i = (int)(ph >> (32 - bits)), f = (int)((ph >> (24 - bits)) & 255);
+    const int16_t *a = WT + WT_BASE[lv] + w * (n + 1), *b = WT + WT_BASE[lv] + (w < WT_N - 1 ? w + 1 : w) * (n + 1);
     int32_t va = a[i] + (((int32_t)a[i + 1] - a[i]) * f >> 8), vb = b[i] + (((int32_t)b[i + 1] - b[i]) * f >> 8);
     return va + (((vb - va) * wf) >> 8);
 }
@@ -149,9 +157,11 @@ void wave_render(int t, int32_t *out, int n)
         int32_t rel = m->note16 - (60 << 16), ef = m->f.e, x16, g, pos;
         int32_t cutc = cut0 + (int32_t)(((int64_t)(m->cut16 - cut0) * ((i + cnt) * rq)) >> 16);
         uint32_t inc, inc2, incs;
+        int lv1, lv2;
         inc = exp2_fx(C_L2_MINC + (int32_t)(((int64_t)rel * 21845) >> 18) + m->oct16, 0);
         inc2 = inc + (uint32_t)(((uint64_t)inc * (uint32_t)m->det * 21u) / 1000u >> 10);        /* up to ~ +2 % (34 cents) */
         incs = inc >> 1;
+        lv1 = wt_level(inc); lv2 = wt_level(inc2);
         x16 = (int32_t)exp2_fx(C_L2_FC0 + cutc + (int32_t)(((int64_t)rel * 3604) >> 16) + (int32_t)(((int64_t)m->env5 * ef) >> 30), 16);
         if (x16 > 82354 || x16 < 0) x16 = 82354;
         g = (int32_t)c_expm((uint32_t)x16);
@@ -161,7 +171,7 @@ void wave_render(int t, int32_t *out, int n)
         for (j = 0; j < cnt; j++, i++) {
             int32_t s, e, o;
             m->ph += inc; m->ph2 += inc2; m->phs += incs;
-            s = wt_read(m->ph, pos) + wt_read(m->ph2, pos);
+            s = wt_read(lv1, m->ph, pos) + wt_read(lv2, m->ph2, pos);
             s = (s >> 1) + (int32_t)(((int64_t)SIN_TAB[(m->phs >> 22) & 1023u] * m->subl) >> 16);
             e = c_adsr(&m->a, m->ai, m->dc, m->sus, m->rc);
             (void)c_adsr(&m->f, m->fai, m->fdc, m->fsus, m->frc);
