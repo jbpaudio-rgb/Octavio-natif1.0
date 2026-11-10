@@ -83,6 +83,8 @@ VARIANTS = {
     "fx_nobudget": V(NOGOV + "-DFX_BUDGET=1000000"),                      # all 16 slots running
     "drum4":       V(NOGOV, eng=E("MOOG", "MOOG", "DRUM", "DRUM")),
     "moog4":       V(NOGOV, eng=E("MOOG", "MOOG", "MOOG", "MOOG")),
+    "wave4":       V(NOGOV + "-DLT_FXMASK=0 -DLT_NOMOD", eng=E("WAVE", "WAVE", "WAVE", "WAVE")),      # the wavetable prototype x4 (engine only)
+    "moog4_nofx":  V(NOGOV + "-DLT_FXMASK=0 -DLT_NOMOD", eng=E("MOOG", "MOOG", "MOOG", "MOOG")),
     "proph4":      V(NOGOV, eng=E("PROPH", "PROPH", "PROPH", "PROPH")),
     "full_ui":     V(NOGOV, ms=UI_MS, keys=UI, snap="1500,3000,4500"),    # the worst case measured, front panel driven
     # -- with the governor (the shipped firmware) --
