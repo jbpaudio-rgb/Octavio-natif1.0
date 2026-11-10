@@ -4,7 +4,7 @@
  * tanh(sum(track) * .8 * 1.5 * .7). Parameter values are thousandths (selects: indices), like params.h. */
 #pragma once
 #include <stdint.h>
-enum { ENG_VAC, ENG_MOOG, ENG_PROPH, ENG_DRUM, ENG_TB3, ENG_SSAW, ENG_N };
+enum { ENG_VAC, ENG_MOOG, ENG_PROPH, ENG_DRUM, ENG_TB3, ENG_SSAW, ENG_GREM, ENG_N };
 enum { MG_W1, MG_R1, MG_T1, MG_P1, MG_L1, MG_W2, MG_R2, MG_T2, MG_P2, MG_L2, MG_W3, MG_R3, MG_T3, MG_P3, MG_L3,
        MG_NTYPE, MG_NTONE, MG_NCRUSH, MG_NLEV, MG_CUT, MG_RES, MG_ENV, MG_GLIDE, MG_REL, MG_ATK, MG_DEC, MG_SUS,
        MG_FATK, MG_FDEC, MG_FSUS, MG_LVL, MG_COUNT };
@@ -79,6 +79,13 @@ void ssaw_on(int t, int note, int vel15);
 void ssaw_off(int t);
 int  ssaw_active(int t);
 void ssaw_render(int t, int32_t *out, int n);
+void grem_init(int t);
+void grem_set(int t, int id, int v);
+int  grem_get(int t, int id);
+void grem_on(int t, int note, int vel15);
+void grem_off(int t);
+int  grem_active(int t);
+void grem_render(int t, int32_t *out, int n);
 void drum_init(int t);
 void drum_set(int t, int id, int v);
 int  drum_get(int t, int id);

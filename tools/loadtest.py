@@ -83,6 +83,7 @@ VARIANTS = {
     "fx_nobudget": V(NOGOV + "-DFX_BUDGET=1000000"),                      # all 16 slots running
     "drum4":       V(NOGOV, eng=E("MOOG", "MOOG", "DRUM", "DRUM")),
     "moog4":       V(NOGOV, eng=E("MOOG", "MOOG", "MOOG", "MOOG")),
+    "grem4":       V(NOGOV + "-DLT_FXMASK=0 -DLT_NOMOD", eng=E("GREM", "GREM", "GREM", "GREM")),
     "ssaw4":       V(NOGOV + "-DLT_FXMASK=0 -DLT_NOMOD", eng=E("SSAW", "SSAW", "SSAW", "SSAW")),
     "tb34":       V(NOGOV + "-DLT_FXMASK=0 -DLT_NOMOD", eng=E("TB3", "TB3", "TB3", "TB3")),
     "proph4":      V(NOGOV, eng=E("PROPH", "PROPH", "PROPH", "PROPH")),
