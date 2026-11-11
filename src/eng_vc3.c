@@ -27,17 +27,18 @@ typedef struct {
 static v3_t V3[4];
 static void v3_defaults(int16_t *p)
 {
-    /* the first patch of the VC3: a ringing, slowly moving voice (not the plain two-oscillator one): OSC 1 and OSC 2 a little apart, the ring modulator into
-     * the filter next to them, the filter's own output bending OSC 2 (a touch of feedback), the LFO drifting both pitches and the cutoff, the envelope opening it */
+    /* the first patch of the VC3: no LFO, everything fed back.  OSC 1 and OSC 2 a little apart and bending each other (cross FM), the ring modulator into the filter
+     * next to them, the filter's own output going back into both oscillators' pitch and into its own input: the voice talks to itself, the envelope opens the cutoff */
     static const int16_t D[V3_PIN0] = { 500, 300, 650, 541, 330, 0, 520, 550, 20, 500, 600, 350, 1000, 0, 0 };
     int i;
     for (i = 0; i < V3_PIN0; i++) p[i] = D[i];
     for (i = V3_PIN0; i < V3_COUNT; i++) p[i] = 0;
     p[V3_PIN(V3S_O1, V3D_FIN)] = 450; p[V3_PIN(V3S_O2, V3D_FIN)] = 280; p[V3_PIN(V3S_RING, V3D_FIN)] = 600;
     p[V3_PIN(V3S_FILT, V3D_OUT)] = 1000;
-    p[V3_PIN(V3S_ENV, V3D_CUT)] = 650; p[V3_PIN(V3S_KEY, V3D_CUT)] = 500; p[V3_PIN(V3S_LFO, V3D_CUT)] = 200; p[V3_PIN(V3S_NOI, V3D_CUT)] = 40;
-    p[V3_PIN(V3S_LFO, V3D_O1F)] = 70; p[V3_PIN(V3S_LFO, V3D_O2F)] = 110;
-    p[V3_PIN(V3S_FILT, V3D_O2F)] = 50;
+    p[V3_PIN(V3S_ENV, V3D_CUT)] = 650; p[V3_PIN(V3S_KEY, V3D_CUT)] = 500; p[V3_PIN(V3S_NOI, V3D_CUT)] = 40;
+    p[V3_PIN(V3S_O1, V3D_O2F)] = 90; p[V3_PIN(V3S_O2, V3D_O1F)] = 110;                  /* cross FM */
+    p[V3_PIN(V3S_FILT, V3D_O1F)] = 130; p[V3_PIN(V3S_FILT, V3D_O2F)] = 90;               /* the filter back into the oscillators */
+    p[V3_PIN(V3S_FILT, V3D_FIN)] = 160; p[V3_PIN(V3S_RING, V3D_CUT)] = 90;               /* ... and into itself; the ring modulator opens the cutoff */
 }
 
 static inline int32_t v3_sat(int32_t x)                /* soft clip: x - x^3 / (6.75 * 2^30) up to 1.5 (49152), flat beyond; shifts only */
