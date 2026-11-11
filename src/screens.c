@@ -368,11 +368,11 @@ static void dq_stroke(int32_t x, int32_t y, int32_t w, int32_t h, int32_t lw, ui
 }
 static void dseq_draw(void)
 {
-    static const char *const KITL[3] = { "808", "909", "ACOUSTIC" };
+    static const char *const KITL[NKIT] = { "808", "909", "ACOUSTIC", "LINNDRUM", "DMX" };
     int t = voices_sel(), sv = ctrl_drum_voice(), v, x, k, held = ctrl_dseq_held(), cur = sq_cur;
     char tt[16];
     int32_t w;
-    k = voices_param_get(t, ENG_DRUM, DR_ID(sv, DR_KV)); k = k < 0 ? 0 : k > 2 ? 2 : k;
+    k = voices_param_get(t, ENG_DRUM, DR_ID(sv, DR_KV)); k = k < 0 ? 0 : k > NKIT - 1 ? NKIT - 1 : k;
     { int j = 0; while ((tt[j] = KITL[k][j]) != 0) j++; }
     if (held >= 0) { int n = ui_strlen(tt); tt[n++] = ' '; tt[n++] = ' '; tt[n++] = ' '; tt[n] = 0; }       /* "  " and the room of the held-lane dot */
     w = gfx_text_w64(F_TITLE, tt, 65);
@@ -386,7 +386,7 @@ static void dseq_draw(void)
         int on = v == sv, kv = voices_param_get(t, ENG_DRUM, DR_ID(v, DR_KV)), ty = voices_param_get(t, ENG_DRUM, DR_ID(v, DR_TYPE));
         uint16_t g = drum_gates(t, v);
         int base = (DQ_Y16(y + 365) + 8) >> 4;
-        kv = kv < 0 ? 0 : kv > 2 ? 2 : kv; ty = ty < 0 ? 0 : ty > 7 ? 7 : ty;
+        kv = kv < 0 ? 0 : KIT_UI(kv > NKIT - 1 ? NKIT - 1 : kv); ty = ty < 0 ? 0 : ty > 7 ? 7 : ty;
         gfx_text(F_DQL, DVN[kv][ty], 635, base, on ? 0xf2efe6u : 0x7d7a73u, 0, 0, 240);
         if (on) dq_rect(0, y + 32, 40, y + rh - 32, COL_RED);
         for (x = 0; x < 16; x++) {

@@ -153,8 +153,8 @@ static void st_put(const secd_t *s, int i, int v)
         break;
     }
     case SK_ENG:
-        if (s->e == ENG_DRUM) {                      /* kit 0..2, voice type 0..7, the rest 0..1000 */
-            int x = 1 + i % ST_DR_X, mx = x == DR_KV ? 2 : x == DR_TYPE ? 7 : 1000;
+        if (s->e == ENG_DRUM) {                      /* kit 0..4, voice type 0..7, the rest 0..1000 */
+            int x = 1 + i % ST_DR_X, mx = x == DR_KV ? NKIT - 1 : x == DR_TYPE ? 7 : 1000;
             v = v < 0 ? 0 : v > mx ? mx : v;
             voices_param(s->t, s->e, st_drum_id(i), v);
         } else voices_param(s->t, s->e, i, v < 0 ? 0 : v);      /* the engines clamp to their maxima */

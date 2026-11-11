@@ -79,6 +79,30 @@ static int32_t dvoice(int ty, dvoice_t *V, int k, const dpar_t *pr)
     tf = pr->pe ? M16(pr->tf, 65536 + (int32_t)(((int64_t)pr->pe * exc(V, ci++, tu, A24(.04), 65536)) >> 15)) : pr->tf;
 #define EX(tau) exc(V, ci++, tu, A24(tau), 65536)
 #define EXD(tau) exc(V, ci++, tu, A24(tau), dfi)
+    if (k >= 3 && ty <= 3) {                                          /* LinnDrum (k 3) and Oberheim DMX (k 4): kick, snare, hats; 8-bit-ish samples (the low bits dropped) */
+        int lin = k == 3, sh = lin ? 7 : 8;
+        int32_t o, b, nn;
+        if (ty == 0) {
+            int32_t f = lin ? M16((52 * 256) + 110 * M15(256, EX(.018)), tf) : M16((55 * 256) + 150 * M15(256, EX(.012)), tf);
+            V->ph += dinc(f);
+            s = M15(sin_q15(V->ph), EXD(lin ? .17 : .3));
+            if (!lin) s = M15(c_tanh(M16(s, Q16(1.6))), Q(.8));
+            o = M15(s + M15(M15(EX(.003), M15(tn, lin ? Q(.5) : Q(.7))), nz), Q(.9));
+        } else if (ty == 1) {
+            int32_t fe = Q16(1) + M16(Q16(.2), EX(.015) * 2);
+            V->ph += dinc(M16(M16((lin ? 195 : 170) * 256, tf), fe));
+            b = M15(sin_q15(V->ph), M15(lin ? Q(.5) : Q(.55), EXD(lin ? .06 : .09)));
+            nn = lin ? HPF(nz, Q16(.1)) : LPF(HPF(nz, Q16(.08)), Q16(.55));
+            nn = M15(M15(nn, EXD(lin ? .15 : .12)), M15(Q(.25) + M15(tn, Q(1.0)), Q(.8)));
+            o = M15(b + nn, Q(.9));
+        } else {
+            int op = ty == 3;
+            x = lin ? M15(nz, Q(.75)) + M15(met(V, Q16(1.0), tf), Q(.3)) : M15(nz, Q(.5)) + M15(met(V, Q16(1.3), tf), Q(.4));
+            x = M15(HPF(x, Q16(lin ? .42 : .34) + M16(tn * 2, Q16(.3))), Q(1.5) / 2) * 2;
+            o = M15(M15(x, op ? EXD(lin ? .3 : .35) : EXD(lin ? .035 : .05)), Q(.6));
+        }
+        return ((o + (1 << (sh - 1))) >> sh) << sh;
+    }
     if (ty == 0) {                                                    /* kick */
         int32_t f, cl;
         if (k == 0) {
@@ -169,8 +193,8 @@ static int32_t dvoice(int ty, dvoice_t *V, int k, const dpar_t *pr)
         cl = M15(M15(k == 2 ? LPF(nz, Q16(.3)) : nz, EX(.005)), Q(.08) + M15(tn, Q(.5)));
         return M15(s + cl, Q(.9));
     }
-    /* type 5: cowbell / ride / crash */
-    if (k == 0) {
+    /* type 5: cowbell / ride / crash (the Linn and the DMX have the cowbell) */
+    if (k == 0 || k >= 3) {
         V->ph += dinc(M16(540 * 256, tf)); V->ph2 += dinc(M16(800 * 256, tf));
         x = (V->ph < 0x80000000u ? 32768 : -32768) + (V->ph2 < 0x80000000u ? 32768 : -32768);
         x = LPF(x, Q16(.18) + M16(tn * 2, Q16(.4)));
@@ -222,7 +246,7 @@ void drum_set(int t, int id, int v)
     int vv;
     if (!d || id < 0 || id >= DR_COUNT) return;
     if (id % DR_PER == DR_KIT) {                                  /* the kit for all six voices */
-        v = v < 0 ? 0 : v > 2 ? 2 : v;
+        v = v < 0 ? 0 : v > NKIT - 1 ? NKIT - 1 : v;
         for (vv = 0; vv < 6; vv++) d->p[vv * DR_PER + DR_KV] = (int16_t)v;
     }
     d->p[id] = (int16_t)(v < 0 ? 0 : v);

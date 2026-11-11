@@ -51,7 +51,7 @@ static const epd_t DRD[DR_PER] = { PC(10), PC(10), PC(10), PC(10), PC(10), PC(10
 
 static const char *const DVN[3][8] = { { "BD", "SD", "CH", "OH", "CP", "CB", "HT", "LT" }, { "BD", "SD", "CH", "OH", "CP", "RD", "HT", "LT" },
                                        { "KICK", "SNR", "CH", "OH", "TOM", "CRSH", "HI T", "LO T" } };
-static const char *const KITN[3] = { "808", "909", "ACOU" };
+static const char *const KITN[NKIT] = { "808", "909", "ACOU", "LINN", "DMX" };
 static const char *const DVL[3][8] = {
     { "KICK", "SNARE", "CLOSED HAT", "OPEN HAT", "CLAP", "COWBELL", "HI TOM", "LOW TOM" },
     { "KICK", "SNARE", "CLOSED HAT", "OPEN HAT", "CLAP", "RIDE", "HI TOM", "LOW TOM" },
@@ -131,10 +131,10 @@ static int ep_on(void)                          /* the 2 x 2 knob page of a non-
         if (x != EPI_EDIT && x != EPI_ENV && x != EPI_ARP) return 0;
         v = ctrl_drum_voice();
         k = voices_param_get(voices_sel(), e, DR_ID(v, DR_KV)); y = voices_param_get(voices_sel(), e, DR_ID(v, DR_TYPE));
-        k = k < 0 ? 0 : k > 2 ? 2 : k; y = y < 0 ? 0 : y > 7 ? 7 : y;
+        k = k < 0 ? 0 : k > NKIT - 1 ? NKIT - 1 : k; y = y < 0 ? 0 : y > 7 ? 7 : y;
         for (s = KITN[k]; *s;) EP.title[n++] = *s++;
         EP.title[n++] = ' ';
-        for (s = DVL[k][y]; *s;) EP.title[n++] = *s++;
+        for (s = DVL[KIT_UI(k)][y]; *s;) EP.title[n++] = *s++;
         if (x == EPI_ENV) for (s = " ENV"; *s;) EP.title[n++] = *s++;
         EP.title[n] = 0;
         if (x == EPI_ARP) {                                                     /* the lane's settings: "BD SEQ" */

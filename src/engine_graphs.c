@@ -339,7 +339,7 @@ static void epg_drum(void)
     int32_t hd = (hdv * 16384) / 1000, at = (atv * 2621) / 1000, pe = ((pev - 500) * 11796) / 100, base, T, tf, k1;
     uint32_t invb, invat = 0;
     k = voices_param_get(t, e, DR_ID(v, DR_KV)); ty = voices_param_get(t, e, DR_ID(v, DR_TYPE));
-    k = k < 0 ? 0 : k > 2 ? 2 : k; ty = ty < 0 ? 0 : ty > 7 ? 7 : ty;
+    k = k < 0 ? 0 : KIT_UI(k > NKIT - 1 ? NKIT - 1 : k); ty = ty < 0 ? 0 : ty > 7 ? 7 : ty;
     base = (int32_t)(((int64_t)DBASE[k][ty] * exp2_fx(((dc - 500) * 262144) / 1000, 16)) >> 16);
     T = (int32_t)(((int64_t)base * 4301) >> 10);                                /* base * 4.2 */
     if (T < 7864) T = 7864;                                                      /* .12 s */
@@ -467,7 +467,7 @@ static void epg_draw(void)
 static const char *epm_name(int v)
 {
     int t = voices_sel(), k = voices_param_get(t, ENG_DRUM, DR_ID(v, DR_KV)), y = voices_param_get(t, ENG_DRUM, DR_ID(v, DR_TYPE));
-    k = k < 0 ? 0 : k > 2 ? 2 : k; y = y < 0 ? 0 : y > 7 ? 7 : y;
+    k = k < 0 ? 0 : KIT_UI(k > NKIT - 1 ? NKIT - 1 : k); y = y < 0 ? 0 : y > 7 ? 7 : y;
     return DVN[k][y];
 }
 static void epm_draw(void)

@@ -27,6 +27,8 @@ enum { PR_WAVE, PR_RNG, PR_TUNE, PR_PW, PR_BWAVE, PR_BRNG, PR_BTUNE, PR_BPW, PR_
 enum { DR_KIT, DR_TYPE, DR_KV, DR_TUNE, DR_DECAY, DR_TONE, DR_LEVEL, DR_ATK, DR_PEAK, DR_HOLD, DR_DRIVE, DR_FILT,
        DR_SW, DR_HUM, DR_CHANCE, DR_ACC,            /* the lane (sequencer) settings of the voice: swing, humanize, chance, accent (the prototype's dsw / dhu / dch / dac) */
        DR_PER = 16 };
+#define NKIT 5                                        /* the drum kits: 808, 909, acoustic, LinnDrum, Oberheim DMX */
+#define KIT_UI(k) ((k) < 3 ? (k) : (k) == 3 ? 2 : 1)      /* the name / graph tables have the first three: the Linn reads as the acoustic one, the DMX as the 909 */
 #define DR_ID(v, x) ((v) * DR_PER + (x))              /* parameter id of control x of voice v (DR_KIT = all voices' kit) */
 #define DR_COUNT (6 * DR_PER)
 enum { ARP_MODE, ARP_OCT, ARP_RATE, ARP_GATE, ARP_SW, ARP_LATCH, ARP_ACC, ARP_CHANCE, ARP_TR, ARP_REP, ARP_HUM, ARP_PAT,
