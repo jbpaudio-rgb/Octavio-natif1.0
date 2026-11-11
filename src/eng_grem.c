@@ -11,7 +11,7 @@
 #include "voices.h"                                    /* cdsp.c is already included by eng_moog.c */
 
 enum { GM_TUNE, GM_RAT, GM_XMD, GM_FLD, GM_CHS, GM_RTE, GM_NOI, GM_GLT, GM_CRU, GM_CUT, GM_RES, GM_ATK, GM_DEC, GM_REL, GM_LVL,
-       GM_SYN, GM_RNG, GM_DRV, GM_SUB, GM_DIV, GM_CMB, GM_COUNT };
+       GM_SYN, GM_RNG, GM_DRV, GM_SUB, GM_DIV, GM_CMB, GM_FBK, GM_BITE, GM_COUNT };
 #define GM_CB 256
 
 typedef struct {
@@ -20,7 +20,7 @@ typedef struct {
     int32_t oct16, cut16, k16, lev, ai, sus;
     uint32_t dc, rc;
     uint32_t pa, pb, ps;
-    int32_t note16, sa, sb, y1, y2, hold, vel, dv;
+    int32_t note16, sa, sb, y1, y2, hold, vel, dv, fbl, up;
     uint32_t cx, cs, ca;                                /* logistic state Q16, smoothed Q16, step accumulator */
     int32_t pj16, rat16;                                /* event pitch jump (log2 Q16), event ratio override */
     uint16_t tick, nb_t, pj_t, fr_t, mu_t, rt_t, cr_n, ci, acc;
@@ -29,8 +29,8 @@ typedef struct {
 
 static grem_t GM[4];
 static int16_t GM_CBUF[4][GM_CB];                       /* the comb's delay line (2 KB of RAM in all) */
-static const int16_t GM_DEF[GM_COUNT] = { 500, 500, 420, 450, 600, 350, 25, 220, 80, 650, 250, 3, 450, 300, 1000,
-                                          600, 250, 450, 300, 400, 350 };
+static const int16_t GM_DEF[GM_COUNT] = { 500, 500, 420, 450, 600, 350, 25, 220, 200, 650, 250, 3, 450, 300, 1000,
+                                          600, 250, 450, 300, 400, 350, 600, 600 };
 
 static inline int32_t gm_sat(int32_t x)                 /* soft clip, up to +-32k */
 {
@@ -75,7 +75,7 @@ void grem_init(int t)
     for (i = 0; i < GM_COUNT; i++) m->p[i] = GM_DEF[i];
     for (i = 0; i < GM_CB; i++) GM_CBUF[t][i] = 0;
     m->note16 = 60 << 16;
-    m->cx = 0x9A3C0u + (uint32_t)t * 5000u;
+    m->cx = 39322u + (uint32_t)t * 3000u;                /* 0.6 .. 0.75 in Q16: the logistic map lives in 0..1 */
     m->cs = m->cx;
     m->vel = 32767;
     m->cr_n = 1;
@@ -120,27 +120,30 @@ void grem_render(int t, int32_t *out, int n)
     if (m->dirty) grem_derive(m);
     while (i < n) {
         int cnt = n - i < 8 ? n - i : 8;
-        int32_t chs = m->p[GM_CHS], ch, lg, lb, fld, x16, g, nz, drv, clen;
+        int32_t chs = m->p[GM_CHS], ch, lg, lb, fld, x16, g, nz, drv, clen, fbg;
         uint32_t ia, ib;
         /* chaos: a few logistic steps per chunk (RATE), smoothed */
         m->ca += exp2_fx(m->p[GM_RTE] * 9 * 65536 / 1000, 0) * 6u;
         while (m->ca >= 65536u) {
             m->ca -= 65536u;
             m->cx = (uint32_t)(((uint64_t)(229376u + (uint32_t)chs * 32u) * m->cx >> 16) * (65536u - m->cx) >> 16);
-            if (m->cx < 2048u) m->cx = 0x9A3C0u ^ (c_rand32() & 0x3FFFu);                       /* it fell into the fixed point: kick it out */
+            if (m->cx < 2048u || m->cx > 63488u) m->cx = 16384u + (c_rand32() & 0x7FFFu);        /* it fell into a fixed point (or out of 0..1): kick it back in */
         }
         m->cs += (uint32_t)(((int32_t)m->cx - (int32_t)m->cs) / 4);
         ch = (int32_t)m->cs - 32768;                                                              /* -0.5 .. 0.5, Q16 */
+        fbg = (int32_t)(((int64_t)m->p[GM_FBK] * (1024 + (int32_t)(((int64_t)ch * chs) >> 15))) >> 10);       /* the re-injection gain: the chaos swells and chokes it */
+        if (fbg < 0) fbg = 0;
         m->dv -= m->dv >> 8;                                                                      /* the zap decays: ~ 40 ms */
         lg = C_L2_MINC + (int32_t)(((int64_t)(m->note16 - (60 << 16)) * 21845) >> 18) + m->oct16
-             + (int32_t)(((int64_t)ch * chs) >> 12) + (m->pj_t ? m->pj16 : 0) + m->dv;           /* the pitch drifts by up to +-0.12 oct */
+             + (int32_t)(((int64_t)ch * chs) >> 12) + (m->pj_t ? m->pj16 : 0) + m->dv
+             + (int32_t)(((int64_t)(m->y2 - m->fbl) * fbg) >> 9);               /* and the re-injected signal bends the pitch: a feedback shriek */           /* the pitch drifts by up to +-0.12 oct */
         lb = lg + (m->rt_t ? m->rat16 : ((m->p[GM_RAT] * 4 - 1000) * 65536 / 1000)) + (int32_t)(((int64_t)ch * chs) >> 7);   /* B: 1/2 .. 8 x A, swept hard by the chaos */
         ia = exp2_fx(lg, 0);
         ib = exp2_fx(lb, 0);
         fld = 32768 + (m->p[GM_FLD] * 6 * 32768) / 1000 + (int32_t)(((int64_t)ch * chs * 6) >> 10);      /* the fold gain: 1 .. 7, drifting */
         if (fld < 16384) fld = 16384;
         drv = 32768 + m->p[GM_DRV] * 8 * 32;                                                      /* 1x .. 9x */
-        x16 = (int32_t)exp2_fx(C_L2_FC0 + m->cut16 + (int32_t)(((int64_t)ch * chs) >> 7), 16);
+        x16 = (int32_t)exp2_fx(C_L2_FC0 + m->cut16 + (int32_t)(((int64_t)ch * chs) >> 7) + (int32_t)(((int64_t)(m->y2 - m->fbl) * fbg) >> 8), 16);   /* ... and the cutoff */
         if (x16 > 82354 || x16 < 0) x16 = 82354;
         g = (int32_t)c_expm((uint32_t)x16);
         if (g > 36000) g = 36000;
@@ -151,9 +154,11 @@ void grem_render(int t, int32_t *out, int n)
         while (clen < 32) clen <<= 1;
         for (j = 0; j < cnt; j++, i++) {
             int32_t s, u, e, o, bits, cm, sub, rg;
-            uint32_t xa = (uint32_t)(((int64_t)(m->sb + (m->sa >> 1)) * m->p[GM_XMD] * 166) & 0xFFFFFFFF);
+            int32_t fbv = m->y2 - m->fbl;                       /* the output of the filter, without its DC: re-injected into the start of the voice */
+            uint32_t xa = (uint32_t)(((int64_t)(m->sb + (m->sa >> 1)) * m->p[GM_XMD] * 166 + (int64_t)fbv * fbg * 90) & 0xFFFFFFFF);
             uint32_t xb = (uint32_t)(((int64_t)m->sa * m->p[GM_XMD] * 166) & 0xFFFFFFFF);
             uint32_t pa0 = m->pa;
+            m->fbl += (m->y2 - m->fbl) >> 9;
             m->pa += ia; m->pb += ib; m->ps += ia >> 1;
             if (m->pa < pa0 && m->p[GM_SYN])                                                      /* A wrapped: hard-sync B (partly, below 1000) */
                 m->pb = (uint32_t)(((uint64_t)m->pb * (uint32_t)(1000 - m->p[GM_SYN])) / 1000u);
@@ -161,10 +166,11 @@ void grem_render(int t, int32_t *out, int n)
             m->sb = SIN_TAB[((m->pb + xb) >> 22) & 1023u];
             sub = (int32_t)(((int64_t)SIN_TAB[(m->ps >> 22) & 1023u] * m->p[GM_SUB]) >> 10);        /* the sub: up to 1/1 of the voice */
             rg = (int32_t)(((int64_t)m->sa * m->sb >> 15) * m->p[GM_RNG] / 1000);                  /* ring modulation */
-            s = m->sa + (m->sb >> 1) + rg + (int32_t)(((int64_t)(c_rand15()) * nz) >> 15);
+            s = m->sa + (m->sb >> 1) + rg + (int32_t)(((int64_t)(c_rand15()) * nz) >> 15) + (int32_t)(((int64_t)fbv * fbg) >> 6);
             u = (int32_t)(((int64_t)s * fld) >> 15) + 32768;                                        /* triangle fold: reflect around +-32k */
             u &= 0x1FFFF;
             u = (u < 65536 ? u : 131071 - u) - 32768;
+            { int32_t u0 = u; u += (int32_t)(((int64_t)(u0 - m->up) * m->p[GM_BITE]) >> 8); m->up = u0; }         /* the bite: a first-difference boost, the edges get sharp and hissy */
             u = gm_sat((int32_t)(((int64_t)u * drv) >> 15));                                       /* the hard drive */
             bits = 15 - m->p[GM_CRU] * 11 / 1000;                                                    /* crush: down to 4 bits */
             u = (u >> (15 - bits)) << (15 - bits);

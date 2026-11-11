@@ -5,25 +5,26 @@
  * The detune is done in the log domain (one exp2 per saw per 8 samples, no division): each saw's polyBLEP reciprocal is 2^(40 - log2 inc). */
 #include "voices.h"                                    /* cdsp.c is already included by eng_moog.c */
 
-enum { SS_TUNE, SS_RNG, SS_DET, SS_MIX, SS_HPF, SS_CUT, SS_RES, SS_ENV, SS_ATK, SS_DEC, SS_SUS, SS_REL, SS_FATK, SS_FDEC, SS_LVL, SS_DRF, SS_OCT, SS_COUNT };
+enum { SS_TUNE, SS_RNG, SS_DET, SS_MIX, SS_VOW, SS_CUT, SS_RES, SS_ENV, SS_ATK, SS_DEC, SS_SUS, SS_REL, SS_FATK, SS_FDEC, SS_LVL, SS_DRF, SS_OCT, SS_FRM, SS_COUNT };
 
 typedef struct {
     int16_t p[SS_COUNT];
     uint8_t dirty;
-    int32_t oct16, det16, cg, sg, hp_g, cut16, env5, k16, lev;
+    int32_t oct16, det16, cg, sg, cut16, env5, k16, lev;
     int32_t ai, sus;
     uint32_t dc, rc, fdc;
     int32_t fai;
     uint32_t ph[8], lf[8];                              /* the 7 saws + the octave-up saw; the drift LFOs (7) and the shimmer LFO (7th..8th) */
-    int32_t note16, y1, y2, hz;
+    int32_t note16, y1, y2, l1, b1, l2, b2;               /* the two formant filters (Chamberlin state variable) */
     adsr_t a, f;
     uint8_t gate;
     int32_t vel;
 } ssaw_t;
 
 static ssaw_t SS[4];
-static const int16_t SS_DEF[SS_COUNT] = { 500, 2, 500, 700, 150, 700, 150, 450, 15, 450, 750, 400, 10, 450, 1000, 450, 350 };
-static const int16_t SS_MAX[SS_COUNT] = { 1000, 4, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000 };
+static const int16_t SS_DEF[SS_COUNT] = { 500, 2, 500, 700, 300, 700, 150, 450, 15, 450, 750, 400, 10, 450, 1000, 450, 350, 500 };
+static const int16_t SS_MAX[SS_COUNT] = { 1000, 4, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000 };
+static const uint16_t SS_VT[5][2] = { { 800, 1150 }, { 400, 2000 }, { 300, 2400 }, { 450, 800 }, { 325, 700 } };      /* the formants F1, F2 (Hz) of A E I O U */
 static const int16_t SS_OFF[7] = { -1000, -630, -300, 0, 300, 630, 1000 };       /* the JP-8000's spread of the seven saws, in thousandths of the detune */
 
 static inline int32_t ss_sat(int32_t x)                /* soft clip: x - x^3 / (3 A^2) up to A = 1.5 (49152) */
@@ -45,7 +46,6 @@ static void ssaw_derive(ssaw_t *m)
     m->det16 = (int32_t)(((int64_t)p[SS_DET] * 3277) / 1000);      /* up to 0.05 octave (60 cents) at the outer saws */
     m->cg = 32768 - (int32_t)((int64_t)p[SS_MIX] * 9830 / 1000);   /* the centre saw: 1 .. 0.7 */
     m->sg = (int32_t)((int64_t)p[SS_MIX] * 8192 / 1000);           /* each side saw: 0 .. 0.25 */
-    m->hp_g = (int32_t)(c_expm((uint32_t)(p[SS_HPF] * 8 + 8)));    /* the high-pass one-pole: 0 .. a few hundred Hz */
     m->cut16 = (p[SS_CUT] * 602931) / 1000;
     m->env5 = p[SS_ENV] * 5 * 65536 / 1000;
     m->k16 = (int32_t)(((int64_t)p[SS_RES] * 196608) / 1000);      /* up to 3.0 on a 2-pole: it rings, it does not run away */
@@ -106,7 +106,7 @@ void ssaw_render(int t, int32_t *out, int n)
     if (m->dirty) ssaw_derive(m);
     while (i < n) {
         int cnt = n - i < 8 ? n - i : 8;
-        int32_t xl, ef = m->f.e, x16, g;
+        int32_t xl, ef = m->f.e, x16, g, f1, f2, vp, vi, vf;
         uint32_t inc[8], rd[8];
         int32_t shim;
         xl = C_L2_MINC + (int32_t)(((int64_t)(m->note16 - (60 << 16)) * 21845) >> 18) + m->oct16;
@@ -120,6 +120,13 @@ void ssaw_render(int t, int32_t *out, int n)
         inc[7] = exp2_fx(xl + 65536, 0);                  /* the octave-up saw ... */
         rd[7] = exp2_fx((40 << 16) - xl - 65536, 0);
         shim = (SIN_TAB[(m->lf[7] >> 22) & 1023u] + 32768) >> 1;      /* ... breathes in and out on a slow LFO: the shimmer, 0 .. 1 (Q15) */
+        vp = m->p[SS_VOW] + (int32_t)(((int64_t)(shim - 16384) * m->p[SS_DRF]) >> 16);       /* the vowel, drifting with the shimmer LFO */
+        if (vp < 0) vp = 0;
+        if (vp > 999) vp = 999;
+        vi = vp / 250;
+        vf = (vp % 250) * 4;                                                                 /* 0 .. 999 between two vowels */
+        f1 = ((SS_VT[vi][0] * (1000 - vf) + SS_VT[vi + 1][0] * vf) / 1000) * 9335 >> 10;     /* the SVF coefficient 2 pi f / fs, Q16 */
+        f2 = ((SS_VT[vi][1] * (1000 - vf) + SS_VT[vi + 1][1] * vf) / 1000) * 9335 >> 10;
         x16 = (int32_t)exp2_fx(C_L2_FC0 + m->cut16 + (int32_t)(((int64_t)m->env5 * ef) >> 30), 16);
         if (x16 > 82354 || x16 < 0) x16 = 82354;
         g = (int32_t)c_expm((uint32_t)x16);
@@ -138,8 +145,13 @@ void ssaw_render(int t, int32_t *out, int n)
             so -= c_blep(m->ph[7], inc[7], rd[7]) >> 1;
             so = (int32_t)(((int64_t)so * shim >> 15) * m->p[SS_OCT] / 1000);
             s = (int32_t)(((int64_t)s * m->cg + (int64_t)sd * m->sg) >> 15) + (so >> 1);
-            m->hz += (int32_t)(((int64_t)(s - m->hz) * m->hp_g) >> 16);   /* one-pole high-pass: s - lowpass(s) */
-            s -= m->hz;
+            {                                                                                     /* the vocal formants: two band-passes in parallel, mixed with the dry stack */
+                int32_t h1 = s - m->l1 - (m->b1 * 3 >> 3), h2 = s - m->l2 - (m->b2 * 3 >> 3), fo;
+                m->b1 += (int32_t)(((int64_t)h1 * f1) >> 16); m->l1 += (int32_t)(((int64_t)m->b1 * f1) >> 16);
+                m->b2 += (int32_t)(((int64_t)h2 * f2) >> 16); m->l2 += (int32_t)(((int64_t)m->b2 * f2) >> 16);
+                fo = (m->b1 + (m->b2 >> 1)) * 21 >> 4;
+                s += (int32_t)(((int64_t)(fo - s) * m->p[SS_FRM]) / 1000);
+            }
             u = ss_sat(s - (int32_t)(((int64_t)m->k16 * m->y2) >> 16));
             m->y1 += (int32_t)(((int64_t)(u - m->y1) * g) >> 16);
             m->y2 += (int32_t)(((int64_t)(m->y1 - m->y2) * g) >> 16);
@@ -147,7 +159,7 @@ void ssaw_render(int t, int32_t *out, int n)
             (void)c_adsr(&m->f, m->fai, m->fdc, m->sus, m->rc);
             o = (int32_t)(((int64_t)m->y2 * (e >> 15)) >> 15);
             o = (int32_t)(((int64_t)o * m->vel) >> 15);
-            o = ss_sat((int32_t)((int64_t)o * 64000 >> 15));        /* the gain first, then the clipper: never beyond +-32k */
+            o = ss_sat((int32_t)((int64_t)o * 48000 >> 15));        /* the gain first, then the clipper: never beyond +-32k */
             out[i] = (int32_t)((int64_t)o * m->lev >> 15);
         }
     }
