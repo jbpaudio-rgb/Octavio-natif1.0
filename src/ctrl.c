@@ -510,16 +510,22 @@ static void lane_toast(int h, uint32_t ms)
     scopy(b, KIT_NAME[k], sizeof b); sappend(b, " ", sizeof b); sappend(b, TN[y], sizeof b);
     toast(a, b, ms);
 }
-static int32_t ak_get(void)
+static int lane_a(void)                            /* the lane ALGORITHM edits: the held one, else on the drum sequencer the selected one (SELECT); -1: the whole kit */
 {
     int h = lane_h();
+    if (h < 0 && pg == PGN_DSEQ && cur_engine() == ENG_DRUM) h = dv[sel & 3] % 6;
+    return h;
+}
+static int32_t ak_get(void)
+{
+    int h = lane_a();
     if (h >= 0) { int k = voices_param_get(sel, ENG_DRUM, DR_ID(h, DR_KV)); return ((int32_t)(k < 0 ? 0 : k > 2 ? 2 : k) << Q) / 2; }
     if (sel >= DRUM_T0) { int k = voices_param_get(sel, ENG_DRUM, DR_ID(0, DR_KV)); return ((int32_t)(k < 0 ? 0 : k > 2 ? 2 : k) << Q) / 2; }      /* track 4: the kit */
     return ((int32_t)eng_li(cur_engine()) << Q) / (ceng_n() - 1);
 }
 static void ak_set(int32_t n)
 {
-    int i = LIDX[round_q(n, ceng_n() - 1)], h = lane_h();
+    int i = LIDX[round_q(n, ceng_n() - 1)], h = lane_a();
     char t[20], num[4], nb[24];
     if (h >= 0) {
         voices_param(sel, ENG_DRUM, DR_ID(h, DR_KV), round_q(n, 2));
@@ -583,7 +589,7 @@ void ctrl_side(int role, int steps, uint32_t ms)
 {
     g_ms = ms;
     if (role == ROLE_PRESETS) side_wheel(steps, ONE / 50, pk_get, pk_set, &pp_ws, &pp_wq);
-    else if (role == ROLE_ALGO) side_wheel(steps, lane_h() >= 0 || sel >= DRUM_T0 ? ONE / 2 : ONE / 50, ak_get, ak_set, &ap_ws, &ap_wq);
+    else if (role == ROLE_ALGO) side_wheel(steps, lane_a() >= 0 || sel >= DRUM_T0 ? ONE / 2 : ONE / 50, ak_get, ak_set, &ap_ws, &ap_wq);
     else if (pg == PGN_DSEQ && cur_engine() == ENG_DRUM && !pend && !type_held() && !kit_h() && steps != 0) {      /* SELECT alone on the drum sequencer: the next / previous voice (lane), wrapping; its black key lights (leds.c) and the grid shows it */
         int v = ((int)dv[sel & 3] + steps) % 6;
         if (v < 0) v += 6;
