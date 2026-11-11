@@ -87,8 +87,8 @@ static int32_t dvoice_core(int ty, dvoice_t *V, int k, const dpar_t *pr)
 {
     int32_t tu = V->t - pr->hd, t = tu < 0 ? 0 : tu, tf, tn = pr->tn, dfi = pr->dfi, nz = c_rand15(), s, e, x;
     int ci = 0;
-    tf = pr->pe ? M16(pr->tf, 65536 + (int32_t)(((int64_t)pr->pe * exc(V, ci++, tu, A24(.04), 65536)) >> 15)) : pr->tf;
-#define EX(tau) exc(V, ci++, tu, A24(tau), 65536)
+    tf = pr->pe ? M16(pr->tf, 65536 + (int32_t)(((int64_t)pr->pe * exc(V, ci++, V->t, A24(.04), 65536)) >> 15)) : pr->tf;
+#define EX(tau) exc(V, ci++, V->t, A24(tau), 65536)       /* the fast envelopes (pitch sweep, click, attack) run on real time: HOLD only keeps the body decay (EXD) waiting, so the held note sits at the settled pitch, not at the sweep start */
 #define EXD(tau) exc(V, ci++, tu, A24(tau), dfi)
 #define EXV(a, b, c) (lin ? EXD(a) : ver ? EXD(b) : EXD(c))                /* the kit picks the time constant (each A24 stays a constant) */
     if (k >= 3 && ty <= 3) {                                          /* LinnDrum (k 3) and Oberheim DMX (k 4): 8-bit-ish samples (the low bits dropped); Vermona DRM1 (k 5): analog, long and ringing */
