@@ -83,7 +83,7 @@ static const char *const ENG_TAG[CENG_N] = { "VACT", "MINI", "PRO70", "DRUM", "T
 static const uint8_t LIDX[CENG_N] = { ENG_VAC, ENG_MOOG, ENG_PROPH, ENG_TB3, ENG_POL, ENG_VC3, ENG_DRUM };   /* the ALGORITHM list, in this order: the drums come last (track 4 only) */
 static int eng_li(int e) { int i; for (i = 0; i < CENG_N; i++) if (LIDX[i] == e) return i; return 0; }
 /* the pages an engine has, as a mask of engine page indexes (engine_pages.c EPI_*: GLO, OSC1..OSC4, EDIT, ENV, ENV2); the new engines have only the pages their parameters fill */
-static int eng_pmask(int e) { return e == ENG_TB3 ? 0x61 : e == ENG_POL ? 0xEF : e == ENG_VC3 ? 0x6F : (e == ENG_MOOG || e == ENG_PROPH) ? 0xFF : 0; }
+static int eng_pmask(int e) { return e == ENG_TB3 ? 0x61 : e == ENG_POL ? 0xEF : e == ENG_VC3 ? 0x67 : (e == ENG_MOOG || e == ENG_PROPH) ? 0xFF : 0; }
 static int is_new_eng(int e) { return e == ENG_TB3 || e == ENG_POL || e == ENG_VC3; }
 static const char *etag(int t) { return t >= 0 && t < CENG_N ? ENG_TAG[t] : "???"; }
 static int cur_engine(void) { return voices_engine(sel); }
@@ -324,7 +324,7 @@ int ctrl_bank_key(int w, uint32_t ms)
 static void tab_press(int t)
 {
     int e = cur_engine(), mp = e == ENG_MOOG || e == ENG_PROPH;
-    if (is_new_eng(e)) {                                /* TB-303 / Supersaw / Gremlin: ENV = AMP ENV (again: FILTER ENV when there is one), EDIT = FILTER (again: FILTER ENV), GLO = the oscillator pages in a loop */
+    if (is_new_eng(e)) {                                /* TB-303 / Supersaw / VC3: ENV = AMP ENV (again: FILTER ENV when there is one), EDIT = FILTER (again: FILTER ENV), GLO = the oscillator pages in a loop */
         int m = eng_pmask(e), k;
         if (t == CB_ENV) pg = (m & 0x80) && pg == PGN_ENV ? PGN_ENV2 : PGN_ENV;
         else if (t == CB_EDIT) pg = (m & 0x80) && pg == PGN_EDIT ? PGN_ENV2 : PGN_EDIT;

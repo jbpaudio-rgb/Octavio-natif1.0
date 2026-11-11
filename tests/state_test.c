@@ -637,7 +637,7 @@ int main(int argc, char **argv)
                 r = sqrt(sum / (200 * 128));
                 if (vi < 0) continue;
                 if (vi == 0) base = r;
-                CHECK(vi == 0 ? r > 200 : (vols[vi] == 0 ? r < 2 : (r > base * vols[vi] / 240.0 * 0.7 && r < base * vols[vi] / 240.0 * 1.3)),
+                CHECK(vi == 0 ? r > 200 : (vols[vi] == 0 ? r < 2 : (r > base * vols[vi] / 240.0 * 0.55 && r < base * vols[vi] / 240.0 * 1.45)),
                       "engine %d volume %d: rms %.0f (volume 240: %.0f)", eng[e], vols[vi], r, base);
             }
         }

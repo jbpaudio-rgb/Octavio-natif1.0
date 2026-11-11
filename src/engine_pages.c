@@ -41,9 +41,8 @@ static const epd_t TBD[TB_COUNT] = { SL(2, O_TBW), { EF_C7, 5, 0, 0 }, PC(10), P
 static const char *const O_OFFON[] = { "Off", "On" };
 static const epd_t PLD[PL_COUNT] = { { EF_C7, 5, 0, 0 }, PC(10), PC(10), PC(10), PC(10), PC(10), SL(2, O_OFFON), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10),
                                      PC(10), PC(10), PC(10), PC(10), { EF_MSA, 5, 0, 0 }, { EF_MSD, 5, 0, 0 }, PC(10), { EF_MSD, 5, 0, 0 }, { EF_MSA, 5, 0, 0 }, { EF_MSD, 5, 0, 0 }, PC(10) };
-static const epd_t V3D[V3_COUNT] = { { EF_C7, 5, 0, 0 }, PC(10), PC(10), PC(10), PC(10), SL(4, O_LFO), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10),
-                                     PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10),
-                                     { EF_MSA, 5, 0, 0 }, { EF_MSD, 5, 0, 0 }, PC(10), { EF_MSD, 5, 0, 0 }, PC(10) };
+static const epd_t V3D[V3_COUNT] = { { EF_C7, 5, 0, 0 }, PC(10), PC(10), PC(10), PC(10), SL(4, O_LFO), PC(10), PC(10), { EF_MSA, 5, 0, 0 }, { EF_MSD, 5, 0, 0 }, PC(10), { EF_MSD, 5, 0, 0 }, PC(10),
+                                     [V3_PIN0 ... V3_COUNT - 1] = PC(10) };
 static const epd_t DRD[DR_PER] = { PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10) };
 
 static const char *const DVN[3][8] = { { "BD", "SD", "CH", "OH", "CP", "CB", "HT", "LT" }, { "BD", "SD", "CH", "OH", "CP", "RD", "HT", "LT" },
@@ -92,10 +91,9 @@ static const epg_t PL_PG[EPI_N] = {
     [EPI_ENV2] = { "FILTER ENV", { "ATTACK", "DECAY", "", "" }, { PL_FATK, PL_FDEC, -1, -1 } } };
 static const epg_t V3_PG[EPI_N] = {
     [EPI_GLO] = { "VCS3", { "TUNE", "O1 WAVE", "O2 WAVE", "O2 TUNE" }, { V3_TUNE, V3_O1W, V3_O2W, V3_O2T } },
-    [EPI_OSC1] = { "MODULATION", { "O3 RATE", "O3 SHAPE", "", "" }, { V3_O3R, V3_O3S, -1, -1 } },
+    [EPI_OSC1] = { "LFO", { "RATE", "SHAPE", "", "" }, { V3_O3R, V3_O3S, -1, -1 } },
     [EPI_OSC2] = { "PATCH", { "SOURCE", "DEST", "PIN", "" }, { -1, -1, -1, -1 } },
-    [EPI_OSC3] = { "MIXER", { "O1", "O2", "NOISE", "RING" }, { V3_M1, V3_M2, V3_MN, V3_MR } },
-    [EPI_EDIT] = { "FILTER", { "CUTOFF", "RESO", "KEY", "LEVEL" }, { V3_CUT, V3_RES, V3_KEY, V3_LVL } },
+    [EPI_EDIT] = { "FILTER", { "CUTOFF", "RESO", "", "LEVEL" }, { V3_CUT, V3_RES, -1, V3_LVL } },
     [EPI_ENV] = { "ENVELOPE", { "ATTACK", "DECAY", "SUSTAIN", "RELEASE" }, { V3_ATK, V3_DEC, V3_SUS, V3_REL } } };
 
 static struct { char title[28]; const char *nm[4]; int16_t id[4]; int eng, idx; } EP;     /* the page on the screen */
@@ -235,19 +233,18 @@ static void ep_text(int id, char *out)          /* what the cell prints */
     }
 }
 /* the VC3 patch matrix (the OSC2 page): K1 = source row, K2 = destination column, SEL = put / take the pin, K3 = the pin's amount */
-static const int8_t VM_PIN[4][4] = { { V3_L1, V3_L2, V3_LF, V3_LA }, { V3_E1, V3_E2, V3_EF, -1 }, { -1, V3_X2, -1, V3_XA }, { V3_F1, V3_F2, -1, -1 } };
-static const char *const VM_SRC[4] = { "LFO", "ENV", "OSC1", "FILT" };
-static const char *const VM_DST[4] = { "PCH1", "PCH2", "CUT", "AMP" };
+static const char *const VM_SRC[V3S_N] = { "OSC1", "O1 SN", "OSC2", "O2 SN", "LFO", "NOISE", "RING", "FILT", "ENV", "KEY" };
+static const char *const VM_DST[V3D_N] = { "O1 F", "O2 F", "RATE", "CUT", "RES", "F IN", "OUT", "AM", "O1 W", "O2 W" };
 static int vm_r, vm_c;
 static int vm_on(void) { return EP.eng == ENG_VC3 && EP.idx == EPI_OSC2; }
-static int vm_id(void) { return VM_PIN[vm_r][vm_c]; }
-static int vm_val(int r, int c) { int id = VM_PIN[r][c]; return id < 0 ? -1 : voices_param_get(voices_sel(), ENG_VC3, id); }
+static int vm_id(void) { return V3_PIN(vm_r, vm_c); }
+static int vm_val(int r, int c) { return voices_param_get(voices_sel(), ENG_VC3, V3_PIN(r, c)); }
 static void vm_draw(void);
 static void vm_encoder(int k, int steps)
 {
     int id;
-    if (k == 0) { vm_r += steps; vm_r = vm_r < 0 ? 0 : vm_r > 3 ? 3 : vm_r; }
-    else if (k == 1) { vm_c += steps; vm_c = vm_c < 0 ? 0 : vm_c > 3 ? 3 : vm_c; }
+    if (k == 0) { vm_r += steps; vm_r = vm_r < 0 ? 0 : vm_r > V3S_N - 1 ? V3S_N - 1 : vm_r; }
+    else if (k == 1) { vm_c += steps; vm_c = vm_c < 0 ? 0 : vm_c > V3D_N - 1 ? V3D_N - 1 : vm_c; }
     else if (k == 2 && (id = vm_id()) >= 0) {
         int v = voices_param_get(voices_sel(), ENG_VC3, id) + steps * 20;
         v = (v + 5) / 10 * 10;
@@ -258,8 +255,8 @@ static void vm_cell(int k, int32_t *q16, const char **txt, char *buf, int *dim) 
 {
     int id = vm_id();
     *dim = 0; *txt = "";
-    if (k == 0) { *q16 = vm_r * 21845; *txt = VM_SRC[vm_r]; }
-    else if (k == 1) { *q16 = vm_c * 21845; *txt = VM_DST[vm_c]; }
+    if (k == 0) { *q16 = vm_r * 7282; *txt = VM_SRC[vm_r]; }
+    else if (k == 1) { *q16 = vm_c * 7282; *txt = VM_DST[vm_c]; }
     else if (k == 2 && id >= 0) {
         int v = voices_param_get(voices_sel(), ENG_VC3, id), n = 0;
         *q16 = (v * 65536 + 500) / 1000;

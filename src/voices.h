@@ -9,9 +9,12 @@ enum { ENG_VAC, ENG_MOOG, ENG_PROPH, ENG_DRUM, ENG_TB3, ENG_POL, ENG_VC3, ENG_N 
 enum { TB_WAVE, TB_TUNE, TB_CUT, TB_RES, TB_ENV, TB_DEC, TB_ACC, TB_SLD, TB_DRV, TB_LVL, TB_COUNT };
 enum { PL_TUNE, PL_O2T, PL_O1W, PL_O1P, PL_O2W, PL_O2P, PL_SYN, PL_M1, PL_M2, PL_MN, PL_DRV, PL_CUT, PL_RES, PL_MOD, PL_ENV, PL_LR, PL_LP, PL_LW, PL_LF,
        PL_ATK, PL_DEC, PL_SUS, PL_REL, PL_FATK, PL_FDEC, PL_LVL, PL_COUNT };
-enum { V3_TUNE, V3_O1W, V3_O2W, V3_O2T, V3_O3R, V3_O3S, V3_M1, V3_M2, V3_MN, V3_MR, V3_CUT, V3_RES, V3_KEY,
-       V3_L1, V3_L2, V3_LF, V3_LA, V3_E1, V3_E2, V3_EF, V3_X2, V3_XA, V3_F1, V3_F2,      /* the patch matrix: pins LFO/ENV/O1/FILTER -> O1 pitch/O2 pitch/FILTER/AMP (0 = no pin) */
-       V3_ATK, V3_DEC, V3_SUS, V3_REL, V3_LVL, V3_COUNT };
+enum { V3_TUNE, V3_O1W, V3_O2W, V3_O2T, V3_O3R, V3_O3S, V3_CUT, V3_RES, V3_ATK, V3_DEC, V3_SUS, V3_REL, V3_LVL,
+       V3_PIN0,                                                 /* the pin matrix: V3_PIN0 + 10 * source + destination, 0 = no pin, 1..1000 = its amount */
+       V3_COUNT = V3_PIN0 + 100 };
+enum { V3S_O1, V3S_O1S, V3S_O2, V3S_O2S, V3S_LFO, V3S_NOI, V3S_RING, V3S_FILT, V3S_ENV, V3S_KEY, V3S_N };               /* the matrix rows */
+enum { V3D_O1F, V3D_O2F, V3D_RATE, V3D_CUT, V3D_RES, V3D_FIN, V3D_OUT, V3D_AM, V3D_O1W, V3D_O2W, V3D_N };               /* its columns */
+#define V3_PIN(s, d) (V3_PIN0 + (s) * V3D_N + (d))
 enum { MG_W1, MG_R1, MG_T1, MG_P1, MG_L1, MG_W2, MG_R2, MG_T2, MG_P2, MG_L2, MG_W3, MG_R3, MG_T3, MG_P3, MG_L3,
        MG_NTYPE, MG_NTONE, MG_NCRUSH, MG_NLEV, MG_CUT, MG_RES, MG_ENV, MG_GLIDE, MG_REL, MG_ATK, MG_DEC, MG_SUS,
        MG_FATK, MG_FDEC, MG_FSUS, MG_LVL, MG_COUNT };

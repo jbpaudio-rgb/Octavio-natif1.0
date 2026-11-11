@@ -228,7 +228,7 @@ static void epg_filter(void)
     int t = voices_sel(), e = EP.eng, x, n = 0;
     int cut = e == ENG_MOOG ? voices_param_get(t, e, MG_CUT) : e == ENG_TB3 ? voices_param_get(t, e, TB_CUT) : e == ENG_POL ? voices_param_get(t, e, PL_CUT) : e == ENG_VC3 ? voices_param_get(t, e, V3_CUT) : voices_param_get(t, e, PR_CUT);
     int res = e == ENG_MOOG ? voices_param_get(t, e, MG_RES) : e == ENG_TB3 ? voices_param_get(t, e, TB_RES) : e == ENG_POL ? voices_param_get(t, e, PL_RES) : e == ENG_VC3 ? voices_param_get(t, e, V3_RES) : voices_param_get(t, e, PR_RES);
-    int env = e == ENG_MOOG ? voices_param_get(t, e, MG_ENV) : e == ENG_TB3 ? voices_param_get(t, e, TB_ENV) : e == ENG_POL ? voices_param_get(t, e, PL_ENV) : e == ENG_VC3 ? voices_param_get(t, e, V3_EF) : voices_param_get(t, e, PR_ENV);
+    int env = e == ENG_MOOG ? voices_param_get(t, e, MG_ENV) : e == ENG_TB3 ? voices_param_get(t, e, TB_ENV) : e == ENG_POL ? voices_param_get(t, e, PL_ENV) : e == ENG_VC3 ? voices_param_get(t, e, V3_PIN(V3S_ENV, V3D_CUT)) : voices_param_get(t, e, PR_ENV);
     int32_t l2fc, l2fc2, k_q16, l2f20 = lg2q16(20, 0), l2k = lg2q16(1000, 0), cap = lg2q16(18000, 0);
     static int32_t ya[EW / 2 + 2], yb[EW / 2 + 2];
     if (e == ENG_MOOG || e == ENG_POL || e == ENG_VC3) {                    /* the new engines: the same cutoff law as the Minimoog's (their own resonance scale; a 4-pole curve is drawn for their 2-pole filter: indicative) */
@@ -386,22 +386,20 @@ static void epg_drum_draw(void)
 /* ---------------------------------------------------------------- the VC3 patch matrix: 4 sources x 4 destinations, a pin = a dot (its size = its amount) ---- */
 static void vm_draw(void)
 {
-    static const char *const CH[4] = { "PCH1", "PCH2", "CUT", "AMP" };
-    static const char *const RH[4] = { "LFO", "ENV", "OSC1", "FILT" };
-    int r, c, x0 = 60, cw = 43, y0 = 148, rh = 14;
-    for (c = 0; c < 4; c++)
-        gfx_text(F_LABEL, CH[c], (x0 + c * cw + 4) * 64, 142, c == vm_c ? COL_TEXT : COL_LABEL, 0, 0, 232);
-    for (r = 0; r < 4; r++) {
-        gfx_text(F_LABEL, RH[r], 9 * 64, y0 + r * rh + 11, r == vm_r ? COL_TEXT : COL_LABEL, 0, 0, 58);
-        for (c = 0; c < 4; c++) {
-            int v = vm_val(r, c), x = x0 + c * cw, y = y0 + r * rh, cur = r == vm_r && c == vm_c, sz;
-            gfx_rect(x, y, cw - 2, rh - 2, cur ? COL_RED : 0x2a2a2au, 256);
-            gfx_rect(x + 1, y + 1, cw - 4, rh - 4, v < 0 ? 0x050505u : 0x0d0d0du, 256);
+    static const char DG[10][2] = { "1", "2", "3", "4", "5", "6", "7", "8", "9", "0" };
+    int r, c, x0 = 30, cw = 20, y0 = 142, rh = 6;
+    for (c = 0; c < V3D_N; c++)
+        gfx_text(F_LABEL, DG[c], (x0 + c * cw + 8) * 64, 138, c == vm_c ? COL_TEXT : COL_LABEL, 0, 0, 232);
+    for (r = 0; r < V3S_N; r++) {
+        if (r == vm_r) gfx_rect(x0 - 8, y0 + r * rh, 5, rh - 1, COL_RED, 256);                    /* the row marker (the row's name is on K1) */
+        for (c = 0; c < V3D_N; c++) {
+            int v = vm_val(r, c), x = x0 + c * cw, y = y0 + r * rh, cur = r == vm_r && c == vm_c, w;
+            gfx_rect(x, y, cw - 1, rh - 1, cur ? COL_RED : 0x1c1c1cu, 256);
+            gfx_rect(x + 1, y + 1, cw - 3, rh - 3, 0x0d0d0du, 256);
             if (v > 0) {
-                sz = 3 + (v * 7 + 500) / 1000;
-                gfx_rect(x + (cw - 2 - sz) / 2, y + (rh - 2 - sz) / 2, sz, sz, COL_TEXT, 256);
-            } else if (v == 0)
-                gfx_rect(x + (cw - 2) / 2 - 1, y + (rh - 2) / 2 - 1, 2, 2, 0x444444u, 256);
+                w = 3 + (v * (cw - 6) + 500) / 1000;
+                gfx_rect(x + 1, y + 1, w, rh - 3, COL_TEXT, 256);
+            }
         }
     }
 }
