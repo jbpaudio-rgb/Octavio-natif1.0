@@ -140,7 +140,7 @@ void ui_button(int b)
     if (b == BTN_ENV) np = PG_ENV;
     else if (b == BTN_EDIT) np = PG_GLO;       /* on the Vactrol: EDIT shows the FM page, GLO the global one */
     else if (b == BTN_GLO) np = PG_EDIT;
-    else if (b == BTN_LFO) { if (page == PG_LFO) lfo_src = (lfo_src + 1) % 6; np = PG_LFO; }
+    else if (b == BTN_LFO) { if (page == PG_LFO) lfo_src = LFO_NEXT(lfo_src); np = PG_LFO; }
     else if (b == BTN_FX) { if (page == PG_FX) fxo = (fxo + 1) % FX_NSLOT; np = PG_FX; }
     else if (b == BTN_ARP) np = PG_ARP;
     else if (b == BTN_HOME) np = PG_HOME;

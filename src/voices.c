@@ -191,7 +191,7 @@ static int seq_pitch(int t, int cur)
     const int16_t *q = t == mod_view ? &PV[P_M4T] : MODT[t].q;
     int j, semi = 0;
     static const uint8_t SC[2][7] = { { 0, 2, 4, 5, 7, 9, 11 }, { 0, 2, 3, 5, 7, 8, 10 } };
-    for (j = 0; j < 6; j++) {
+    for (j = 0; j < 4; j++) {
         int d = q[4 * j], key = q[4 * j + 1], v = ui_seq_get_t(t, j, cur), a = q[4 * j + 2], x;
         if (d < 1 || d > 3) continue;
         if (d == 1) { x = v * a; x = (x * 24 + (x >= 0 ? 500000 : -500000)) / 1000000; semi += x + key; }

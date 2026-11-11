@@ -226,7 +226,7 @@ static void seq_commit(void)                   /* the STEP VALUE knob moved: REC
 }
 void ui_seq_select(int line, int step)
 {
-    if (line >= 0 && line < 6) sq_line = line;
+    if (line >= 0 && line < SEQ_LINES) sq_line = line;
     if (step >= 0 && step < 16) sq_step = step;
     seq_sync(); dirty_all = 1;
 }

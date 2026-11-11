@@ -3,6 +3,11 @@
 #include <stdint.h>
 void ui_init(void);
 void ui_encoder(int knob, int steps);       /* KNOB1..4 (0..3) */
+/* the synth's modulation: 3 LFOs, 1 S&H and 4 sequencer lines (the other slots of the saved layout stay but are not reachable and do not run) */
+#define LFO_NEXT(s) ((s) == 0 ? 1 : (s) == 1 ? 2 : (s) == 2 ? 4 : 0)      /* the sources in order: internal indexes 0, 1, 2 (LFO 1..3), 4 (S&H 1) */
+#define LFO_LOG(s) ((s) == 4 ? 3 : (s) > 2 ? 0 : (s))
+static const uint8_t LFO_PHYS[4] = { 0, 1, 2, 4 };
+#define SEQ_LINES 4
 int  ui_sel_tap(void);                         /* SEL tapped: 1 if the page used it (the VC3 patch matrix) */
 void ui_button(int id);                      /* a button went down (BTN_*) */
 void ui_tick(uint32_t ms);                   /* time: animation phase */

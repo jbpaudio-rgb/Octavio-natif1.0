@@ -138,6 +138,7 @@ void mod_apply(int n)
             int32_t src, amt, xq, nn, cur, mn, mx;
             uint32_t ph0;
             int need = eng == ENG_VC3 && voices_param_get(t, eng, V3_FMS) >= V3FS_MOD0;          /* a VC3 track whose filter FM listens to the modulation system: the sources run for it too */
+            if (s == 3 || s == 5) continue;                              /* LFO 4 and S&H 2 are no longer part of the synth */
             if ((dst <= 0 || dst >= N_DST || !M[b + 3]) && !need) continue;
             ph0 = MS_[t][s].ph;
             MS_[t][s].ph += INC_MHZ(lfo_mhz(M, b)) * (uint32_t)n;
@@ -155,11 +156,11 @@ void mod_apply(int n)
             mod_dest(t, eng, dst, xq, lvl, sqg, &vac);
         }
         if (eng == ENG_VC3 && voices_param_get(t, eng, V3_FMS) >= V3FS_MOD0) {         /* the sequencer lines as FM sources: the current step value (0 while the sequencer stands still) */
-            for (s = 0; s < 6; s++) mod_bus[t][6 + s] = voices_seq_cur() >= 0 ? (int32_t)((int64_t)ui_seq_get_t(t, s, voices_seq_cur()) * 32768 / 1000) : 0;
+            for (s = 0; s < 4; s++) mod_bus[t][6 + s] = voices_seq_cur() >= 0 ? (int32_t)((int64_t)ui_seq_get_t(t, s, voices_seq_cur()) * 32768 / 1000) : 0;
         }
         if (voices_seq_cur() >= 0) {                                 /* the sequencer lines (destination master + 3): the step value times the amount */
             const int16_t *QL = t == mod_view ? &PV[P_M4T] : MODT[t].q;
-            for (s = 0; s < 6; s++) {
+            for (s = 0; s < 4; s++) {
                 int d = QL[4 * s] - 3;
                 if (d <= 0 || !QL[4 * s + 2]) continue;
                 mod_dest(t, eng, d, (int32_t)(((int64_t)ui_seq_get_t(t, s, voices_seq_cur()) * 32768 / 1000) * QL[4 * s + 2] / 1000), lvl, sqg, &vac);

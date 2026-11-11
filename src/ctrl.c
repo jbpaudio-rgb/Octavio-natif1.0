@@ -370,7 +370,7 @@ static void btn(int t, uint32_t ms)                /* btn(): a button's action (
         else if (pg == PGN_FXO) pg = PGN_FX;
         else pg = PGN_FXO;
     }
-    else if (t == CB_LFO) { if (pg == PGN_LFO) src = (src + 1) % 6; else pg = PGN_LFO; }
+    else if (t == CB_LFO) { if (pg == PGN_LFO) src = LFO_NEXT(src); else pg = PGN_LFO; }
     else if (t == CB_HOME) pg = PGN_HOME;
     else if (t == CB_SEQ) {
         if (cur_engine() == ENG_DRUM) {                 /* drums: SEQ = the lanes (DSEQ); pressed again: the pitch sequencer (psq), again: back */
@@ -520,7 +520,7 @@ static int32_t sk_get(void)
     if (pend) { int j, k = 0; for (j = 0; j < NCHN; j++) if (NCH[j] == nmA[nmP]) { k = j; break; } return ((int32_t)k << Q) / (NCHN - 1); }
     if (pg == PGN_HOME) return ((int32_t)sel << Q) / 3;
     if (kit_h()) { int k = voices_param_get(sel, ENG_DRUM, DR_ID(0, DR_KV)); return ((int32_t)(k < 0 ? 0 : k > 2 ? 2 : k) << Q) / 2; }
-    return ((int32_t)src << Q) / 5;
+    return ((int32_t)LFO_LOG(src) << Q) / 3;
 }
 static void sk_set(int32_t n)
 {
@@ -541,7 +541,7 @@ static void sk_set(int32_t n)
         ui_params_changed(); bump();
         return;
     }
-    src = round_q(n, 5);
+    src = LFO_PHYS[round_q(n, 3)];
     if (pg == PGN_LFO) ui_goto(pg);
     bump();
 }
@@ -627,13 +627,13 @@ int ctrl_op_key(int o)                              /* the prototype's black-key
     } else if (HELD(CB_LFO) && o == 7) {                                      /* LFO + OP8: the LFO's tempo sync (toggleSync("LFO")) */
         chord = 1; pg = PGN_LFO;
         ui_lfo_sync_toggle();
-    } else if (pg == PGN_LFO && HELD(CB_LFO) && o < 6) {                       /* LFO held + OP1..OP6: the source (LFO 1..4, S&H 1, 2) */
-        chord = 1; src = o;
+    } else if (pg == PGN_LFO && HELD(CB_LFO) && o < 4) {                       /* LFO held + OP1..OP4: the source (LFO 1..3, S&H 1) */
+        chord = 1; src = LFO_PHYS[o];
     } else if (pg == PGN_HOME && HELD(CB_HOME) && o < 4) {                    /* HOME held + OP1..OP4: the selected track */
         chord = 1; sel = o;
     } else if (pg == PGN_ARP && e != ENG_DRUM && HELD(CB_ARP) && o < 3) {      /* ARP held + OP1..OP3: ARP / ARP 2 / ARP 3 */
         chord = 1; arp_sub = o;
-    } else if (pg == PGN_SEQ && HELD(CB_SEQ) && o < 6) {                       /* SEQ held + OP1..OP6: the line of the pitch sequencer */
+    } else if (pg == PGN_SEQ && HELD(CB_SEQ) && o < SEQ_LINES) {                       /* SEQ held + OP1..OP4: the line of the pitch sequencer */
         chord = 1; ui_seq_select(o, -1);
     } else if (o == 7 && (pg == PGN_FX || pg == PGN_FXO) && !h_edit && !h_glo && !h_env) {       /* OP8 no longer opens FX ORDER (it is the FX button's first page): nothing, no note */
         chord = 1;
