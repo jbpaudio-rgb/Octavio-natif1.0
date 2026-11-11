@@ -5,7 +5,6 @@
  * The detune is done in the log domain (one exp2 per saw per 8 samples, no division): each saw's polyBLEP reciprocal is 2^(40 - log2 inc). */
 #include "voices.h"                                    /* cdsp.c is already included by eng_moog.c */
 
-enum { SS_TUNE, SS_RNG, SS_DET, SS_MIX, SS_VOW, SS_CUT, SS_RES, SS_ENV, SS_ATK, SS_DEC, SS_SUS, SS_REL, SS_FATK, SS_FDEC, SS_LVL, SS_DRF, SS_OCT, SS_FRM, SS_COUNT };
 
 typedef struct {
     int16_t p[SS_COUNT];

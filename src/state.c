@@ -14,6 +14,7 @@
  *   0x08 TRK    4 engine ids (one per track) + the track that owns the (single) Vactrol          raw bytes
  *   0x09 TARP   the 4 tracks' arpeggiators (voices_arp: 4 x ARP_COUNT)
  *   0x0A ARPS   (added later, rev 1) each track's arpeggiator position: latched chord in order, step, phase (4 x ARP_STATE_N raw bytes)
+ *   0x50 + 3 * track + (engine - 4)   ENGINE  (rev 1) the TB-303 / Supersaw / Gremlin parameters of that track: 12 more sections, after all the others (ST_NSEC)
  *   0x10 + 3 * track + (engine - 1)   ENGINE  the Minimoog / Prophet / drum parameters of that track (9 sections: the drum engine runs on track 4 only, M)
  *   0x40..0x4F  per-track effects (agent H: 0x40 FXB)
  *   0x41 MODT   (rev 2; rev 1 had no gate word) the modulation matrix of each track: LFO / S&H (dest, shape, rate, amount, sync), sequencer lines, then the track's 16 sequencer gate bits: 4 x 55 values.
@@ -34,8 +35,8 @@
 #define ST_DRUM_N (6 * ST_DR_X)                     /* the drum voices' parameters without the DR_KIT slot (a command, not a value) */
 #define ST_SQ_N (6 * 16)
 #define ST_TARP_N (4 * ARP_COUNT)
-#define ST_NSEC 28                                  /* the sections this firmware knows (the last one, DSQ rev 1, is only read) */
-#define ST_MAX 3700u                                /* the largest body state_save() can produce (checked by tests) */
+#define ST_NSEC 40                                  /* the sections this firmware knows (the last one, DSQ rev 1, is only read) */
+#define ST_MAX 4300u                                /* the largest body state_save() can produce (checked by tests) */
 
 enum { SK_PV, SK_ENG, SK_SQ, SK_TARP, SK_TRK, SK_ARPS, SK_FXB, SK_MODT, SK_DSQ, SK_SQT, SK_DSQ1, SK_DSQ2 };
 #define ST_MODT_N (4 * MODT_N)
@@ -53,6 +54,7 @@ static const struct { uint8_t id, rev, scene; int16_t a, z; } PVR[6] = {
     { 0x04, 1, 0, P_ARPMODE, P_ARPPAT }, { 0x05, 1, 0, P_M4T, P_STEPV }, { 0x07, 1, 1, P_VOL0, P_VOL3 } };
 
 static const int16_t *st_pv;                        /* encode from this PV image instead of the live one (legacy records) */
+static int16_t st_def_tb[TB_COUNT], st_def_ss[SS_COUNT], st_def_gm[GM_COUNT];
 static int16_t st_def_mg[MG_COUNT], st_def_pr[PR_COUNT], st_def_dr[ST_DRUM_N], st_def_sq[ST_SQ_N];
 static uint8_t st_ready;
 
@@ -66,6 +68,9 @@ static void state_init(void)
     if (st_ready) return;
     for (i = 0; i < MG_COUNT; i++) st_def_mg[i] = (int16_t)voices_param_get(0, ENG_MOOG, i);
     for (i = 0; i < PR_COUNT; i++) st_def_pr[i] = (int16_t)voices_param_get(0, ENG_PROPH, i);
+    for (i = 0; i < TB_COUNT; i++) st_def_tb[i] = (int16_t)voices_param_get(0, ENG_TB3, i);
+    for (i = 0; i < SS_COUNT; i++) st_def_ss[i] = (int16_t)voices_param_get(0, ENG_SSAW, i);
+    for (i = 0; i < GM_COUNT; i++) st_def_gm[i] = (int16_t)voices_param_get(0, ENG_GREM, i);
     for (i = 0; i < ST_DRUM_N; i++) st_def_dr[i] = (int16_t)voices_param_get(DRUM_T0, ENG_DRUM, st_drum_id(i));
     for (i = 0; i < ST_SQ_N; i++) st_def_sq[i] = (int16_t)ui_seq_get_t(0, i / 16, i % 16);
     st_ready = 1;
@@ -75,6 +80,13 @@ static int st_sec(int i, secd_t *s)                 /* the i-th section this fir
 {
     if (i < 0 || i >= ST_NSEC) return 0;
     s->scene = 0; s->t = s->e = 0; s->a = 0;
+    if (i >= 28) {                                    /* the new engines' 12 (track, engine) pairs */
+        int k = i - 28;
+        s->t = (uint8_t)(k / 3); s->e = (uint8_t)(ENG_TB3 + k % 3);
+        s->id = (uint8_t)(0x50 + k); s->rev = 1; s->kind = SK_ENG;
+        s->n = (uint8_t)(s->e == ENG_TB3 ? TB_COUNT : s->e == ENG_SSAW ? SS_COUNT : GM_COUNT);
+        return 1;
+    }
     if (i == 27) { s->id = 0x42; s->rev = 2; s->kind = SK_DSQ2; s->n = ST_DSQ2_N; }          /* read only: the two drum tracks of rev 2 */
     else if (i == 26) { s->id = 0x42; s->rev = 1; s->kind = SK_DSQ1; s->n = ST_DSQ1_N; }       /* read only: four drum tracks */
     else if (i >= 22) { s->id = (uint8_t)(0x44 + i - 22); s->rev = 1; s->kind = SK_SQT; s->n = ST_SQ_N; s->t = (uint8_t)(i - 22); }
@@ -122,7 +134,7 @@ static int st_def(const secd_t *s, int i)
 {
     switch (s->kind) {
     case SK_PV: return PD[s->a + i].def;
-    case SK_ENG: return s->e == ENG_MOOG ? st_def_mg[i] : s->e == ENG_PROPH ? st_def_pr[i] : st_def_dr[i];
+    case SK_ENG: return s->e == ENG_MOOG ? st_def_mg[i] : s->e == ENG_PROPH ? st_def_pr[i] : s->e == ENG_TB3 ? st_def_tb[i] : s->e == ENG_SSAW ? st_def_ss[i] : s->e == ENG_GREM ? st_def_gm[i] : st_def_dr[i];
     case SK_SQ: return st_def_sq[i];
     case SK_SQT: return s->t ? 0 : st_def_sq[i];
     case SK_MODT: return modt_def(i);

@@ -377,6 +377,7 @@ static void epg_drum_draw(void)
 static void epg_prepare(void)
 {
     eg_key[0] = -1;                                                              /* the ENV page's strokes are being reused */
+    if (EP.eng >= ENG_TB3) return;                                               /* TB-303 / Supersaw / Gremlin: no graph yet */
     if (EP.eng == ENG_DRUM && EP.idx == EPI_ARP) return;                         /* the prototype draws nothing there (dgrey() is not defined) */
     if (EP.eng == ENG_DRUM) epg_drum();
     else if (EP.idx == EPI_EDIT) epg_filter();
@@ -385,6 +386,7 @@ static void epg_prepare(void)
 }
 static void epg_draw(void)
 {
+    if (EP.eng >= ENG_TB3) return;
     if (EP.eng == ENG_DRUM && EP.idx == EPI_ARP) return;
     if (EP.eng == ENG_DRUM) epg_drum_draw();
     else if (EP.idx == EPI_EDIT) epg_filter_draw();

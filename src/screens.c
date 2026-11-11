@@ -112,7 +112,7 @@ static void home_draw(void)
     int i, j;
     for (i = 0; i < 4; i++) {
         int sel = i == ui_track, x0 = HS_X[i], x1 = HS_R[i], vol = PV[P_VOL0 + i], n, cy;
-        const char *nm = OPT_ENGINE[PV[P_TYP0 + i] & 3];
+        const char *nm = OPT_ENGINE[PV[P_TYP0 + i] % 7];
         int32_t w;
         int pk = (int)((home_pk[i] * (vol > 0 ? vol : 0)) / 1000);          /* 0..32767 */
         uint32_t bc = sel ? COL_RED : 0x2a2a2au;

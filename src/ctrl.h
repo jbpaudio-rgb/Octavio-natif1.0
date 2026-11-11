@@ -16,7 +16,7 @@ enum { ROLE_SELECT, ROLE_ALGO, ROLE_PRESETS };      /* the left cluster's encode
 #define BANK_MAX 48
 #define BANK_POOL 30704u                            /* RAM image of the preset record = its flash capacity (persist.c: 8 sectors x 0xF00 - 16) */
 #define SCENE_POOL 23024u                           /* same for the 16 key scenes */
-#define CENG_N 4                                    /* the engines (voices.h ENG_*: Vactrol, Minimoog, Prophet, Drums) */
+#define CENG_N 7                                    /* the engines (voices.h ENG_*: Vactrol, Minimoog, Prophet, Drums, TB-303, Supersaw, Gremlin) */
 
 void ctrl_init(uint32_t ms);
 void ctrl_button(int cb, int down, uint32_t ms);    /* a panel button went down / up (CB_*) */

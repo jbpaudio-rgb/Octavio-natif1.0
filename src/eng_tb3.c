@@ -13,7 +13,6 @@
  *  - a 3 ms attack on the amplifier, no attack on the filter envelope. */
 #include "voices.h"                                    /* cdsp.c is already included by eng_moog.c */
 
-enum { TB_WAVE, TB_TUNE, TB_CUT, TB_RES, TB_ENV, TB_DEC, TB_ACC, TB_SLD, TB_DRV, TB_LVL, TB_COUNT };
 
 typedef struct {
     int16_t p[TB_COUNT];

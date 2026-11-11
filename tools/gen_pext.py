@@ -47,7 +47,14 @@ DPN = [("dtu","Tune","Tune"),("ddc","Decay","Decay"),("dtn","Tone","Tone"),("dlv
 for n, f, sh in NEWD: dst.append((n, sh, f))
 for v in range(6):
     for a in DPN: dst.append((a[0] + str(v), "L%d %s" % (v + 1, a[2]), "L%d %s" % (v + 1, a[1])))
-dst.append(("sqg", "Seq gate", "Seq gate length"))      # NOT in the prototype: the synth sequencer's gate length (appended: the indexes of saved presets stay valid)
+dst.append(("sqg", "Seq gate", "Seq gate length"))
+# the TB-303 / Supersaw / Gremlin engines (groups 16 / 32 / 64): their own parameters, appended after everything else (the selects and the level are left out: the level is the common "lvl")
+NEWE = {16: [("tbtune","Tune","TB tune","TB_TUNE"),("tbcut","Cutoff","TB cut","TB_CUT"),("tbres","Resonance","TB reso","TB_RES"),("tbenv","Env mod","TB env","TB_ENV"),("tbdec","Decay","TB dec","TB_DEC"),("tbacc","Accent","TB acc","TB_ACC"),("tbsld","Slide","TB slide","TB_SLD"),("tbdrv","Drive","TB drive","TB_DRV")],
+        32: [("sstune","Tune","SS tune","SS_TUNE"),("ssdet","Detune","SS det","SS_DET"),("ssmix","Side saws","SS mix","SS_MIX"),("ssvow","Vowel","SS vowel","SS_VOW"),("sscut","Cutoff","SS cut","SS_CUT"),("ssres","Resonance","SS reso","SS_RES"),("ssenv","Env amount","SS env","SS_ENV"),("ssatk","Attack","SS atk","SS_ATK"),("ssdec","Decay","SS dec","SS_DEC"),("sssus","Sustain","SS sus","SS_SUS"),("ssrel","Release","SS rel","SS_REL"),("ssfatk","Filter attack","SS fAtk","SS_FATK"),("ssfdec","Filter decay","SS fDec","SS_FDEC"),("ssdrf","Drift","SS drift","SS_DRF"),("ssoct","Octave-up saw","SS oct","SS_OCT"),("ssfrm","Formant mix","SS form","SS_FRM")],
+        64: [("gmtune","Tune","GM tune","GM_TUNE"),("gmrat","Ratio","GM ratio","GM_RAT"),("gmxmd","FM amount","GM fm","GM_XMD"),("gmfld","Fold","GM fold","GM_FLD"),("gmchs","Chaos","GM chaos","GM_CHS"),("gmrte","Chaos rate","GM rate","GM_RTE"),("gmnoi","Noise","GM noise","GM_NOI"),("gmglt","Glitch","GM glitch","GM_GLT"),("gmcru","Crush","GM crush","GM_CRU"),("gmcut","Cutoff","GM cut","GM_CUT"),("gmres","Resonance","GM reso","GM_RES"),("gmatk","Attack","GM atk","GM_ATK"),("gmdec","Decay","GM dec","GM_DEC"),("gmrel","Release","GM rel","GM_REL"),("gmsyn","Sync","GM sync","GM_SYN"),("gmrng","Ring","GM ring","GM_RNG"),("gmdrv","Drive","GM drive","GM_DRV"),("gmsub","Sub","GM sub","GM_SUB"),("gmdiv","Divider","GM div","GM_DIV"),("gmcmb","Comb","GM comb","GM_CMB"),("gmfbk","Feedback","GM fbk","GM_FBK"),("gmbite","Bite","GM bite","GM_BITE")]}
+NEWEID = {}
+for g, l in NEWE.items():
+    for k, f, sh, i in l: dst.append((k, sh, f)); NEWEID[k] = (g, i)      # NOT in the prototype: the synth sequencer's gate length (appended: the indexes of saved presets stay valid)
 # how each destination is applied: (group mask V=1 M=2 P=4 D=8, kind, argument)
 MGID = dict(mg1l='MG_L1', mg2l='MG_L2', mg3l='MG_L3', mgsl='MG_NLEV', mgso='MG_NTONE', mgst='MG_NCRUSH', mg1t='MG_T1', mg2t='MG_T2', mg3t='MG_T3', mg1p='MG_P1', mg2p='MG_P2', mg3p='MG_P3', mgcut='MG_CUT', mgres='MG_RES', mgenv='MG_ENV')
 PRID = dict(pla='PR_LA', plb='PR_LB', psl='PR_SL', pnl='PR_NLEV', pwave='PR_WAVE', ppw='PR_PW', patune='PR_TUNE', pbwave='PR_BWAVE', pbpw='PR_BPW', pbdet='PR_BTUNE', pst='PR_ST', psp='PR_SP', pno='PR_NTONE', pnc='PR_NCRUSH', pcut='PR_CUT', pres='PR_RES', penv='PR_ENV', ppm='PR_PM')
@@ -60,10 +67,11 @@ for key, short, full in dst:
     elif key in PVID: meta.append((1, 'DK_PV', PVID[key]))
     elif key in ('atk', 'edec'): meta.append((7, 'DK_ENV', '0' if key == 'atk' else '1'))
     elif key in ('sus', 'rel'): meta.append((6, 'DK_ENV', '2' if key == 'sus' else '3'))
-    elif key == 'lvl': meta.append((15, 'DK_LVL', '0'))
-    elif key == 'sqg': meta.append((7, 'DK_SQG', '0'))
-    elif key in ARPID: meta.append((7, 'DK_ARP', ARPID[key]))
-    elif key[0] == 'f' and key[1].isdigit(): meta.append((7, 'DK_FX', str(fxk))); fxk += 1
+    elif key == 'lvl': meta.append((127, 'DK_LVL', '0'))
+    elif key == 'sqg': meta.append((119, 'DK_SQG', '0'))
+    elif key in ARPID: meta.append((119, 'DK_ARP', ARPID[key]))
+    elif key[0] == 'f' and key[1].isdigit(): meta.append((119, 'DK_FX', str(fxk))); fxk += 1
+    elif key in NEWEID: meta.append((NEWEID[key][0], 'DK_ENG', NEWEID[key][1]))
     elif key in MGID: meta.append((2, 'DK_ENG', MGID[key]))
     elif key in PRID: meta.append((4, 'DK_ENG', PRID[key]))
     else: meta.append((8, 'DK_DRUM', '%d * DR_PER + %s' % (int(key[3:]), DRID[key[:3]])))
@@ -73,6 +81,9 @@ ORD = {0: ["fold","sym","freq","fenv","ratio","fm","atk","edec","decay","open","
        2: ["pla","plb","psl","pnl","pwave","ppw","patune","pbwave","pbpw","pbdet","pst","psp","pno","pnc","pcut","pres","penv","ppm","atk","edec","sus","rel","sqg","lvl"],
        3: [str(a) for a in []]}
 ORD[3] = [a[0] + str(v) for v in range(6) for a in DPN] + ["lvl"]
+ORD[4] = [k for k, f, sh, i in NEWE[16]] + ["sqg", "lvl"]
+ORD[5] = [k for k, f, sh, i in NEWE[32]] + ["sqg", "lvl"]
+ORD[6] = [k for k, f, sh, i in NEWE[64]] + ["sqg", "lvl"]
 # the prototype's own option order (before its sort): none, VACT, fx, arps, mg, p, sus/rel, drums  -> used for the ties of the sort
 protoorder = [d[0] for d in dst if d[0] != 'none']
 def rank(key, g):
@@ -80,7 +91,7 @@ def rank(key, g):
     if key in ARPID: return 500 + protoorder.index(key)
     return 1000 + protoorder.index(key)
 DSTL = []
-for g in range(4):
+for g in range(7):
     lst = [i for i, (key, short, full) in enumerate(dst) if i == 0 or (meta[i][0] >> g) & 1]
     lst = [0] + sorted(lst[1:], key=lambda i: rank(dst[i][0], g))
     DSTL.append(lst)
@@ -115,7 +126,7 @@ for k, l in (('ionote', 'Notes'), ('ioclk', 'Clock'), ('iotrn', 'Start'), ('iosn
 for i in range(4):
     ids.append('P_VOL%d' % i); descs.append('[P_VOL%d] = { "Track %d volume", PK_RANGE, 0, FMT_PCT, 0, 1000, 10, 800, 0 },' % (i, i + 1))
 for i in range(4):
-    ids.append('P_TYP%d' % i); descs.append('[P_TYP%d] = { "Track %d engine", PK_SELECT, 4, FMT_TEXT, 0, 3, 1, %d, OPT_ENGINE },' % (i, i + 1, i))
+    ids.append('P_TYP%d' % i); descs.append('[P_TYP%d] = { "Track %d engine", PK_SELECT, 7, FMT_TEXT, 0, 6, 1, %d, OPT_ENGINE },' % (i, i + 1, i))
 # the sequencer's six lines (SEQ page): destination (full names, shown as the title), key, amount, glide; and the selected step's value
 SQN = ['None', 'Pitch (semitones)', 'Pitch (major)', 'Pitch (minor)'] + [d[2] for d in dst[1:]]
 SQO = opts('SQDST', SQN); KO = opts('KEYN', [o.split(':', 1)[1] for o in ctl['m4k']['o']])
@@ -128,16 +139,16 @@ for j in range(6):
 ids.append('P_STEPV'); descs.append('[P_STEPV] = { "Step value", PK_RANGE, 0, FMT_STEP, -1000, 1000, 50, 0, 0 },')
 (ROOT / 'src/pext_ids.h').write_text('/* generated by tools/gen_pext.py */\n' + ''.join(i + ', ' + ('\n' if n % 6 == 5 else '') for n, i in enumerate(ids)) + '\n')
 hdr = '/* generated by tools/gen_pext.py; included by params.c inside PD[] */\n'
-(ROOT / 'src/pext_opts.h').write_text(hdr + 'static const char *const OPT_ENGINE[4] = { "VACT", "MINI", "PRO70", "808" };\n' + '\n'.join(opts_out) + '\n')
+(ROOT / 'src/pext_opts.h').write_text(hdr + 'static const char *const OPT_ENGINE[7] = { "VACT", "MINI", "PRO70", "808", "TB303", "SSAW", "GREM" };\n' + '\n'.join(opts_out) + '\n')
 (ROOT / 'src/pext_desc.h').write_text(hdr + '\n'.join(descs) + '\n')
 # destination ids for the page code
 g = ['/* generated by tools/gen_pext.py: the destination master list (see dst.c) */', '#define N_DST %d' % len(dst), '#define N_SQDST %d' % (len(dst) + 3),
      'static const struct { uint8_t grp, kind; uint16_t a; } DSTM[N_DST] = {']
 g += ['    { %d, %s, %s },  /* %d %s */' % (m[0], m[1], m[2], i, dst[i][0]) for i, m in enumerate(meta)]
 g += ['};']
-for k in range(4):
+for k in range(7):
     g.append('static const uint8_t DSTL%d[%d] = { %s };' % (k, len(DSTL[k]), ', '.join(str(i) for i in DSTL[k])))
-g.append('static const uint8_t DSTLN[4] = { %s };' % ', '.join(str(len(l)) for l in DSTL))
-g.append('static const uint8_t *const DSTL[4] = { DSTL0, DSTL1, DSTL2, DSTL3 };')
+g.append('static const uint8_t DSTLN[7] = { %s };' % ', '.join(str(len(l)) for l in DSTL))
+g.append('static const uint8_t *const DSTL[7] = { DSTL0, DSTL1, DSTL2, DSTL3, DSTL4, DSTL5, DSTL6 };')
 (ROOT / 'src/pext_gen.h').write_text('\n'.join(g) + '\n')
 print(len(ids), 'params,', len(dst), 'destinations')

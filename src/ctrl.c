@@ -79,10 +79,15 @@ static void itoa2(char *o, int v, int pad)         /* v >= 0, zero padded to `pa
     o[n] = 0;
 }
 
-static const char *const ENG_TAG[CENG_N] = { "VACT", "MINI", "PRO70", "DRUM" };   /* dn(): the display name of each engine */
+static const char *const ENG_TAG[CENG_N] = { "VACT", "MINI", "PRO70", "DRUM", "TB303", "SSAW", "GREM" };   /* dn(): the display name of each engine (by engine id) */
+static const uint8_t LIDX[CENG_N] = { ENG_VAC, ENG_MOOG, ENG_PROPH, ENG_TB3, ENG_SSAW, ENG_GREM, ENG_DRUM };   /* the ALGORITHM list, in this order: the drums come last (track 4 only) */
+static int eng_li(int e) { int i; for (i = 0; i < CENG_N; i++) if (LIDX[i] == e) return i; return 0; }
+/* the pages an engine has, as a mask of engine page indexes (engine_pages.c EPI_*: GLO, OSC1..OSC4, EDIT, ENV, ENV2); the new engines have only the pages their parameters fill */
+static int eng_pmask(int e) { return e == ENG_TB3 ? 0x61 : e == ENG_SSAW ? 0xE3 : e == ENG_GREM ? 0x6F : (e == ENG_MOOG || e == ENG_PROPH) ? 0xFF : 0; }
+static int is_new_eng(int e) { return e == ENG_TB3 || e == ENG_SSAW || e == ENG_GREM; }
 static const char *etag(int t) { return t >= 0 && t < CENG_N ? ENG_TAG[t] : "???"; }
 static int cur_engine(void) { return voices_engine(sel); }
-static int ceng_n(void) { return sel >= DRUM_T0 ? CENG_N : CENG_N - 1; }       /* the engines the selected track offers: the drums run on track 4 only (one drum machine, M) */
+static int ceng_n(void) { return sel >= DRUM_T0 ? CENG_N : CENG_N - 1; }       /* the list entries (the drums are the last) */       /* the engines the selected track offers: the drums run on track 4 only (one drum machine, M) */
 
 /* ---- toast / list ---- */
 static void toast(const char *a, const char *b, uint32_t ms)
@@ -319,6 +324,17 @@ int ctrl_bank_key(int w, uint32_t ms)
 static void tab_press(int t)
 {
     int e = cur_engine(), mp = e == ENG_MOOG || e == ENG_PROPH;
+    if (is_new_eng(e)) {                                /* TB-303 / Supersaw / Gremlin: ENV = AMP ENV (again: FILTER ENV when there is one), EDIT = FILTER (again: FILTER ENV), GLO = the oscillator pages in a loop */
+        int m = eng_pmask(e), k;
+        if (t == CB_ENV) pg = (m & 0x80) && pg == PGN_ENV ? PGN_ENV2 : PGN_ENV;
+        else if (t == CB_EDIT) pg = (m & 0x80) && pg == PGN_EDIT ? PGN_ENV2 : PGN_EDIT;
+        else {
+            k = pg == PGN_GLO ? 0 : (pg >= PGN_OSC1 && pg <= PGN_OSC4) ? pg - PGN_OSC1 + 1 : 5;
+            for (k++; k <= 4 && !((m >> k) & 1); k++) ;
+            pg = k <= 4 ? PGN_OSC1 + k - 1 : PGN_GLO;
+        }
+        return;
+    }
     if (t == CB_ENV) {
         if (e == ENG_DRUM && pg == PGN_ENV) dv[sel & 3] = (uint8_t)((dv[sel & 3] + 1) % 6);
         pg = mp && pg == PGN_ENV ? PGN_ENV2 : PGN_ENV;
@@ -475,11 +491,11 @@ static int32_t ak_get(void)
 {
     int h = lane_h();
     if (h >= 0) { int k = voices_param_get(sel, ENG_DRUM, DR_ID(h, DR_KV)); return ((int32_t)(k < 0 ? 0 : k > 2 ? 2 : k) << Q) / 2; }
-    return ((int32_t)cur_engine() << Q) / (ceng_n() - 1);
+    return ((int32_t)eng_li(cur_engine()) << Q) / (ceng_n() - 1);
 }
 static void ak_set(int32_t n)
 {
-    int i = round_q(n, ceng_n() - 1), h = lane_h();
+    int i = LIDX[round_q(n, ceng_n() - 1)], h = lane_h();
     char t[20], num[4], nb[24];
     if (h >= 0) {
         voices_param(sel, ENG_DRUM, DR_ID(h, DR_KV), round_q(n, 2));
@@ -493,7 +509,7 @@ static void ak_set(int32_t n)
     scopy(nb, "TRACK ", sizeof nb); sappend(nb, num, sizeof nb);
     if (ceng_n() < CENG_N) sappend(nb, " (DRUMS T4)", sizeof nb);          /* the list has no DRUM entry here */
     alg_t = g_ms ? g_ms : 1;
-    show_list(1, t, cur_engine(), ceng_n(), cur_engine() == ENG_DRUM ? "SELECT = KIT" : nb, g_ms);
+    show_list(1, t, eng_li(cur_engine()), ceng_n(), cur_engine() == ENG_DRUM ? "SELECT = KIT" : nb, g_ms);
 }
 /* SELECT: the name editor's letter, HOME's track, else the LFO source */
 static int kit_h(void) { return cur_engine() == ENG_DRUM && alg_t && g_ms - alg_t < 5000u && !pend && pg != PGN_HOME && !type_held(); }       /* eng.drum && Date.now() - algT < 5000 */
@@ -520,7 +536,7 @@ static void sk_set(int32_t n)
         voices_param(sel, ENG_DRUM, DR_ID(0, DR_KIT), round_q(n, 2));
         alg_t = g_ms ? g_ms : 1;
         scopy(t, "ALGO \x02 T", sizeof t); itoa2(num, sel + 1, 0); sappend(t, num, sizeof t);
-        show_list(1, t, cur_engine(), CENG_N, "SELECT = KIT", g_ms);
+        show_list(1, t, eng_li(cur_engine()), CENG_N, "SELECT = KIT", g_ms);
         ui_params_changed(); bump();
         return;
     }
@@ -579,6 +595,10 @@ static void norm_pg(void)                          /* page(): a page the track's
     } else {
         if (pg == PGN_DSEQ) pg = PGN_SEQ;
     }
+    if (is_new_eng(e)) {                                /* a page the engine does not have: its first */
+        int x = pg == PGN_GLO ? 0 : (pg >= PGN_OSC1 && pg <= PGN_OSC4) ? pg - PGN_OSC1 + 1 : pg == PGN_EDIT ? 5 : pg == PGN_ENV ? 6 : pg == PGN_ENV2 ? 7 : -1;
+        if (x >= 0 && !((eng_pmask(e) >> x) & 1)) pg = PGN_GLO;
+    }
     if (e == ENG_VAC) {
         if (pg == PGN_ENV2) pg = PGN_ENV;
         if (pg >= PGN_OSC1 && pg <= PGN_OSC4) pg = PGN_GLO;
@@ -617,10 +637,10 @@ int ctrl_op_key(int o)                              /* the prototype's black-key
     } else if (o == 7 && (pg == PGN_FX || pg == PGN_FXO) && !h_edit && !h_glo && !h_env) {       /* OP8 no longer opens FX ORDER (it is the FX button's first page): nothing, no note */
         chord = 1;
         return 1;
-    } else if (o < 4 && (e == ENG_MOOG || e == ENG_PROPH) && (h_edit || h_glo)) {
+    } else if (o < 4 && (e == ENG_MOOG || e == ENG_PROPH || (is_new_eng(e) && ((eng_pmask(e) >> (1 + o)) & 1))) && (h_edit || h_glo)) {
         int np = PGN_OSC1 + o;
         chord = 1; pg = pg == np ? PGN_GLO : np;
-    } else if ((pg == PGN_ENV || pg == PGN_ENV2) && h_env && o < 2 && (o == 0 || e == ENG_MOOG || e == ENG_PROPH)) {
+    } else if ((pg == PGN_ENV || pg == PGN_ENV2) && h_env && o < 2 && (o == 0 || e == ENG_MOOG || e == ENG_PROPH || (is_new_eng(e) && (eng_pmask(e) & 0x80)))) {
         chord = 1; pg = o ? PGN_ENV2 : PGN_ENV;
     } else if (e == ENG_DRUM && HELD(CB_ARP) && o < 6) {                       /* ARP held + OP1..6: the voice's lane settings (swing, human., chance, accent) */
         chord = 1; dv[sel & 3] = (uint8_t)o; pg = PGN_ARP;
@@ -739,8 +759,8 @@ int ctrl_list_rows(char rows[5][24], char tags[5][8], int cur[1], char *title, c
     for (i = a; i < n && cnt < 5; i++, cnt++) {
         tags[cnt][0] = 0;
         if (list_kind == 1) {
-            scopy(rows[cnt], etag(i), 24);
-            if (i == ENG_DRUM) {                                           /* "DRUM \x02 808": dnE(), the kit of the six voices ("MIX" when they differ) */
+            scopy(rows[cnt], etag(LIDX[i]), 24);
+            if (LIDX[i] == ENG_DRUM) {                                           /* "DRUM \x02 808": dnE(), the kit of the six voices ("MIX" when they differ) */
                 int v, k0 = voices_param_get(sel, ENG_DRUM, DR_ID(0, DR_KV)), same = 1;
                 for (v = 1; v < 6; v++) if (voices_param_get(sel, ENG_DRUM, DR_ID(v, DR_KV)) != k0) same = 0;
                 k0 = k0 < 0 ? 0 : k0 > 2 ? 2 : k0;

@@ -10,8 +10,6 @@
  *    buzz), a dropout, or a new random ratio. They all end by themselves. NOISE is only a thin bed. */
 #include "voices.h"                                    /* cdsp.c is already included by eng_moog.c */
 
-enum { GM_TUNE, GM_RAT, GM_XMD, GM_FLD, GM_CHS, GM_RTE, GM_NOI, GM_GLT, GM_CRU, GM_CUT, GM_RES, GM_ATK, GM_DEC, GM_REL, GM_LVL,
-       GM_SYN, GM_RNG, GM_DRV, GM_SUB, GM_DIV, GM_CMB, GM_FBK, GM_BITE, GM_COUNT };
 #define GM_CB 256
 
 typedef struct {

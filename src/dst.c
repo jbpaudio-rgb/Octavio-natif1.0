@@ -38,14 +38,14 @@ static int dst_ok(int val)                             /* is the destination (a 
 static int dst_count(int eng, int sq)
 {
     int i, n = 0;
-    for (i = 0; i < DSTLN[eng & 3]; i++) n += dst_ok(DSTL[eng & 3][i]);
+    for (i = 0; i < DSTLN[eng]; i++) n += dst_ok(DSTL[eng][i]);
     return n + (sq ? 3 : 0);
 }
 static int dst_at(int eng, int sq, int pos)            /* the stored value of list position pos */
 {
     int i;
     if (sq) { if (pos < 4) return pos; pos -= 3; }
-    for (i = 0; i < DSTLN[eng & 3]; i++) if (dst_ok(DSTL[eng & 3][i]) && pos-- == 0) return DSTL[eng & 3][i] + (sq && i ? 3 : 0);
+    for (i = 0; i < DSTLN[eng]; i++) if (dst_ok(DSTL[eng][i]) && pos-- == 0) return DSTL[eng][i] + (sq && i ? 3 : 0);
     return 0;
 }
 static int dst_pos(int eng, int sq, int val)           /* list position of a stored value, -1: the engine (or the chain) does not have it */
@@ -54,9 +54,9 @@ static int dst_pos(int eng, int sq, int val)           /* list position of a sto
     if (val < 0) return -1;
     if (sq) { if (val < 4) return val; val -= 3; }
     else if (val == 0) return 0;
-    for (i = 0; i < DSTLN[eng & 3]; i++) {
-        if (!dst_ok(DSTL[eng & 3][i])) continue;
-        if (i > 0 && DSTL[eng & 3][i] == val) return sq ? p + 3 : p;
+    for (i = 0; i < DSTLN[eng]; i++) {
+        if (!dst_ok(DSTL[eng][i])) continue;
+        if (i > 0 && DSTL[eng][i] == val) return sq ? p + 3 : p;
         p++;
     }
     return -1;

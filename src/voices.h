@@ -5,6 +5,11 @@
 #pragma once
 #include <stdint.h>
 enum { ENG_VAC, ENG_MOOG, ENG_PROPH, ENG_DRUM, ENG_TB3, ENG_SSAW, ENG_GREM, ENG_N };
+/* the parameters of the TB-303, Supersaw and Gremlin engines (eng_tb3.c / eng_ssaw.c / eng_grem.c); values in thousandths */
+enum { TB_WAVE, TB_TUNE, TB_CUT, TB_RES, TB_ENV, TB_DEC, TB_ACC, TB_SLD, TB_DRV, TB_LVL, TB_COUNT };
+enum { SS_TUNE, SS_RNG, SS_DET, SS_MIX, SS_VOW, SS_CUT, SS_RES, SS_ENV, SS_ATK, SS_DEC, SS_SUS, SS_REL, SS_FATK, SS_FDEC, SS_LVL, SS_DRF, SS_OCT, SS_FRM, SS_COUNT };
+enum { GM_TUNE, GM_RAT, GM_XMD, GM_FLD, GM_CHS, GM_RTE, GM_NOI, GM_GLT, GM_CRU, GM_CUT, GM_RES, GM_ATK, GM_DEC, GM_REL, GM_LVL,
+       GM_SYN, GM_RNG, GM_DRV, GM_SUB, GM_DIV, GM_CMB, GM_FBK, GM_BITE, GM_COUNT };
 enum { MG_W1, MG_R1, MG_T1, MG_P1, MG_L1, MG_W2, MG_R2, MG_T2, MG_P2, MG_L2, MG_W3, MG_R3, MG_T3, MG_P3, MG_L3,
        MG_NTYPE, MG_NTONE, MG_NCRUSH, MG_NLEV, MG_CUT, MG_RES, MG_ENV, MG_GLIDE, MG_REL, MG_ATK, MG_DEC, MG_SUS,
        MG_FATK, MG_FDEC, MG_FSUS, MG_LVL, MG_COUNT };
