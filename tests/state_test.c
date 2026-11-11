@@ -1,3 +1,4 @@
+#define NO_FACTORY 1
 /* SPDX-License-Identifier: MPL-2.0
  * Host test of the preset / scene records (src/state.c, ctrl.c bank + scenes, persist.c) against an in-memory NOR flash.
  *   gcc -O1 -w -Isrc -Ibsp/chip -o /tmp/state_test tests/state_test.c && /tmp/state_test

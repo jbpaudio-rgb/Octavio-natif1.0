@@ -157,6 +157,7 @@ void persist_boot(void)
         for (o = 0; o < n; o += (uint32_t)sizeof one)
             if (ps_read(PS_BASE_V1, PS_HDR + o, one, (uint32_t)sizeof one) == 0) bank_restore_v1(one);
     }
+    bank_factory();
     if (ps_open(PS_BASE1, PS_MAX1, &ver, &n) == 0) {
         pool = scene_pool(&cap);
         if (ver == PS_VER_SCENES && n <= cap) {

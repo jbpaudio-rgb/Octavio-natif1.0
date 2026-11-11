@@ -13,7 +13,7 @@ enum { CB_FX, CB_SEL, CB_ENV, CB_LFO, CB_EDIT, CB_GLO, CB_HOME, CB_SAVE, CB_ARP,
 enum { ROLE_SELECT, ROLE_ALGO, ROLE_PRESETS };      /* the left cluster's encoders */
 
 #define NAME_LEN 12
-#define BANK_MAX 48
+#define BANK_MAX 64
 #define BANK_POOL 30704u                            /* RAM image of the preset record = its flash capacity (persist.c: 8 sectors x 0xF00 - 16) */
 #define SCENE_POOL 23024u                           /* same for the 16 key scenes */
 #define CENG_N 7                                    /* the engines (voices.h ENG_*: Vactrol, Minimoog, Prophet, Drums, TB-303, Supersaw, Gremlin) */
@@ -61,6 +61,7 @@ uint32_t ctrl_version(void);                        /* bumps on every visible ch
 
 /* presets (engine values: PV[] of params.h) */
 int  bank_count(void);
+void bank_factory(void);
 int  bank_current(void);                            /* 1-based, 0 = none */
 
 /* the record images persist.c reads / writes (entries as state.c / ctrl.c lay them out; see NOTES-G.md) */
