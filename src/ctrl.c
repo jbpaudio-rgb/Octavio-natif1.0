@@ -496,7 +496,7 @@ static void pk_set(int32_t n)
     presets_list(nv ? "" : "PRESS SAVE", g_ms);
 }
 /* ALGORITHM: the engine of the track; on the drum sequencer with a lane held (OP1..6), that lane's kit (laneH()) */
-static const char *const KIT_NAME[NKIT] = { "808", "909", "ACOUSTIC", "LINNDRUM", "DMX" };
+static const char *const KIT_NAME[NKIT] = { "808", "909", "ACOUSTIC", "LINNDRUM", "DMX", "VERMONA" };
 static const uint8_t TYO[8] = { 0, 1, 2, 3, 6, 7, 4, 5 };                       /* the order the prototype's SELECT steps the lane's voice type */
 static int lane_h(void) { return pg == PGN_DSEQ && cur_engine() == ENG_DRUM ? ctrl_dseq_held() : -1; }
 static int type_held(void) { return pg == PGN_DSEQ && cur_engine() == ENG_DRUM && ((bdn >> CB_SEQ) & 1); }       /* tyH() */

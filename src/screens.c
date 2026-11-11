@@ -368,7 +368,7 @@ static void dq_stroke(int32_t x, int32_t y, int32_t w, int32_t h, int32_t lw, ui
 }
 static void dseq_draw(void)
 {
-    static const char *const KITL[NKIT] = { "808", "909", "ACOUSTIC", "LINNDRUM", "DMX" };
+    static const char *const KITL[NKIT] = { "808", "909", "ACOUSTIC", "LINNDRUM", "DMX", "VERMONA" };
     int t = voices_sel(), sv = ctrl_drum_voice(), v, x, k, held = ctrl_dseq_held(), cur = sq_cur;
     char tt[16];
     int32_t w;

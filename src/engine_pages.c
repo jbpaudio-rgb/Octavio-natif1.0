@@ -51,7 +51,7 @@ static const epd_t DRD[DR_PER] = { PC(10), PC(10), PC(10), PC(10), PC(10), PC(10
 
 static const char *const DVN[3][8] = { { "BD", "SD", "CH", "OH", "CP", "CB", "HT", "LT" }, { "BD", "SD", "CH", "OH", "CP", "RD", "HT", "LT" },
                                        { "KICK", "SNR", "CH", "OH", "TOM", "CRSH", "HI T", "LO T" } };
-static const char *const KITN[NKIT] = { "808", "909", "ACOU", "LINN", "DMX" };
+static const char *const KITN[NKIT] = { "808", "909", "ACOU", "LINN", "DMX", "VERM" };
 static const char *const DVL[3][8] = {
     { "KICK", "SNARE", "CLOSED HAT", "OPEN HAT", "CLAP", "COWBELL", "HI TOM", "LOW TOM" },
     { "KICK", "SNARE", "CLOSED HAT", "OPEN HAT", "CLAP", "RIDE", "HI TOM", "LOW TOM" },
