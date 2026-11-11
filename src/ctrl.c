@@ -80,7 +80,7 @@ static void itoa2(char *o, int v, int pad)         /* v >= 0, zero padded to `pa
 }
 
 static const char *const ENG_TAG[CENG_N] = { "VACT", "MINI", "PRO70", "DRUM", "DFAM", "JUNO", "VC3" };   /* dn(): the display name of each engine (by engine id) */
-static const uint8_t LIDX[CENG_N] = { ENG_VAC, ENG_MOOG, ENG_PROPH, ENG_DFM, ENG_JUN, ENG_VC3, ENG_DRUM };   /* the ALGORITHM list, in this order: the drums come last (track 4 only) */
+static const uint8_t LIDX[CENG_N] = { ENG_VAC, ENG_VC3, ENG_MOOG, ENG_PROPH, ENG_JUN, ENG_DFM, ENG_DRUM };   /* the ALGORITHM list, in this order: the drums come last (track 4 only) */
 static int eng_li(int e) { int i; for (i = 0; i < CENG_N; i++) if (LIDX[i] == e) return i; return 0; }
 /* the pages an engine has, as a mask of engine page indexes (engine_pages.c EPI_*: GLO, OSC1..OSC4, EDIT, ENV, ENV2); the new engines have only the pages their parameters fill */
 static int eng_pmask(int e) { return e == ENG_DFM ? 0x67 : e == ENG_JUN ? 0x6F : e == ENG_VC3 ? 0x67 : (e == ENG_MOOG || e == ENG_PROPH) ? 0xFF : 0; }
