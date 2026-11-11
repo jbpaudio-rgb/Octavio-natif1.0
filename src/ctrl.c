@@ -363,6 +363,7 @@ static void btn(int t, uint32_t ms)                /* btn(): a button's action (
         if (t == CB_SAVE) { commit_save(ms); return; }
         if (t == CB_HOME) { pend = 0; bump(); }
     }
+    if (t == CB_SEL && ui_sel_tap()) { bump(); return; }
     if (t == CB_ENV || t == CB_EDIT || t == CB_GLO) tab_press(t);
     else if (t == CB_FX) {                          /* FX: the FX ORDER overview (the 4 slots, their Mix on K1..K4), then each slot's page in turn, then back to the overview */
         if (pg == PGN_FX) { fxo = (fxo + 1) % FX_NSLOT; if (fxo == 0) pg = PGN_FXO; }

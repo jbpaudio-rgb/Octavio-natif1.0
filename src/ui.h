@@ -3,6 +3,7 @@
 #include <stdint.h>
 void ui_init(void);
 void ui_encoder(int knob, int steps);       /* KNOB1..4 (0..3) */
+int  ui_sel_tap(void);                         /* SEL tapped: 1 if the page used it (the VC3 patch matrix) */
 void ui_button(int id);                      /* a button went down (BTN_*) */
 void ui_tick(uint32_t ms);                   /* time: animation phase */
 int  ui_scene(int *y0, int *y1);             /* what to redraw: rows [y0,y1) */

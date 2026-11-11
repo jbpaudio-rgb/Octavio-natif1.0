@@ -11,7 +11,7 @@
 typedef struct {
     int16_t p[V3_COUNT];
     uint8_t dirty, gate;
-    int32_t oct16, o2s16, cut16, k16, lev, key, o3p, o3f, xmd, enf, fbk, enp, m1, m2, mn, mr;
+    int32_t oct16, o2s16, cut16, k16, lev, key, l1, l2, lf, la, e1, e2, ef, x2, xa, f1, f2, m1, m2, mn, mr;
     int32_t ai, sus;
     uint32_t dc, rc, inc3;
     uint32_t ph1, ph2, ph3;
@@ -20,8 +20,8 @@ typedef struct {
 } v3_t;
 
 static v3_t V3[4];
-static const int16_t V3_DEF[V3_COUNT] = { 500, 350, 700, 503, 350, 0, 800, 600, 0, 0, 600, 450, 500, 100, 150, 100, 450, 0, 0, 20, 500, 600, 350, 1000 };
-static const int16_t V3_MAX[V3_COUNT] = { 1000, 1000, 1000, 1000, 1000, 3, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000 };
+static const int16_t V3_DEF[V3_COUNT] = { 500, 350, 700, 503, 350, 0, 800, 600, 0, 0, 600, 450, 500, 100, 100, 150, 0, 0, 0, 450, 100, 0, 0, 0, 20, 500, 600, 350, 1000 };
+static const int16_t V3_MAX[V3_COUNT] = { 1000, 1000, 1000, 1000, 1000, 3, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000 };
 
 static inline int32_t v3_sat(int32_t x)                /* soft clip: x - x^3 / (3 A^2) up to A = 1.5 (49152), flat beyond */
 {
@@ -46,14 +46,16 @@ static void v3_derive(v3_t *m)
     m->mn = p[V3_MN] * 32768 / 1000;
     m->mr = p[V3_MR] * 32768 / 1000;
     m->cut16 = (p[V3_CUT] * 602931) / 1000;
-    m->k16 = (int32_t)(((int64_t)p[V3_RES] * 314573) / 1000);                  /* up to 4.8: past 4 the ladder oscillates on its own */
+    m->k16 = p[V3_RES] <= 800 ? p[V3_RES] * 295 : 236000 + (p[V3_RES] - 800) * 950;   /* 0 .. 6.5: past ~4 the ladder rings on its own (the one-sample delay eats some of the margin) */
     m->key = p[V3_KEY];
-    m->o3p = p[V3_O3P];
-    m->o3f = p[V3_O3F];
-    m->xmd = p[V3_XMD] * 131072 / 1000;                                         /* up to 2x the frequency of O2 */
-    m->enf = p[V3_ENF] * 5 * 65536 / 1000;
-    m->fbk = p[V3_FBK] * 65536 / 1000;
-    m->enp = p[V3_ENP] * 2 * 65536 / 1000;
+    m->l1 = p[V3_L1] * 32768 / 1000; m->l2 = p[V3_L2] * 32768 / 1000;         /* LFO -> pitch of O1 / O2: up to +-0.5 octave (Q16) */
+    m->lf = p[V3_LF] * 262144 / 1000;                                           /* LFO -> cutoff: up to +-4 octaves */
+    m->la = p[V3_LA] * 32768 / 1000;                                            /* LFO -> amplitude (tremolo) */
+    m->e1 = p[V3_E1] * 2 * 65536 / 1000; m->e2 = p[V3_E2] * 2 * 65536 / 1000;  /* envelope -> pitch: up to 2 octaves */
+    m->ef = p[V3_EF] * 5 * 65536 / 1000;                                        /* envelope -> cutoff: up to 5 octaves */
+    m->x2 = p[V3_X2] * 131072 / 1000;                                           /* O1 -> O2 frequency, audio rate: up to 2x */
+    m->xa = p[V3_XA] * 32768 / 1000;                                            /* O1 -> amplitude (AM) */
+    m->f1 = p[V3_F1] * 65536 / 1000; m->f2 = p[V3_F2] * 65536 / 1000;           /* filter output -> frequency of O1 / O2: up to 2x */
     m->lev = p[V3_LVL] * 32768 / 1000;
     m->ai = (int32_t)exp2_fx(C_L2_AI0 - (p[V3_ATK] * C_L2_ATK) / 1000, 0);
     m->dc = c_1mexp(exp2_fx(C_L2_DC0 - (p[V3_DEC] * C_L2_DCR) / 1000, 0));
@@ -119,7 +121,7 @@ void v3_render(int t, int32_t *out, int n)
     if (m->dirty) v3_derive(m);
     while (i < n) {
         int cnt = n - i < 8 ? n - i : 8;
-        int32_t ef = m->a.e, xl, nn, pit, cm, x16, g, lg2;
+        int32_t ef = m->a.e, xl, nn, cm, x16, g, lg2, ga;
         uint32_t inc1, inc2, rd1, rd2, old3;
         old3 = m->ph3;
         m->ph3 += m->inc3;
@@ -130,36 +132,39 @@ void v3_render(int t, int32_t *out, int n)
         default: if (m->ph3 < old3) m->lfo = c_rand15(); break;
         }
         nn = (int32_t)(((int64_t)(m->note16 - (60 << 16)) * 21845) >> 18);        /* the note, in octaves, Q16 */
-        pit = (int32_t)(((int64_t)m->lfo * m->o3p * 32768 / 1000) >> 15) + (int32_t)(((int64_t)m->enp * ef) >> 30);
-        xl = C_L2_MINC + nn + m->oct16 + pit;
-        lg2 = xl + m->o2s16;
+        xl = C_L2_MINC + nn + m->oct16 + (int32_t)(((int64_t)m->lfo * m->l1) >> 15) + (int32_t)(((int64_t)m->e1 * ef) >> 30);
+        lg2 = C_L2_MINC + nn + m->oct16 + m->o2s16 + (int32_t)(((int64_t)m->lfo * m->l2) >> 15) + (int32_t)(((int64_t)m->e2 * ef) >> 30);
+        ga = 32768 - (int32_t)(((int64_t)m->la * (32768 - m->lfo)) >> 16);
         inc1 = exp2_fx(xl, 0);
         rd1 = exp2_fx((40 << 16) - xl, 0);
         inc2 = exp2_fx(lg2, 0);
         rd2 = exp2_fx((40 << 16) - lg2, 0);
-        cm = m->cut16 + (int32_t)(((int64_t)nn * m->key) / 1000) + (int32_t)(((int64_t)m->lfo * m->o3f * 262144 / 1000) >> 15) + (int32_t)(((int64_t)m->enf * ef) >> 30);
+        cm = m->cut16 + (int32_t)(((int64_t)nn * m->key) / 1000) + (int32_t)(((int64_t)m->lfo * m->lf) >> 15) + (int32_t)(((int64_t)m->ef * ef) >> 30);
         x16 = (int32_t)exp2_fx(C_L2_FC0 + cm, 16);
         if (x16 > 82354 || x16 < 0) x16 = 82354;
         g = (int32_t)c_expm((uint32_t)x16);
         if (g > 26000) g = 26000;                       /* a 4-pole with its one-sample feedback delay is no longer clean above ~ 0.4 */
         for (j = 0; j < cnt; j++, i++) {
             int32_t o1, o2, rg, s, u, e, o, i1, i2;
-            i1 = (int32_t)inc1 + (int32_t)(((int64_t)(((int64_t)inc1 * m->y4) >> 15) * m->fbk) >> 15);     /* the filter output back into O1's frequency */
+            i1 = (int32_t)inc1 + (int32_t)(((int64_t)(((int64_t)inc1 * (m->y4 >> 8)) >> 15) * m->f1) >> 15);     /* the filter output back into O1's frequency */
             m->ph1 += (uint32_t)i1;
             o1 = v3_osc(m->ph1, inc1, rd1, m->p[V3_O1W]);
-            i2 = (int32_t)inc2 + (int32_t)(((int64_t)(((int64_t)inc2 * o1) >> 14) * m->xmd) >> 16);         /* O1 into O2's frequency: X-MOD */
+            i2 = (int32_t)inc2 + (int32_t)(((int64_t)(((int64_t)inc2 * o1) >> 14) * m->x2) >> 16)             /* O1 into O2's frequency: X-MOD */
+               + (int32_t)(((int64_t)(((int64_t)inc2 * (m->y4 >> 8)) >> 15) * m->f2) >> 15);                      /* the filter output into O2's frequency */
             m->ph2 += (uint32_t)i2;
             o2 = v3_osc(m->ph2, inc2, rd2, m->p[V3_O2W]);
             rg = (int32_t)(((int64_t)o1 * o2) >> 14);                                                        /* the ring modulator */
             s = (int32_t)(((int64_t)o1 * m->m1 + (int64_t)o2 * m->m2 + (int64_t)(c_rand15() >> 1) * m->mn + (int64_t)rg * m->mr) >> 15);
-            u = v3_sat(s + (c_rand15() >> 10) - (int32_t)(((int64_t)m->k16 * m->y4) >> 16));          /* a whisper of noise at the input starts the self-oscillation, as on the real thing */
-            m->y1 += (int32_t)(((int64_t)(u - m->y1) * g) >> 16);
+            u = v3_sat(s + (c_rand15() >> 10) - (int32_t)(((int64_t)m->k16 * (m->y4 >> 8)) >> 16));          /* a whisper of noise at the input starts the self-oscillation, as on the real thing */
+            m->y1 += (int32_t)(((int64_t)((u << 8) - m->y1) * g) >> 16);                                        /* the four poles keep 8 extra bits: at a low cutoff the steps are tiny */
             m->y2 += (int32_t)(((int64_t)(m->y1 - m->y2) * g) >> 16);
             m->y3 += (int32_t)(((int64_t)(m->y2 - m->y3) * g) >> 16);
             m->y4 += (int32_t)(((int64_t)(m->y3 - m->y4) * g) >> 16);
             e = c_adsr(&m->a, m->ai, m->dc, m->sus, m->rc);
-            o = (int32_t)(((int64_t)m->y4 * (e >> 15)) >> 15);
+            o = (int32_t)(((int64_t)(m->y4 >> 8) * (e >> 15)) >> 15);
             o = (int32_t)(((int64_t)o * m->vel) >> 15);
+            o = (int32_t)(((int64_t)o * ga) >> 15);                                                             /* LFO -> amp */
+            o = (int32_t)(((int64_t)o * (32768 - (int32_t)(((int64_t)m->xa * (16384 - o1)) >> 15))) >> 15);        /* O1 -> amp (AM) */
             o = v3_sat((int32_t)((int64_t)o * 40000 >> 15));                        /* the gain first, then the clipper: never beyond +-32k */
             out[i] = (int32_t)((int64_t)o * m->lev >> 15);
         }

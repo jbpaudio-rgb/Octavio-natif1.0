@@ -40,7 +40,8 @@ static const char *const O_TBW[] = { "Saw", "Square" };
 static const epd_t TBD[TB_COUNT] = { SL(2, O_TBW), { EF_C7, 5, 0, 0 }, PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10) };
 static const epd_t SSD[SS_COUNT] = { { EF_C7, 5, 0, 0 }, SL(5, O_RNG), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), { EF_MSA, 5, 0, 0 }, { EF_MSD, 5, 0, 0 }, PC(10), { EF_MSD, 5, 0, 0 },
                                      { EF_MSA, 5, 0, 0 }, { EF_MSD, 5, 0, 0 }, PC(10), PC(10), PC(10), PC(10) };
-static const epd_t V3D[V3_COUNT] = { { EF_C7, 5, 0, 0 }, PC(10), PC(10), PC(10), PC(10), SL(4, O_LFO), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10),
+static const epd_t V3D[V3_COUNT] = { { EF_C7, 5, 0, 0 }, PC(10), PC(10), PC(10), PC(10), SL(4, O_LFO), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10),
+                                     PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10),
                                      { EF_MSA, 5, 0, 0 }, { EF_MSD, 5, 0, 0 }, PC(10), { EF_MSD, 5, 0, 0 }, PC(10) };
 static const epd_t DRD[DR_PER] = { PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10) };
 
@@ -88,8 +89,8 @@ static const epg_t SS_PG[EPI_N] = {
     [EPI_ENV2] = { "FILTER ENV", { "ATTACK", "DECAY", "", "" }, { SS_FATK, SS_FDEC, -1, -1 } } };
 static const epg_t V3_PG[EPI_N] = {
     [EPI_GLO] = { "VCS3", { "TUNE", "O1 WAVE", "O2 WAVE", "O2 TUNE" }, { V3_TUNE, V3_O1W, V3_O2W, V3_O2T } },
-    [EPI_OSC1] = { "MODULATION", { "O3 RATE", "O3 SHAPE", "O3>PITCH", "O3>FILT" }, { V3_O3R, V3_O3S, V3_O3P, V3_O3F } },
-    [EPI_OSC2] = { "PATCH", { "X-MOD", "FEEDBK", "ENV>PIT", "ENV>FILT" }, { V3_XMD, V3_FBK, V3_ENP, V3_ENF } },
+    [EPI_OSC1] = { "MODULATION", { "O3 RATE", "O3 SHAPE", "", "" }, { V3_O3R, V3_O3S, -1, -1 } },
+    [EPI_OSC2] = { "PATCH", { "SOURCE", "DEST", "PIN", "" }, { -1, -1, -1, -1 } },
     [EPI_OSC3] = { "MIXER", { "O1", "O2", "NOISE", "RING" }, { V3_M1, V3_M2, V3_MN, V3_MR } },
     [EPI_EDIT] = { "FILTER", { "CUTOFF", "RESO", "KEY", "LEVEL" }, { V3_CUT, V3_RES, V3_KEY, V3_LVL } },
     [EPI_ENV] = { "ENVELOPE", { "ATTACK", "DECAY", "SUSTAIN", "RELEASE" }, { V3_ATK, V3_DEC, V3_SUS, V3_REL } } };
@@ -230,12 +231,55 @@ static void ep_text(int id, char *out)          /* what the cell prints */
         *out++ = ' '; *out++ = '%'; *out = 0;
     }
 }
+/* the VC3 patch matrix (the OSC2 page): K1 = source row, K2 = destination column, SEL = put / take the pin, K3 = the pin's amount */
+static const int8_t VM_PIN[4][4] = { { V3_L1, V3_L2, V3_LF, V3_LA }, { V3_E1, V3_E2, V3_EF, -1 }, { -1, V3_X2, -1, V3_XA }, { V3_F1, V3_F2, -1, -1 } };
+static const char *const VM_SRC[4] = { "LFO", "ENV", "OSC1", "FILT" };
+static const char *const VM_DST[4] = { "PCH1", "PCH2", "CUT", "AMP" };
+static int vm_r, vm_c;
+static int vm_on(void) { return EP.eng == ENG_VC3 && EP.idx == EPI_OSC2; }
+static int vm_id(void) { return VM_PIN[vm_r][vm_c]; }
+static int vm_val(int r, int c) { int id = VM_PIN[r][c]; return id < 0 ? -1 : voices_param_get(voices_sel(), ENG_VC3, id); }
+static void vm_draw(void);
+static void vm_encoder(int k, int steps)
+{
+    int id;
+    if (k == 0) { vm_r += steps; vm_r = vm_r < 0 ? 0 : vm_r > 3 ? 3 : vm_r; }
+    else if (k == 1) { vm_c += steps; vm_c = vm_c < 0 ? 0 : vm_c > 3 ? 3 : vm_c; }
+    else if (k == 2 && (id = vm_id()) >= 0) {
+        int v = voices_param_get(voices_sel(), ENG_VC3, id) + steps * 20;
+        v = (v + 5) / 10 * 10;
+        voices_param(voices_sel(), ENG_VC3, id, v < 0 ? 0 : v > 1000 ? 1000 : v);
+    }
+}
+static void vm_cell(int k, int32_t *q16, const char **txt, char *buf, int *dim)      /* what a knob cell shows on this page */
+{
+    int id = vm_id();
+    *dim = 0; *txt = "";
+    if (k == 0) { *q16 = vm_r * 21845; *txt = VM_SRC[vm_r]; }
+    else if (k == 1) { *q16 = vm_c * 21845; *txt = VM_DST[vm_c]; }
+    else if (k == 2 && id >= 0) {
+        int v = voices_param_get(voices_sel(), ENG_VC3, id), n = 0;
+        *q16 = (v * 65536 + 500) / 1000;
+        if (v == 0) { buf[0] = 'O'; buf[1] = 'F'; buf[2] = 'F'; buf[3] = 0; }
+        else { n = ep_put_u(buf, (v * 100 + 500) / 1000); buf[n++] = ' '; buf[n++] = '%'; buf[n] = 0; }
+        *txt = buf;
+    } else if (k == 2) { *q16 = 0; buf[0] = '-'; buf[1] = '-'; buf[2] = 0; *txt = buf; }
+    else *dim = 1;
+}
+int ui_sel_tap(void)                           /* SEL pressed on the patch matrix: put the pin (50 %) or take it away */
+{
+    int id;
+    if (!ep_on() || !vm_on() || (id = vm_id()) < 0) return 0;
+    voices_param(voices_sel(), ENG_VC3, id, voices_param_get(voices_sel(), ENG_VC3, id) ? 0 : 500);
+    return 1;
+}
 static int32_t ep_wheel[4], ep_wg[4];
 static int ep_wheel_id[4] = { -1, -1, -1, -1 };
 static void ep_encoder(int k, int steps)        /* one detent = 1/50 of the range, from the knob's unrounded position */
 {
     int i, n = steps < 0 ? -steps : steps;
     if (!ep_on()) return;
+    if (vm_on()) { vm_encoder(k, steps); return; }
     for (i = 0; i < n; i++) {
         int id = EP.id[k];
         int32_t g, base, nv;

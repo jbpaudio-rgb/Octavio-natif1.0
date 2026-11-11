@@ -341,6 +341,14 @@ static void draw_cell(int k)
     char v[16];
     if (page == PG_LFO || page == PG_FX)
         dyn_cell(k, &lab, &dim);
+    if (eon && vm_on()) {                                                       /* the VC3 patch matrix */
+        int32_t q; const char *tx; char vb[12];
+        vm_cell(k, &q, &tx, vb, &dim);
+        draw_knob(cx, cy, dim ? -1000 : q, dim ? DIM_A : 256);
+        gfx_text(F_LABEL, EP.nm[k], TXT_X64[cx], LAB_BASE[cy], COL_LABEL, LS_CELL, 0, clip);
+        if (!dim) gfx_text(F_VALUE, tx, TXT_X64[cx], VAL_BASE[cy], COL_TEXT, LS_CELL, 0, clip);
+        return;
+    }
     if (eon) { id = EP.id[k]; dim = id < 0; lab = EP.nm[k]; }
     draw_knob(cx, cy, dim ? -1000 : eon ? ep_n_q16(id) : pn_q16(id), dim ? DIM_A : 256);
     gfx_text(F_LABEL, id == P_OPEN && !eon ? "CUTOFF" : lab, TXT_X64[cx], LAB_BASE[cy], COL_LABEL, LS_CELL, 0, clip);
