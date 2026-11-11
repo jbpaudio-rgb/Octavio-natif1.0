@@ -80,6 +80,16 @@ static void draw_toast(void)
     if (b[0]) text_c(F_OV_SM, b, 120, 89 + 2 + 10 + 21 + 4 + 10, C_RED, 17);
 }
 
+/* the LFO page's DEST knob: the destination's name in a big framed box that shows while the knob turns */
+static void draw_destpop(const char *t, const char *title)
+{
+    gfx_rect(12, 80, 216, 70, 0x000000u, 256);
+    gfx_rect(15, 83, 210, 64, C_PAPER, 256);
+    gfx_rect(17, 85, 206, 60, 0x0a0a0au, 256);
+    text_c(F_OV_SM, title, 120, 85 + 16, C_RED, 17);
+    text_c(F_VALUE, t, 120, 85 + 44, C_PAPER, 0);
+}
+
 static void put_n(char *o, uint32_t v, int pad)           /* unsigned, space padded to pad */
 {
     char t[12]; int n = 0, i = 0;

@@ -35,6 +35,7 @@ static uint8_t dirty_top, dirty_all = 1;
 static uint32_t ed_phase;                      /* the scope's scroll (edP), 32-bit turns */
 static uint32_t last_ms;
 static int32_t wheel[4], wheel_g[4];           /* the knobs' unrounded positions (the prototype's `ws`) and the rounded position the last step left (`wq`) */
+static uint32_t dest_until;                   /* ms: the LFO DEST popup shows until then (0: hidden) */
 static int wheel_p[4] = { -1, -1, -1, -1 };
 #include "pages.c"                             /* dynamic pages (LFO, FX), page state */
 #include "engine_pages.c"                      /* the Minimoog / Prophet / drum settings pages */
@@ -125,6 +126,7 @@ void ui_encoder(int k, int steps)              /* one detent = 1/50 of the range
         if (nv < 0) nv = 0;
         if (nv > 65536) nv = 65536;
         pset_n(id, nv);
+        if (page == PG_LFO && k == 0) { dest_until = last_ms + 1100u; dirty_all = 1; }
         wheel[k] = nv;
         wheel_g[k] = pn_q16(id);
         wheel_p[k] = id;
@@ -157,6 +159,7 @@ void ui_tick(uint32_t ms)                      /* the scope scrolls: .25 + 1.5 *
     uint32_t dt = ms - last_ms;
     last_ms = ms;
     if (dt > 50u) dt = 50u;
+    if (dest_until && (int32_t)(ms - dest_until) >= 0) { dest_until = 0; dirty_all = 1; }
     env_tick(ms);
     arp_now = ms;
     fx_ms = ms % 1000000u;
@@ -198,6 +201,8 @@ int ui_scene(int *y0, int *y1)
     static uint32_t seen;
     uint32_t v = ctrl_version();
     { static uint32_t hseen; static uint8_t hon; if (hud.on && (hud.ver != hseen || !hon)) dirty_all = 1; hseen = hud.ver; hon = hud.on; if (!hud.on && !hon) { } }
+    if (dest_until && (int32_t)(last_ms - dest_until) >= 0) { dest_until = 0; dirty_all = 1; }
+    if (page != PG_LFO && dest_until) { dest_until = 0; dirty_all = 1; }
     if (v != seen || ctrl_overlay() != OV_NONE) { if (v != seen) ctrl_sync(); seen = v; dirty_all = 1; }
     if (dirty_all) { dirty_all = 0; dirty_top = 0; *y0 = 0; *y1 = SCR_H; return 1; }
     if (page == PG_DSEQ) { *y0 = 0; *y1 = 1; dirty_top = 0; return 1; }         /* nothing changed: one row (the cursor, the gates and the lane mark redraw everything through dirty_all) */
@@ -371,6 +376,11 @@ static void ui_draw_page(int y0, int y1);
 void ui_draw(int y0, int y1)                    /* the current band is [y0, y1) */
 {
     ui_draw_page(y0, y1);
+    if (dest_until && page == PG_LFO) {
+        char v[40];
+        int id = pid_of(0);
+        if (id >= 0) { cell_text(id, v); draw_destpop(v, "DESTINATION"); }
+    }
     overlay_draw();                            /* the preset list, the name editor, the toast: over any page */
 }
 static void ui_draw_page(int y0, int y1)
