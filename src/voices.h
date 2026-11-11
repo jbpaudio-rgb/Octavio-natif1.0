@@ -35,6 +35,7 @@ void voices_note(int t, int note, int on);           /* kOnT / kOffT of a track 
 void voices_render(int32_t *out, int n);             /* Q15 mono: engines -> mix -> tanh */
 void voices_select(int t);
 int  voices_sel(void);
+void voices_scope(int16_t *dst, int n);              /* the last n samples of the selected track (the screen waveform) */
 void voices_set_engine(int t, int eng);
 int  voices_engine(int t);
 void voices_param(int t, int eng, int id, int v);    /* engine parameter (MG_*, PR_*, DR_*) of a track */

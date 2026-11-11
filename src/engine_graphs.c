@@ -404,10 +404,38 @@ static void vm_draw(void)
     }
 }
 
+/* ---------------------------------------------------------------- the real waveform of the selected track (the new engines' oscillator pages) ---- */
+static int epg_wave_page(void) { return EP.eng >= ENG_TB3 && EP.eng != ENG_DRUM && !vm_on() && EP.idx != EPI_EDIT && EP.idx != EPI_ENV && EP.idx != EPI_ENV2; }
+static void epg_wave(void)
+{
+    static int16_t wb[1024];
+    int x, n = 0, i0 = 1, pk = 2500;
+    voices_scope(wb, 1024);
+    for (x = 1; x < 480; x++)                                                   /* trigger: a rising zero crossing, so the picture stands still */
+        if (wb[x - 1] < 0 && wb[x] >= 0) { i0 = x; break; }
+    for (x = 0; x < 3 * (EW / 2 + 1); x++) { int a = wb[i0 + x] < 0 ? -wb[i0 + x] : wb[i0 + x]; if (a > pk) pk = a; }
+    for (x = 0; x <= EW; x += 2, n++) {
+        int32_t v = wb[i0 + (x / 2) * 3];                                       /* 3 samples a point: ~11 ms across */
+        epx[n] = CXQ(x * 256);
+        epy[n] = CYQ(ep_gy((int32_t)((int64_t)v * 32767 / pk), 12386));
+    }
+    poly_stroke(epx, epy, n, 19, &eg_v);
+}
+static void epg_wave_draw(void)
+{
+    int i;
+    gfx_cov_begin();
+    for (i = 0; i < NS; i += 4)
+        gfx_cov_add_span(7 + i / 4, 2645 - 5, 2645 + 5, 256);
+    gfx_cov_flush(0x333333u);
+    stroke_paint(&eg_v, COL_TEXT);
+}
+
 /* ---------------------------------------------------------------- entry points ---- */
 static void epg_prepare(void)
 {
     eg_key[0] = -1;                                                              /* the ENV page's strokes are being reused */
+    if (epg_wave_page()) { epg_wave(); return; }
     if (EP.eng >= ENG_TB3) {                                                     /* TB-303 / Polivoks / Gremlin: the filter curve on FILTER, the envelope on the Polivoks's and the Gremlin's envelope pages, nothing else */
         if (EP.idx == EPI_EDIT) epg_filter();
         else if ((EP.idx == EPI_ENV || EP.idx == EPI_ENV2) && EP.eng != ENG_TB3) epg_env();
@@ -422,6 +450,7 @@ static void epg_prepare(void)
 static void epg_draw(void)
 {
     if (vm_on()) { vm_draw(); return; }
+    if (epg_wave_page()) { epg_wave_draw(); return; }
     if (EP.eng >= ENG_TB3) {
         if (EP.idx == EPI_EDIT) epg_filter_draw();
         else if ((EP.idx == EPI_ENV || EP.idx == EPI_ENV2) && EP.eng != ENG_TB3) epg_env_draw();

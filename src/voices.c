@@ -8,6 +8,21 @@
 #include "ui.h"
 #include "eng_moog.c"
 #include "eng_vc3.c"
+
+static int16_t vsc_buf[1024];                           /* the last 1024 samples of the selected track while it sounds (it keeps the last picture when it stops) */
+static int vsc_w;
+static void vsc_push(const int32_t *b, int n)
+{
+    int i, pk = 0;
+    for (i = 0; i < n; i++) { int a = b[i] < 0 ? -b[i] : b[i]; if (a > pk) pk = a; }
+    if (pk < 400) return;                                 /* the tail of a release: keep the last real picture */
+    for (i = 0; i < n; i++) { int32_t v = b[i]; vsc_buf[vsc_w] = (int16_t)(v > 32767 ? 32767 : v < -32768 ? -32768 : v); vsc_w = (vsc_w + 1) & 1023; }
+}
+void voices_scope(int16_t *dst, int n)                  /* the last n (<= 1024) samples, oldest first */
+{
+    int i, r = (vsc_w - n) & 1023;
+    for (i = 0; i < n; i++) dst[i] = vsc_buf[(r + i) & 1023];
+}
 #include "eng_pol.c"
 #include "eng_tb3.c"
 #include "eng_prophet.c"
@@ -615,6 +630,7 @@ void voices_render(int32_t *out, int n)
         case ENG_VC3: if (!v3_active(t)) act = 0; else v3_render(t, tmp, n); break;
         default: act = 0; break;
         }
+        if (act && t == sel_t) vsc_push(tmp, n);          /* the screen's waveform: the selected track's block, as the engine made it */
         if (act && TK[t].eng != ENG_PROPH)      /* ENGINE_TRIM: every engine sits 4.4 dB lower (the Prophet's own trim is in its voice sum, ahead of its soft limit) so that a 5-note chord does not saturate */
             for (i = 0; i < n; i++) tmp[i] = (int32_t)(((int64_t)tmp[i] * ENGINE_TRIM_Q15) >> 15);
 #ifndef NO_PERF
