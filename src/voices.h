@@ -4,9 +4,9 @@
  * tanh(sum(track) * .8 * 1.5 * .7). Parameter values are thousandths (selects: indices), like params.h. */
 #pragma once
 #include <stdint.h>
-enum { ENG_VAC, ENG_MOOG, ENG_PROPH, ENG_DRUM, ENG_TB3, ENG_JUN, ENG_VC3, ENG_N };
-/* the parameters of the TB-303, Juno and VC3 engines (eng_tb3.c / eng_jun.c / eng_vc3.c); values in thousandths */
-enum { TB_WAVE, TB_TUNE, TB_CUT, TB_RES, TB_ENV, TB_DEC, TB_ACC, TB_SLD, TB_DRV, TB_LVL, TB_COUNT };
+enum { ENG_VAC, ENG_MOOG, ENG_PROPH, ENG_DRUM, ENG_DFM, ENG_JUN, ENG_VC3, ENG_N };
+/* the parameters of the DFAM, Juno and VC3 engines (eng_dfm.c / eng_jun.c / eng_vc3.c); values in thousandths */
+enum { DF_TUNE, DF_V1F, DF_V2F, DF_V1W, DF_V2W, DF_SYN, DF_FM, DF_V1E, DF_V2E, DF_VDC, DF_V1L, DF_V2L, DF_NSE, DF_MODE, DF_CUT, DF_RES, DF_FEG, DF_FDC, DF_ADC, DF_LVL, DF_COUNT };
 enum { JN_TUNE, JN_SAW, JN_PUL, JN_SUB, JN_NSE, JN_PW, JN_PWM, JN_DCO, JN_LR, JN_LD, JN_HPF, JN_CUT, JN_RES, JN_ENV, JN_LFC, JN_KYB,
        JN_ATK, JN_DEC, JN_SUS, JN_REL, JN_VCA, JN_CHO, JN_DET, JN_LVL, JN_COUNT };
 enum { V3_TUNE, V3_O1W, V3_O2W, V3_O2T, V3_O3R, V3_O3S, V3_CUT, V3_RES, V3_ATK, V3_DEC, V3_SUS, V3_REL, V3_LVL, V3_FMA, V3_FMS,
@@ -78,13 +78,13 @@ int  proph_shed_one(int t);                           /* governor: a voice fades
 int  proph_resume_one(int t);                         /* governor: a suspended held note comes back (fade in) */
 int  proph_active(int t);
 void proph_render(int t, int32_t *out, int n);
-void tb3_init(int t);
-void tb3_set(int t, int id, int v);
-int  tb3_get(int t, int id);
-void tb3_on(int t, int note, int vel15);
-void tb3_off(int t);
-int  tb3_active(int t);
-void tb3_render(int t, int32_t *out, int n);
+void df_init(int t);
+void df_set(int t, int id, int v);
+int  df_get(int t, int id);
+void df_on(int t, int note, int vel15);
+void df_off(int t);
+int  df_active(int t);
+void df_render(int t, int32_t *out, int n);
 void jn_init(int t);
 void jn_set(int t, int id, int v);
 int  jn_get(int t, int id);

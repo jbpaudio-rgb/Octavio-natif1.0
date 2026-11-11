@@ -37,9 +37,10 @@ static const epd_t PRD[PR_COUNT] = {
     PC(5), PC(10), PC(10), PC(10),
     { EF_MSA, 5, 0, 0 }, { EF_MSD, 5, 0, 0 }, PC(10), { EF_MSD, 5, 0, 0 },
     { EF_MSA, 5, 0, 0 }, { EF_MSD, 5, 0, 0 }, PC(10), { EF_MSD, 5, 0, 0 }, PC(10) };
-static const char *const O_TBW[] = { "Saw", "Square" };
-static const epd_t TBD[TB_COUNT] = { SL(2, O_TBW), { EF_C7, 5, 0, 0 }, PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10) };
 static const char *const O_OFFON[] = { "Off", "On" };
+static const char *const O_DFW[] = { "Tri", "Square" };
+static const char *const O_DFM[] = { "LP", "HP" };
+static const epd_t DFD[DF_COUNT] = { { EF_C7, 5, 0, 0 }, PC(10), PC(10), SL(2, O_DFW), SL(2, O_DFW), SL(2, O_OFFON), PC(10), PC(10), PC(10), { EF_MSD, 5, 0, 0 }, PC(10), PC(10), PC(10), SL(2, O_DFM), PC(10), PC(10), PC(10), { EF_MSD, 5, 0, 0 }, { EF_MSD, 5, 0, 0 }, PC(10) };
 static const char *const O_JVCA[] = { "Env", "Gate" };
 static const char *const O_JCHO[] = { "Off", "I", "II", "I+II" };
 static const epd_t JND[JN_COUNT] = { { EF_C7, 5, 0, 0 }, PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10),
@@ -80,10 +81,12 @@ static const epg_t PR_PG[EPI_N] = {
     { "FILTER ENV", { "ATTACK", "DECAY", "SUSTAIN", "RELEASE" }, { PR_FATK, PR_FDEC, PR_FSUS, PR_FREL } } };
 
 /* TB-303, Juno, VCS3: their parameters fill only the pages they need (title 0 = the engine has no such page; ctrl.c eng_pmask() lists them); -1 = a knob without a parameter */
-static const epg_t TB_PG[EPI_N] = {
-    [EPI_GLO] = { "OSCILLATOR", { "WAVE", "TUNE", "DRIVE", "LEVEL" }, { TB_WAVE, TB_TUNE, TB_DRV, TB_LVL } },
-    [EPI_EDIT] = { "FILTER", { "CUTOFF", "RESO", "ENV MOD", "DECAY" }, { TB_CUT, TB_RES, TB_ENV, TB_DEC } },
-    [EPI_ENV] = { "ACCENT / SLIDE", { "ACCENT", "SLIDE", "", "" }, { TB_ACC, TB_SLD, -1, -1 } } };
+static const epg_t DF_PG[EPI_N] = {
+    [EPI_GLO] = { "DFAM", { "TUNE", "SYNC", "FM", "LEVEL" }, { DF_TUNE, DF_SYN, DF_FM, DF_LVL } },
+    [EPI_OSC1] = { "VCO 1", { "FREQ", "WAVE", "EG AMT", "LEVEL" }, { DF_V1F, DF_V1W, DF_V1E, DF_V1L } },
+    [EPI_OSC2] = { "VCO 2", { "FREQ", "WAVE", "EG AMT", "LEVEL" }, { DF_V2F, DF_V2W, DF_V2E, DF_V2L } },
+    [EPI_EDIT] = { "FILTER", { "CUTOFF", "RESO", "MODE", "EG AMT" }, { DF_CUT, DF_RES, DF_MODE, DF_FEG } },
+    [EPI_ENV] = { "DECAY", { "VCO", "VCF", "VCA", "NOISE" }, { DF_VDC, DF_FDC, DF_ADC, DF_NSE } } };
 static const epg_t JN_PG[EPI_N] = {
     [EPI_GLO] = { "JUNO-106", { "TUNE", "DETUNE", "CHORUS", "LEVEL" }, { JN_TUNE, JN_DET, JN_CHO, JN_LVL } },
     [EPI_OSC1] = { "DCO", { "SAW", "PULSE", "SUB", "NOISE" }, { JN_SAW, JN_PUL, JN_SUB, JN_NSE } },
@@ -153,8 +156,8 @@ static int ep_on(void)                          /* the 2 x 2 knob page of a non-
         }
         return 1;
     }
-    p = e == ENG_MOOG ? &MG_PG[x] : e == ENG_PROPH ? &PR_PG[x] : e == ENG_TB3 ? &TB_PG[x] : e == ENG_JUN ? &JN_PG[x] : &V3_PG[x];
-    if (!p->title) p = e == ENG_TB3 ? &TB_PG[0] : e == ENG_JUN ? &JN_PG[0] : &V3_PG[0];      /* a page the engine does not have */
+    p = e == ENG_MOOG ? &MG_PG[x] : e == ENG_PROPH ? &PR_PG[x] : e == ENG_DFM ? &DF_PG[x] : e == ENG_JUN ? &JN_PG[x] : &V3_PG[x];
+    if (!p->title) p = e == ENG_DFM ? &DF_PG[0] : e == ENG_JUN ? &JN_PG[0] : &V3_PG[0];      /* a page the engine does not have */
     {
         int n = 0;
         const char *s;
@@ -169,7 +172,7 @@ static const epd_t *ep_desc(int id)
     switch (EP.eng) {
     case ENG_MOOG: return &MGD[id];
     case ENG_PROPH: return &PRD[id];
-    case ENG_TB3: return &TBD[id];
+    case ENG_DFM: return &DFD[id];
     case ENG_JUN: return &JND[id];
     case ENG_VC3: return &V3D[id];
     }

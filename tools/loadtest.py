@@ -84,9 +84,9 @@ VARIANTS = {
     "drum4":       V(NOGOV, eng=E("MOOG", "MOOG", "DRUM", "DRUM")),
     "moog4":       V(NOGOV, eng=E("MOOG", "MOOG", "MOOG", "MOOG")),
     "vc34":       V(NOGOV + "-DLT_FXMASK=0 -DLT_NOMOD", eng=E("VC3", "VC3", "VC3", "VC3")),
-    "pol4fx":     V(NOGOV, eng=E("POL", "POL", "POL", "POL")),                                                  # 4 polivoks + the whole effects chain + mod
-    "pol4":       V(NOGOV + "-DLT_FXMASK=0 -DLT_NOMOD", eng=E("POL", "POL", "POL", "POL")),
-    "tb34":       V(NOGOV + "-DLT_FXMASK=0 -DLT_NOMOD", eng=E("TB3", "TB3", "TB3", "TB3")),
+    "jun4fx":     V(NOGOV, eng=E("JUN", "JUN", "JUN", "JUN")),                                                  # 4 juno + the whole effects chain + mod
+    "jun4":       V(NOGOV + "-DLT_FXMASK=0 -DLT_NOMOD", eng=E("JUN", "JUN", "JUN", "JUN")),
+    "df4":       V(NOGOV + "-DLT_FXMASK=0 -DLT_NOMOD", eng=E("DFM", "DFM", "DFM", "DFM")),
     "proph4":      V(NOGOV, eng=E("PROPH", "PROPH", "PROPH", "PROPH")),
     "full_ui":     V(NOGOV, ms=UI_MS, keys=UI, snap="1500,3000,4500"),    # the worst case measured, front panel driven
     # -- with the governor (the shipped firmware) --

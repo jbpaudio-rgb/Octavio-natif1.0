@@ -226,19 +226,19 @@ static int32_t ep_log2mag(int32_t lz_q16, int32_t k_q16)      /* log2 |(1 + jz)^
 static void epg_filter(void)
 {
     int t = voices_sel(), e = EP.eng, x, n = 0;
-    int cut = e == ENG_MOOG ? voices_param_get(t, e, MG_CUT) : e == ENG_TB3 ? voices_param_get(t, e, TB_CUT) : e == ENG_JUN ? voices_param_get(t, e, JN_CUT) : e == ENG_VC3 ? voices_param_get(t, e, V3_CUT) : voices_param_get(t, e, PR_CUT);
-    int res = e == ENG_MOOG ? voices_param_get(t, e, MG_RES) : e == ENG_TB3 ? voices_param_get(t, e, TB_RES) : e == ENG_JUN ? voices_param_get(t, e, JN_RES) : e == ENG_VC3 ? voices_param_get(t, e, V3_RES) : voices_param_get(t, e, PR_RES);
-    int env = e == ENG_MOOG ? voices_param_get(t, e, MG_ENV) : e == ENG_TB3 ? voices_param_get(t, e, TB_ENV) : e == ENG_JUN ? voices_param_get(t, e, JN_ENV) : e == ENG_VC3 ? voices_param_get(t, e, V3_PIN(V3S_ENV, V3D_CUT)) : voices_param_get(t, e, PR_ENV);
+    int cut = e == ENG_MOOG ? voices_param_get(t, e, MG_CUT) : e == ENG_DFM ? voices_param_get(t, e, DF_CUT) : e == ENG_JUN ? voices_param_get(t, e, JN_CUT) : e == ENG_VC3 ? voices_param_get(t, e, V3_CUT) : voices_param_get(t, e, PR_CUT);
+    int res = e == ENG_MOOG ? voices_param_get(t, e, MG_RES) : e == ENG_DFM ? voices_param_get(t, e, DF_RES) : e == ENG_JUN ? voices_param_get(t, e, JN_RES) : e == ENG_VC3 ? voices_param_get(t, e, V3_RES) : voices_param_get(t, e, PR_RES);
+    int env = e == ENG_MOOG ? voices_param_get(t, e, MG_ENV) : e == ENG_DFM ? voices_param_get(t, e, DF_FEG) : e == ENG_JUN ? voices_param_get(t, e, JN_ENV) : e == ENG_VC3 ? voices_param_get(t, e, V3_PIN(V3S_ENV, V3D_CUT)) : voices_param_get(t, e, PR_ENV);
     int32_t l2fc, l2fc2, k_q16, l2f20 = lg2q16(20, 0), l2k = lg2q16(1000, 0), cap = lg2q16(18000, 0);
     static int32_t ya[EW / 2 + 2], yb[EW / 2 + 2];
     if (e == ENG_MOOG || e == ENG_JUN || e == ENG_VC3) {                    /* the new engines: the same cutoff law as the Minimoog's (their own resonance scale; a 4-pole curve is drawn for their 2-pole filter: indicative) */
         l2fc = lg2q16(30, 0) + (cut * 602931) / 1000;                         /* 30 * 2^(cut * 9.2) */
         k_q16 = (int32_t)(res * (e == ENG_MOOG ? 267 : 196));                 /* 4 * res * 1.02 */
         l2fc2 = l2fc + (env * 327680) / 1000;                                 /* * 2^(env * 5) */
-    } else if (e == ENG_TB3) {
-        l2fc = lg2q16(150, 0) + (cut * 283100) / 1000;                        /* 150 Hz .. 3 kHz */
-        k_q16 = (int32_t)(res * 262);                                         /* the ladder's k up to ~4 (the loop's high-pass lets it ring a bit beyond) */
-        l2fc2 = l2fc + (env * 163840) / 1000;                                 /* up to 2.5 octaves of sweep */
+    } else if (e == ENG_DFM) {
+        l2fc = lg2q16(40, 0) + (cut * 576717) / 1000;                         /* 40 * 2^(cut * 8.8) */
+        k_q16 = (int32_t)(res * 268);
+        l2fc2 = l2fc + (env * 360448) / 1000;
     } else {
         l2fc = lg2q16(40, 0) + (cut * 576717) / 1000;                         /* 40 * 2^(cut * 8.8) */
         k_q16 = (int32_t)(res * 257);                                         /* 4 * res * .98 */
@@ -405,7 +405,7 @@ static void vm_draw(void)
 }
 
 /* ---------------------------------------------------------------- the real waveform of the selected track (the new engines' oscillator pages) ---- */
-static int epg_wave_page(void) { return EP.eng >= ENG_TB3 && EP.eng != ENG_DRUM && !vm_on() && EP.idx != EPI_EDIT && EP.idx != EPI_ENV && EP.idx != EPI_ENV2; }
+static int epg_wave_page(void) { return EP.eng >= ENG_DFM && EP.eng != ENG_DRUM && !vm_on() && EP.idx != EPI_EDIT && EP.idx != EPI_ENV && EP.idx != EPI_ENV2; }
 static void epg_wave(void)
 {
     static int16_t wb[1024];
@@ -436,9 +436,9 @@ static void epg_prepare(void)
 {
     eg_key[0] = -1;                                                              /* the ENV page's strokes are being reused */
     if (epg_wave_page()) { epg_wave(); return; }
-    if (EP.eng >= ENG_TB3) {                                                     /* TB-303 / Polivoks / Gremlin: the filter curve on FILTER, the envelope on the Polivoks's and the Gremlin's envelope pages, nothing else */
+    if (EP.eng >= ENG_DFM) {                                                     /* TB-303 / Polivoks / Gremlin: the filter curve on FILTER, the envelope on the Polivoks's and the Gremlin's envelope pages, nothing else */
         if (EP.idx == EPI_EDIT) epg_filter();
-        else if ((EP.idx == EPI_ENV || EP.idx == EPI_ENV2) && EP.eng != ENG_TB3) epg_env();
+        else if ((EP.idx == EPI_ENV || EP.idx == EPI_ENV2) && EP.eng != ENG_DFM) epg_env();
         return;
     }
     if (EP.eng == ENG_DRUM && EP.idx == EPI_ARP) return;                         /* the prototype draws nothing there (dgrey() is not defined) */
@@ -451,9 +451,9 @@ static void epg_draw(void)
 {
     if (vm_on()) { vm_draw(); return; }
     if (epg_wave_page()) { epg_wave_draw(); return; }
-    if (EP.eng >= ENG_TB3) {
+    if (EP.eng >= ENG_DFM) {
         if (EP.idx == EPI_EDIT) epg_filter_draw();
-        else if ((EP.idx == EPI_ENV || EP.idx == EPI_ENV2) && EP.eng != ENG_TB3) epg_env_draw();
+        else if ((EP.idx == EPI_ENV || EP.idx == EPI_ENV2) && EP.eng != ENG_DFM) epg_env_draw();
         return;
     }
     if (EP.eng == ENG_DRUM && EP.idx == EPI_ARP) return;
