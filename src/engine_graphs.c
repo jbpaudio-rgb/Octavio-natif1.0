@@ -226,15 +226,19 @@ static int32_t ep_log2mag(int32_t lz_q16, int32_t k_q16)      /* log2 |(1 + jz)^
 static void epg_filter(void)
 {
     int t = voices_sel(), e = EP.eng, x, n = 0;
-    int cut = e == ENG_MOOG ? voices_param_get(t, e, MG_CUT) : voices_param_get(t, e, PR_CUT);
-    int res = e == ENG_MOOG ? voices_param_get(t, e, MG_RES) : voices_param_get(t, e, PR_RES);
-    int env = e == ENG_MOOG ? voices_param_get(t, e, MG_ENV) : voices_param_get(t, e, PR_ENV);
+    int cut = e == ENG_MOOG ? voices_param_get(t, e, MG_CUT) : e == ENG_TB3 ? voices_param_get(t, e, TB_CUT) : e == ENG_SSAW ? voices_param_get(t, e, SS_CUT) : e == ENG_GREM ? voices_param_get(t, e, GM_CUT) : voices_param_get(t, e, PR_CUT);
+    int res = e == ENG_MOOG ? voices_param_get(t, e, MG_RES) : e == ENG_TB3 ? voices_param_get(t, e, TB_RES) : e == ENG_SSAW ? voices_param_get(t, e, SS_RES) : e == ENG_GREM ? voices_param_get(t, e, GM_RES) : voices_param_get(t, e, PR_RES);
+    int env = e == ENG_MOOG ? voices_param_get(t, e, MG_ENV) : e == ENG_TB3 ? voices_param_get(t, e, TB_ENV) : e == ENG_SSAW ? voices_param_get(t, e, SS_ENV) : e == ENG_GREM ? 0 : voices_param_get(t, e, PR_ENV);
     int32_t l2fc, l2fc2, k_q16, l2f20 = lg2q16(20, 0), l2k = lg2q16(1000, 0), cap = lg2q16(18000, 0);
     static int32_t ya[EW / 2 + 2], yb[EW / 2 + 2];
-    if (e == ENG_MOOG) {
+    if (e == ENG_MOOG || e == ENG_SSAW || e == ENG_GREM) {                    /* the new engines: the same cutoff law as the Minimoog's (their own resonance scale; a 4-pole curve is drawn for their 2-pole filter: indicative) */
         l2fc = lg2q16(30, 0) + (cut * 602931) / 1000;                         /* 30 * 2^(cut * 9.2) */
-        k_q16 = (int32_t)(res * 267);                                         /* 4 * res * 1.02 */
+        k_q16 = (int32_t)(res * (e == ENG_MOOG ? 267 : 196));                 /* 4 * res * 1.02 */
         l2fc2 = l2fc + (env * 327680) / 1000;                                 /* * 2^(env * 5) */
+    } else if (e == ENG_TB3) {
+        l2fc = lg2q16(150, 0) + (cut * 283100) / 1000;                        /* 150 Hz .. 3 kHz */
+        k_q16 = (int32_t)(res * 262);                                         /* the ladder's k up to ~4 (the loop's high-pass lets it ring a bit beyond) */
+        l2fc2 = l2fc + (env * 163840) / 1000;                                 /* up to 2.5 octaves of sweep */
     } else {
         l2fc = lg2q16(40, 0) + (cut * 576717) / 1000;                         /* 40 * 2^(cut * 8.8) */
         k_q16 = (int32_t)(res * 257);                                         /* 4 * res * .98 */
@@ -279,7 +283,13 @@ static int32_t ep_env_at(int32_t u)               /* env(u), u in the same units
 static void epg_env(void)
 {
     int t = voices_sel(), e = EP.eng, e2 = EP.idx == EPI_ENV2, x, n = 0, sa, sd2, sr, rel_dec = 0;
-    if (e == ENG_MOOG) {
+    if (e == ENG_SSAW) {
+        sa = voices_param_get(t, e, e2 ? SS_FATK : SS_ATK); sd2 = voices_param_get(t, e, e2 ? SS_FDEC : SS_DEC);
+        ep_env_s = voices_param_get(t, e, SS_SUS); sr = voices_param_get(t, e, SS_REL);
+    } else if (e == ENG_GREM) {
+        sa = voices_param_get(t, e, GM_ATK); sd2 = voices_param_get(t, e, GM_DEC);
+        ep_env_s = 600; sr = voices_param_get(t, e, GM_REL);                    /* its sustain is fixed at .6 */
+    } else if (e == ENG_MOOG) {
         sa = voices_param_get(t, e, e2 ? MG_FATK : MG_ATK); sd2 = voices_param_get(t, e, e2 ? MG_FDEC : MG_DEC);
         ep_env_s = voices_param_get(t, e, e2 ? MG_FSUS : MG_SUS);
         sr = sd2; rel_dec = voices_param_get(t, e, MG_REL);
@@ -377,7 +387,11 @@ static void epg_drum_draw(void)
 static void epg_prepare(void)
 {
     eg_key[0] = -1;                                                              /* the ENV page's strokes are being reused */
-    if (EP.eng >= ENG_TB3) return;                                               /* TB-303 / Supersaw / Gremlin: no graph yet */
+    if (EP.eng >= ENG_TB3) {                                                     /* TB-303 / Supersaw / Gremlin: the filter curve on FILTER, the envelope on the Supersaw's and the Gremlin's envelope pages, nothing else */
+        if (EP.idx == EPI_EDIT) epg_filter();
+        else if ((EP.idx == EPI_ENV || EP.idx == EPI_ENV2) && EP.eng != ENG_TB3) epg_env();
+        return;
+    }
     if (EP.eng == ENG_DRUM && EP.idx == EPI_ARP) return;                         /* the prototype draws nothing there (dgrey() is not defined) */
     if (EP.eng == ENG_DRUM) epg_drum();
     else if (EP.idx == EPI_EDIT) epg_filter();
@@ -386,7 +400,11 @@ static void epg_prepare(void)
 }
 static void epg_draw(void)
 {
-    if (EP.eng >= ENG_TB3) return;
+    if (EP.eng >= ENG_TB3) {
+        if (EP.idx == EPI_EDIT) epg_filter_draw();
+        else if ((EP.idx == EPI_ENV || EP.idx == EPI_ENV2) && EP.eng != ENG_TB3) epg_env_draw();
+        return;
+    }
     if (EP.eng == ENG_DRUM && EP.idx == EPI_ARP) return;
     if (EP.eng == ENG_DRUM) epg_drum_draw();
     else if (EP.idx == EPI_EDIT) epg_filter_draw();
