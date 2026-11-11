@@ -52,7 +52,7 @@ static int pp_wq, ap_wq, sel_wq;
 /* list overlay */
 static uint32_t list_until;
 static char list_title[20], list_note[24];
-static int list_cur, list_n, list_kind;            /* kind 0 presets, 1 algorithm */
+static int list_cur, list_n, list_kind;            /* kind 0 presets, 1 algorithm, 2 the drum kits */
 /* toast */
 static uint32_t toast_until;
 static char toast_a[24], toast_b[24];
@@ -514,6 +514,7 @@ static int32_t ak_get(void)
 {
     int h = lane_h();
     if (h >= 0) { int k = voices_param_get(sel, ENG_DRUM, DR_ID(h, DR_KV)); return ((int32_t)(k < 0 ? 0 : k > 2 ? 2 : k) << Q) / 2; }
+    if (sel >= DRUM_T0) { int k = voices_param_get(sel, ENG_DRUM, DR_ID(0, DR_KV)); return ((int32_t)(k < 0 ? 0 : k > 2 ? 2 : k) << Q) / 2; }      /* track 4: the kit */
     return ((int32_t)eng_li(cur_engine()) << Q) / (ceng_n() - 1);
 }
 static void ak_set(int32_t n)
@@ -524,6 +525,16 @@ static void ak_set(int32_t n)
         voices_param(sel, ENG_DRUM, DR_ID(h, DR_KV), round_q(n, 2));
         ap_q = (int)n;
         lane_toast(h, g_ms); bump();
+        return;
+    }
+    if (sel >= DRUM_T0) {                           /* track 4 is the drum machine only: ALGORITHM picks the kit of its six voices */
+        char kt[20], kn[4];
+        if (cur_engine() != ENG_DRUM) { voices_set_engine(sel, ENG_DRUM); PV[P_TYP0 + (sel & 3)] = ENG_DRUM; }
+        voices_param(sel, ENG_DRUM, DR_ID(0, DR_KIT), round_q(n, 2));
+        ap_q = (int)n;
+        scopy(kt, "KIT \x02 T", sizeof kt); itoa2(kn, sel + 1, 0); sappend(kt, kn, sizeof kt);
+        show_list(2, kt, round_q(n, 2), 3, "", g_ms);
+        ui_params_changed(); bump();
         return;
     }
     if (i != cur_engine()) { voices_set_engine(sel, i); PV[P_TYP0 + (sel & 3)] = (int16_t)i; ui_params_changed(); }
@@ -572,7 +583,7 @@ void ctrl_side(int role, int steps, uint32_t ms)
 {
     g_ms = ms;
     if (role == ROLE_PRESETS) side_wheel(steps, ONE / 50, pk_get, pk_set, &pp_ws, &pp_wq);
-    else if (role == ROLE_ALGO) side_wheel(steps, lane_h() >= 0 ? ONE / 2 : ONE / 50, ak_get, ak_set, &ap_ws, &ap_wq);
+    else if (role == ROLE_ALGO) side_wheel(steps, lane_h() >= 0 || sel >= DRUM_T0 ? ONE / 2 : ONE / 50, ak_get, ak_set, &ap_ws, &ap_wq);
     else if (pg == PGN_DSEQ && cur_engine() == ENG_DRUM && !pend && !type_held() && !kit_h() && steps != 0) {      /* SELECT alone on the drum sequencer: the next / previous voice (lane), wrapping; its black key lights (leds.c) and the grid shows it */
         int v = ((int)dv[sel & 3] + steps) % 6;
         if (v < 0) v += 6;
@@ -781,7 +792,8 @@ int ctrl_list_rows(char rows[5][24], char tags[5][8], int cur[1], char *title, c
     cur[0] = list_cur - a;
     for (i = a; i < n && cnt < 5; i++, cnt++) {
         tags[cnt][0] = 0;
-        if (list_kind == 1) {
+        if (list_kind == 2) scopy(rows[cnt], KIT_NAME[i < 3 ? i : 2], 24);        /* track 4: the kits */
+        else if (list_kind == 1) {
             scopy(rows[cnt], etag(LIDX[i]), 24);
             if (LIDX[i] == ENG_DRUM) {                                           /* "DRUM \x02 808": dnE(), the kit of the six voices ("MIX" when they differ) */
                 int v, k0 = voices_param_get(sel, ENG_DRUM, DR_ID(0, DR_KV)), same = 1;
