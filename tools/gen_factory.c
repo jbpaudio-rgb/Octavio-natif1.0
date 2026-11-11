@@ -40,6 +40,7 @@ typedef struct { const char *name; int eng; const kv_t *p; int kit; uint16_t g[6
 #define K(...) (const kv_t[]){ __VA_ARGS__, { -1, 0 } }
 #define V3P(s, d, a) { V3_PIN(s, d), a }
 #define FAC_K0 100
+#define D(v, x, a) { DR_ID(v, x), a }
 
 static const fp_t FP[] = {
  /* the Vactrol */
@@ -91,9 +92,20 @@ static const fp_t FP[] = {
      {DF_ADC,200},{DF_FDC,200},{DF_FEG,200},{DF_VDC,100}) },
  /* the drum machine: kit and the six lanes of 16 steps (BD SD CH OH CP CB by default) */
  { "808 BASIC", ENG_DRUM, K({-2,0}), 0, { 0x1111, 0x1010, 0x5555, 0x4040, 0x0000, 0x0000 } },
- { "TECHNO", ENG_DRUM, K({-2,0}), 1, { 0x1111, 0x0000, 0x5555, 0x4444, 0x1010, 0x0800 } },
- { "BREAKBEAT", ENG_DRUM, K({-2,0}), 2, { 0x0291, 0x1210, 0x5555, 0x0400, 0x0000, 0x0000 } },
- { "ELECTRO", ENG_DRUM, K({-2,0}), 0, { 0x0925, 0x1010, 0xAAAA, 0x0000, 0x1000, 0x0402 } },
+ { "TECHNO", ENG_DRUM, K({-2,0},D(0,DR_TUNE,380),D(0,DR_DECAY,640),D(0,DR_DRIVE,550),D(1,DR_TUNE,420),D(1,DR_DECAY,300),D(1,DR_TONE,700),D(2,DR_DECAY,250),D(2,DR_TONE,750),
+     D(3,DR_DECAY,420),D(3,DR_TONE,700),D(4,DR_DECAY,420),D(4,DR_DRIVE,350),D(5,DR_TUNE,620),D(5,DR_DECAY,350)), 1, { 0x1111, 0x0000, 0x5555, 0x4444, 0x1010, 0x0800 } },
+ { "BREAKBEAT", ENG_DRUM, K({-2,0},D(0,DR_TUNE,560),D(0,DR_DECAY,420),D(1,DR_TUNE,480),D(1,DR_DECAY,560),D(1,DR_TONE,420),D(2,DR_DECAY,380),D(2,DR_TONE,420),D(3,DR_DECAY,650),
+     D(4,DR_TUNE,550),D(4,DR_DECAY,500),D(5,DR_TUNE,430),D(5,DR_DECAY,550)), 2, { 0x0291, 0x1210, 0x5555, 0x0400, 0x0000, 0x0000 } },
+ { "ELECTRO", ENG_DRUM, K({-2,0},D(0,DR_TUNE,680),D(0,DR_DECAY,300),D(0,DR_PEAK,750),D(0,DR_DRIVE,300),D(1,DR_TUNE,620),D(1,DR_DECAY,380),D(1,DR_TONE,650),D(1,DR_DRIVE,400),
+     D(2,DR_TUNE,600),D(2,DR_DECAY,150),D(3,DR_TUNE,580),D(4,DR_TUNE,650),D(4,DR_DECAY,650),D(4,DR_DRIVE,500),D(5,DR_TUNE,720),D(5,DR_DECAY,450)), 0, { 0x0925, 0x1010, 0xAAAA, 0x0000, 0x1000, 0x0402 } },
+ { "HOUSE", ENG_DRUM, K({-2,0},D(0,DR_TUNE,430),D(0,DR_DECAY,520),D(0,DR_DRIVE,350),D(4,DR_DECAY,450),D(2,DR_DECAY,300),D(3,DR_DECAY,500),D(3,DR_TONE,650)), 1, { 0x1111, 0x0000, 0xAAAA, 0x4444, 0x1010, 0x0000 } },
+ { "TRAP", ENG_DRUM, K({-2,0},D(0,DR_TUNE,300),D(0,DR_DECAY,780),D(0,DR_DRIVE,600),D(1,DR_TUNE,560),D(1,DR_DECAY,260),D(4,DR_DECAY,380),D(2,DR_DECAY,180),D(2,DR_TONE,800),D(3,DR_DECAY,600)), 1, { 0x0205, 0x0100, 0xFFFF, 0x8000, 0x0100, 0x0000 } },
+ { "DNB", ENG_DRUM, K({-2,0},D(0,DR_TUNE,520),D(0,DR_DECAY,330),D(1,DR_TUNE,560),D(1,DR_DECAY,360),D(1,DR_TONE,620),D(2,DR_DECAY,220),D(3,DR_DECAY,400)), 1, { 0x0401, 0x1010, 0x5555, 0x2000, 0x0000, 0x0000 } },
+ { "DUB HALF", ENG_DRUM, K({-2,0},D(0,DR_TUNE,340),D(0,DR_DECAY,700),D(1,DR_TUNE,440),D(1,DR_DECAY,520),D(1,DR_DRIVE,450),D(2,DR_DECAY,300),D(5,DR_TUNE,380),D(5,DR_DECAY,700)), 0, { 0x0001, 0x0100, 0x5555, 0x0000, 0x0000, 0x0020 } },
+ { "ROCK", ENG_DRUM, K({-2,0},D(0,DR_TUNE,480),D(0,DR_DECAY,450),D(1,DR_DECAY,560),D(1,DR_TONE,560),D(2,DR_DECAY,320),D(3,DR_DECAY,600)), 2, { 0x0501, 0x1010, 0x5555, 0x8000, 0x0000, 0x0000 } },
+ { "LATIN", ENG_DRUM, K({-2,0},D(0,DR_TUNE,500),D(0,DR_DECAY,420),D(1,DR_TUNE,600),D(1,DR_DECAY,260),D(2,DR_TUNE,560),D(2,DR_DECAY,200),D(4,DR_DECAY,300),D(5,DR_TUNE,640),D(5,DR_DECAY,420)), 2, { 0x1111, 0x0000, 0x5555, 0x0000, 0x0000, 0x1449 } },
+ { "LOFI HOP", ENG_DRUM, K({-2,0},D(0,DR_TUNE,420),D(0,DR_DECAY,430),D(0,DR_DRIVE,600),D(1,DR_TUNE,460),D(1,DR_DECAY,320),D(1,DR_DRIVE,650),D(2,DR_TONE,350),D(2,DR_DECAY,200),D(3,DR_TONE,350)), 2, { 0x0211, 0x1010, 0x5555, 0x0000, 0x0000, 0x0000 } },
+ { "MINIMAL", ENG_DRUM, K({-2,0},D(0,DR_TUNE,400),D(0,DR_DECAY,400),D(2,DR_TUNE,650),D(2,DR_DECAY,120),D(5,DR_TUNE,700),D(5,DR_DECAY,200),D(4,DR_DECAY,200)), 1, { 0x1111, 0x0000, 0xAAAA, 0x0000, 0x0400, 0x0A00 } },
 };
 #define NFP ((int)(sizeof FP / sizeof FP[0]))
 
@@ -117,6 +129,7 @@ int main(void)
         if (f->eng == ENG_DRUM) {
             int v;
             voices_param(track, ENG_DRUM, DR_ID(0, DR_KIT), f->kit);
+            for (k = 0; f->p[k].id >= 0 || f->p[k].id == -2; k++) if (f->p[k].id >= 0) voices_param(track, ENG_DRUM, f->p[k].id, f->p[k].v);
             for (v = 0; v < 6; v++) drum_gates_set(track, v, f->g[v]);
         } else for (k = 0; f->p[k].id >= 0; k++) {
             if (f->eng == ENG_VAC) PV[f->p[k].id] = f->p[k].v;

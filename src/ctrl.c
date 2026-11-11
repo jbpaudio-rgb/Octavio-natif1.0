@@ -107,20 +107,39 @@ static void show_list(int kind, const char *title, int cur, int n, const char *n
     list_until = ms + LIST_MS;
     bump();
 }
+static int btype(int i);
+static int cur_engine_(void);
+/* the list shows the presets of the family of the selected track: drum presets on a drum track, the synths' on the others */
+static int vis(int j) { return (btype(j) == ENG_DRUM) == (cur_engine_() == ENG_DRUM); }
+static int nvis(void) { int j, n = 0; for (j = 0; j < nbank; j++) n += vis(j); return n; }
+static int vpos(void)                              /* 1-based place of the current preset in the list, 0: none / not of this family */
+{
+    int j, n = 0;
+    if (pi <= 0) return 0;
+    for (j = 0; j < pi; j++) n += vis(j);
+    return vis(pi - 1) ? n : 0;
+}
+static int vnth(int p)                             /* the bank index of the p-th (1-based) visible preset */
+{
+    int j, n = 0;
+    for (j = 0; j < nbank; j++) if (vis(j) && ++n == p) return j;
+    return -1;
+}
 static void presets_list(const char *note, uint32_t ms)       /* showList("PRESETS", plist(), pi, note) */
 {
     char nb[24];
     if (!note) {                                               /* (cur+1) + " / " + n */
-        itoa2(nb, pi + 1, 0); sappend(nb, " / ", sizeof nb); { char t[8]; itoa2(t, nbank + 1, 0); sappend(nb, t, sizeof nb); }
+        itoa2(nb, vpos() + 1, 0); sappend(nb, " / ", sizeof nb); { char t[8]; itoa2(t, nvis() + 1, 0); sappend(nb, t, sizeof nb); }
         note = nb;
     }
-    show_list(0, "PRESETS", pi, nbank + 1, note, ms);
+    show_list(0, "PRESETS", vpos(), nvis() + 1, note, ms);
 }
 
 /* ---- the bank ---- */
 static uint32_t e_len(const uint8_t *e) { return (uint32_t)(e[0] | (e[1] << 8)); }
 static const char *bname(int i) { return (const char *)bpool + boff[i] + 2; }
 static int btype(int i) { return bpool[boff[i] + 15]; }
+static int cur_engine_(void) { return cur_engine(); }
 static int bk(int i) { return bpool[boff[i] + 16] | (bpool[boff[i] + 17] << 8); }
 static uint32_t blen(int i) { return e_len(bpool + boff[i]); }
 static int b_pos(int type, int k)                  /* where an entry (type, k) goes: after the equal ones */
@@ -189,7 +208,7 @@ static void save_preset(void)                      /* savePreset(): open the edi
 {
     int i, kmax = 0;
     char nm[NAME_LEN + 1], t[8];
-    pend_ow = pi > 0;
+    pend_ow = vpos() > 0;
     for (i = 0; i < nbank; i++) if (bk(i) > kmax) kmax = bk(i);
     pend_k = kmax + 1;
     pend = 1;
@@ -465,15 +484,16 @@ static uint32_t g_ms;
 /* PRESETS: n * bank.length rounds to the entry (0 = none) */
 static int32_t pk_get(void)
 {
-    if (round_q(pp_q, nbank) != pi) pp_q = (int)(((int32_t)pi << Q) / (nbank > 1 ? nbank : 1));
+    int nv = nvis(), vp = vpos();
+    if (round_q(pp_q, nv) != vp) pp_q = (int)(((int32_t)vp << Q) / (nv > 1 ? nv : 1));
     return pp_q;
 }
 static void pk_set(int32_t n)
 {
-    int i = round_q(n, nbank);
+    int nv = nvis(), i = round_q(n, nv);
     pp_q = (int)n;
-    if (i != pi) { pi = i; if (i > 0) load_preset(i - 1); }
-    presets_list(nbank ? "" : "PRESS SAVE", g_ms);
+    if (i != vpos()) { pi = i > 0 ? vnth(i) + 1 : 0; if (i > 0) load_preset(pi - 1); }
+    presets_list(nv ? "" : "PRESS SAVE", g_ms);
 }
 /* ALGORITHM: the engine of the track; on the drum sequencer with a lane held (OP1..6), that lane's kit (laneH()) */
 static const char *const KIT_NAME[3] = { "808", "909", "ACOUSTIC" };
@@ -771,7 +791,7 @@ int ctrl_list_rows(char rows[5][24], char tags[5][8], int cur[1], char *title, c
             }
         }
         else if (i == 0) scopy(rows[cnt], "+ NEW", 24);
-        else { scopy(rows[cnt], bname(i - 1), 24); scopy(tags[cnt], etag(btype(i - 1)), 8); }
+        else { int b = vnth(i); scopy(rows[cnt], bname(b), 24); scopy(tags[cnt], etag(btype(b)), 8); }
     }
     return cnt;
 }
