@@ -4,11 +4,11 @@
  * tanh(sum(track) * .8 * 1.5 * .7). Parameter values are thousandths (selects: indices), like params.h. */
 #pragma once
 #include <stdint.h>
-enum { ENG_VAC, ENG_MOOG, ENG_PROPH, ENG_DRUM, ENG_TB3, ENG_POL, ENG_VC3, ENG_N };
-/* the parameters of the TB-303, Polivoks and VC3 engines (eng_tb3.c / eng_pol.c / eng_vc3.c); values in thousandths */
+enum { ENG_VAC, ENG_MOOG, ENG_PROPH, ENG_DRUM, ENG_TB3, ENG_JUN, ENG_VC3, ENG_N };
+/* the parameters of the TB-303, Juno and VC3 engines (eng_tb3.c / eng_jun.c / eng_vc3.c); values in thousandths */
 enum { TB_WAVE, TB_TUNE, TB_CUT, TB_RES, TB_ENV, TB_DEC, TB_ACC, TB_SLD, TB_DRV, TB_LVL, TB_COUNT };
-enum { PL_TUNE, PL_O2T, PL_O1W, PL_O1P, PL_O2W, PL_O2P, PL_SYN, PL_M1, PL_M2, PL_MN, PL_DRV, PL_CUT, PL_RES, PL_MOD, PL_ENV, PL_LR, PL_LP, PL_LW, PL_LF,
-       PL_ATK, PL_DEC, PL_SUS, PL_REL, PL_FATK, PL_FDEC, PL_LVL, PL_COUNT };
+enum { JN_TUNE, JN_SAW, JN_PUL, JN_SUB, JN_NSE, JN_PW, JN_PWM, JN_DCO, JN_LR, JN_LD, JN_HPF, JN_CUT, JN_RES, JN_ENV, JN_LFC, JN_KYB,
+       JN_ATK, JN_DEC, JN_SUS, JN_REL, JN_VCA, JN_CHO, JN_DET, JN_LVL, JN_COUNT };
 enum { V3_TUNE, V3_O1W, V3_O2W, V3_O2T, V3_O3R, V3_O3S, V3_CUT, V3_RES, V3_ATK, V3_DEC, V3_SUS, V3_REL, V3_LVL, V3_FMA, V3_FMS,
        V3_PIN0,                                                 /* the pin matrix: V3_PIN0 + 10 * source + destination, 0 = no pin, 1..1000 = its amount */
        V3_COUNT = V3_PIN0 + 100 };
@@ -85,13 +85,14 @@ void tb3_on(int t, int note, int vel15);
 void tb3_off(int t);
 int  tb3_active(int t);
 void tb3_render(int t, int32_t *out, int n);
-void pol_init(int t);
-void pol_set(int t, int id, int v);
-int  pol_get(int t, int id);
-void pol_on(int t, int note, int vel15);
-void pol_off(int t);
-int  pol_active(int t);
-void pol_render(int t, int32_t *out, int n);
+void jn_init(int t);
+void jn_set(int t, int id, int v);
+int  jn_get(int t, int id);
+void jn_on(int t, int note, int vel15);
+void jn_off(int t);
+void jn_off_note(int t, int note);
+int  jn_active(int t);
+void jn_render(int t, int32_t *out, int n);
 void v3_init(int t);
 void v3_set(int t, int id, int v);
 int  v3_get(int t, int id);

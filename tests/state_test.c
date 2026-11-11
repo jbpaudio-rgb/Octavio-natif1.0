@@ -79,7 +79,7 @@ static int fails, quiet;
 /* the whole state through the public getters */
 typedef struct {
     int16_t pv[P_COUNT];
-    int16_t mg[4][MG_COUNT], pr[4][PR_COUNT], dr[4][DR_COUNT], tb[4][TB_COUNT], pl[4][PL_COUNT], v3[4][V3_COUNT];
+    int16_t mg[4][MG_COUNT], pr[4][PR_COUNT], dr[4][DR_COUNT], tb[4][TB_COUNT], pl[4][JN_COUNT], v3[4][V3_COUNT];
     int16_t arp[4][ARP_COUNT], sq[4][96];
     int16_t mt[4][MODT_N], dg[4][6];                 /* the matrix of each track (dst.c), the drum sequencer lanes */
     uint8_t eng[4], owner, arps[4][ARP_STATE_N];
@@ -96,7 +96,7 @@ static void take(snap_t *s)
         for (i = 0; i < PR_COUNT; i++) s->pr[t][i] = (int16_t)voices_param_get(t, ENG_PROPH, i);
         for (i = 0; i < DR_COUNT; i++) s->dr[t][i] = (int16_t)voices_param_get(t, ENG_DRUM, i);
         for (i = 0; i < TB_COUNT; i++) s->tb[t][i] = (int16_t)voices_param_get(t, ENG_TB3, i);
-        for (i = 0; i < PL_COUNT; i++) s->pl[t][i] = (int16_t)voices_param_get(t, ENG_POL, i);
+        for (i = 0; i < JN_COUNT; i++) s->pl[t][i] = (int16_t)voices_param_get(t, ENG_JUN, i);
         for (i = 0; i < V3_COUNT; i++) s->v3[t][i] = (int16_t)voices_param_get(t, ENG_VC3, i);
         for (i = 0; i < ARP_COUNT; i++) s->arp[t][i] = (int16_t)voices_arp_get(t, i);
         s->eng[t] = (uint8_t)voices_engine(t);
@@ -119,7 +119,7 @@ static int diff(const snap_t *a, const snap_t *b, int scene, const char *what)
         for (i = 0; i < PR_COUNT; i++) if (a->pr[t][i] != b->pr[t][i]) { bad++; if (bad < 6) if (vb) printf("  %s: prophet t%d %d: %d != %d\n", what, t, i, a->pr[t][i], b->pr[t][i]); }
         for (i = 0; i < DR_COUNT; i++) if (i % DR_PER != DR_KIT && a->dr[t][i] != b->dr[t][i]) { bad++; if (bad < 6) if (vb) printf("  %s: drum t%d %d: %d != %d\n", what, t, i, a->dr[t][i], b->dr[t][i]); }
         for (i = 0; i < TB_COUNT; i++) if (a->tb[t][i] != b->tb[t][i]) { bad++; if (bad < 6) if (vb) printf("  %s: tb303 t%d %d: %d != %d\n", what, t, i, a->tb[t][i], b->tb[t][i]); }
-        for (i = 0; i < PL_COUNT; i++) if (a->pl[t][i] != b->pl[t][i]) { bad++; if (bad < 6) if (vb) printf("  %s: polivoks t%d %d: %d != %d\n", what, t, i, a->pl[t][i], b->pl[t][i]); }
+        for (i = 0; i < JN_COUNT; i++) if (a->pl[t][i] != b->pl[t][i]) { bad++; if (bad < 6) if (vb) printf("  %s: juno t%d %d: %d != %d\n", what, t, i, a->pl[t][i], b->pl[t][i]); }
         for (i = 0; i < V3_COUNT; i++) if (a->v3[t][i] != b->v3[t][i]) { bad++; if (bad < 6) if (vb) printf("  %s: vc3 t%d %d: %d != %d\n", what, t, i, a->v3[t][i], b->v3[t][i]); }
         for (i = 0; i < ARP_COUNT; i++) if (a->arp[t][i] != b->arp[t][i]) { bad++; if (bad < 6) if (vb) printf("  %s: arp t%d %d: %d != %d\n", what, t, i, a->arp[t][i], b->arp[t][i]); }
         for (i = 0; i < MODT_N; i++) if (a->mt[t][i] != b->mt[t][i]) { bad++; if (bad < 6) if (vb) printf("  %s: matrix t%d %d: %d != %d\n", what, t, i, a->mt[t][i], b->mt[t][i]); }
@@ -167,7 +167,7 @@ static void randomize(int density, int seed_engines)
         for (i = 0; i < MG_COUNT; i++) if ((int)(rnd() % 100u) < density) voices_param(t, ENG_MOOG, i, rr(0, 1000));
         for (i = 0; i < PR_COUNT; i++) if ((int)(rnd() % 100u) < density) voices_param(t, ENG_PROPH, i, rr(0, 1000));
         for (i = 0; i < TB_COUNT; i++) if ((int)(rnd() % 100u) < density) voices_param(t, ENG_TB3, i, rr(0, i == TB_WAVE ? 1 : 1000));
-        for (i = 0; i < PL_COUNT; i++) if ((int)(rnd() % 100u) < density) voices_param(t, ENG_POL, i, rr(0, 1000));
+        for (i = 0; i < JN_COUNT; i++) if ((int)(rnd() % 100u) < density) voices_param(t, ENG_JUN, i, rr(0, 1000));
         for (i = 0; i < V3_COUNT; i++) if ((int)(rnd() % 100u) < density) voices_param(t, ENG_VC3, i, rr(0, 1000));
         for (i = 0; i < DR_COUNT; i++) if (i % DR_PER != DR_KIT && (int)(rnd() % 100u) < density) voices_param(t, ENG_DRUM, i, rr(0, i % DR_PER == DR_KV ? 2 : i % DR_PER == DR_TYPE ? 7 : 1000));
         for (i = 0; i < ARP_COUNT; i++) if ((int)(rnd() % 100u) < density) voices_arp(t, i, rr(0, 3));
