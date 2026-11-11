@@ -11,7 +11,7 @@ enum { EF_PCT, EF_MSA, EF_MSD, EF_C7, EF_C12, EF_SEL, EF_SHA, EF_SHB };     /* h
 typedef struct { uint8_t fmt, step, nopt; const char *const *opts; } epd_t;
 static const char *const O_WAVE[] = { "Tri", "Saw", "Square", "Pulse" };
 static const char *const O_LFO[] = { "Sine", "Tri", "Square", "S&H" };
-static const char *const O_FMS[] = { "LFO", "OSC1", "OSC2", "NOISE", "ENV", "FILT", "MOD1", "MOD2", "MOD3", "MOD4", "SH1", "SH2", "SEQ1", "SEQ2", "SEQ3", "SEQ4", "SEQ5", "SEQ6" };
+static const char *const O_FMS[] = { "LFO", "OSC1", "OSC2", "NOISE", "ENV", "FILT", "LFO1", "LFO2", "LFO3", "SH1", "SEQ1", "SEQ2", "SEQ3", "SEQ4" };
 static const char *const O_RNG[] = { "32'", "16'", "8'", "4'", "2'" };
 static const char *const O_NZ[] = { "White", "Pink", "Brown", "Blue", "Crackle" };
 static const char *const O_REL[] = { "Short", "= Decay" };
@@ -42,7 +42,7 @@ static const epd_t TBD[TB_COUNT] = { SL(2, O_TBW), { EF_C7, 5, 0, 0 }, PC(10), P
 static const char *const O_OFFON[] = { "Off", "On" };
 static const epd_t PLD[PL_COUNT] = { { EF_C7, 5, 0, 0 }, PC(10), PC(10), PC(10), PC(10), PC(10), SL(2, O_OFFON), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10),
                                      PC(10), PC(10), PC(10), PC(10), { EF_MSA, 5, 0, 0 }, { EF_MSD, 5, 0, 0 }, PC(10), { EF_MSD, 5, 0, 0 }, { EF_MSA, 5, 0, 0 }, { EF_MSD, 5, 0, 0 }, PC(10) };
-static const epd_t V3D[V3_COUNT] = { { EF_C7, 5, 0, 0 }, PC(10), PC(10), PC(10), PC(10), SL(4, O_LFO), PC(10), PC(10), { EF_MSA, 5, 0, 0 }, { EF_MSD, 5, 0, 0 }, PC(10), { EF_MSD, 5, 0, 0 }, PC(10), PC(10), SL(18, O_FMS),
+static const epd_t V3D[V3_COUNT] = { { EF_C7, 5, 0, 0 }, PC(10), PC(10), PC(10), PC(10), SL(4, O_LFO), PC(10), PC(10), { EF_MSA, 5, 0, 0 }, { EF_MSD, 5, 0, 0 }, PC(10), { EF_MSD, 5, 0, 0 }, PC(10), PC(10), SL(14, O_FMS),
                                      [V3_PIN0 ... V3_COUNT - 1] = PC(10) };
 static const epd_t DRD[DR_PER] = { PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10) };
 

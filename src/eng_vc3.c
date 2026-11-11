@@ -177,7 +177,7 @@ void v3_render(int t, int32_t *out, int n)
         if (g > 26000) g = 26000;                       /* a 4-pole with its one-sample feedback delay is no longer clean above ~ 0.4 */
         {                                                                          /* the filter FM source for this chunk: a voice source (read each sample) or a modulation-system bus value */
             int fs = m->p[V3_FMS];
-            fmbus = fs >= V3FS_MOD0; fmsrc = fmbus ? mod_bus[t][fs - V3FS_MOD0] : 0;
+            { static const uint8_t BUS[8] = { 0, 1, 2, 4, 6, 7, 8, 9 }; fmbus = fs >= V3FS_MOD0; fmsrc = fmbus ? mod_bus[t][BUS[fs - V3FS_MOD0]] : 0; }
             fmidx = fs == V3FS_LFO ? V3S_LFO : fs == V3FS_O1 ? V3S_O1 : fs == V3FS_O2 ? V3S_O2 : fs == V3FS_NOI ? V3S_NOI : fs == V3FS_ENV ? V3S_ENV : V3S_FILT;
         }
         for (j = 0; j < cnt; j++, i++) {
