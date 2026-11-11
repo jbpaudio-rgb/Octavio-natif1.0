@@ -11,7 +11,7 @@
 *{box-sizing:border-box}
 html,body{margin:0}
 body{background:var(--bg);color:var(--fg);font:13px/1.45 var(--mono);padding-block:14px 24px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
-.wrap{max-width:900px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+.wrap{max-width:1000px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
 h1{font:700 21px/1.1 var(--display);margin:0}
 .sub{color:var(--dim);margin:4px 0 0;max-width:70ch;text-wrap:pretty}
 .top{display:flex;flex-wrap:wrap;gap:10px 24px;justify-content:space-between;align-items:flex-end}
@@ -20,30 +20,39 @@ button:focus-visible{outline:2px solid var(--red);outline-offset:2px}
 button.on{background:var(--red);border-color:var(--red);color:#fff}
 .msg{color:var(--dim);font-size:12.5px;min-height:1.4em}
 .msg b{color:var(--fg)}
-.machine{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:14px;align-items:start}
-.left,.right{display:flex;flex-direction:column;gap:14px;align-items:center}
-.mid{display:flex;flex-direction:column;gap:12px;align-items:center;min-width:0}
-.screen{width:min(100%,480px);aspect-ratio:1;border:2px solid #000;border-radius:6px;background:#000;display:block;image-rendering:auto;box-shadow:0 0 0 1px var(--line)}
-.knob{display:flex;flex-direction:column;align-items:center;gap:4px;user-select:none;-webkit-user-select:none}
-.knob .dial{width:58px;height:58px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#3a3a40,#141416 70%);border:1px solid #000;box-shadow:0 0 0 1px var(--line);position:relative;touch-action:none;cursor:ns-resize}
-.knob .dial i{position:absolute;left:50%;top:6px;width:3px;height:16px;margin-left:-1.5px;background:var(--fg);border-radius:2px;transform-origin:50% 23px}
-.knob .nm{font-size:10.5px;letter-spacing:.1em;color:var(--dim)}
-.knob .pm{display:flex;gap:4px}
-.knob .pm button{min-height:30px;padding:2px 10px;line-height:1}
-.krow{display:flex;gap:14px;justify-content:center;flex-wrap:wrap}
-.btns{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;width:100%}
-.btns button{padding:8px 2px;font-size:12px;letter-spacing:.06em;position:relative}
-.btns button::after{content:"";position:absolute;top:4px;right:5px;width:6px;height:6px;border-radius:50%;background:#2a2a2e}
-.btns button.lit::after{background:var(--red);box-shadow:0 0 6px var(--red)}
-.btns button.hold{background:var(--red-d);border-color:var(--red)}
-.keys{position:relative;display:flex;height:120px;touch-action:none;user-select:none;-webkit-user-select:none;width:100%}
-.k{flex:1;background:var(--key);border:1px solid #9a9a96;border-top:0;border-radius:0 0 4px 4px;min-width:0;position:relative}
-.k.d{background:var(--red)}
-.bk{position:absolute;top:0;height:62%;background:#17171a;border:1px solid #000;border-radius:0 0 3px 3px;z-index:2;transform:translateX(-50%)}
-.bk.d{background:var(--red-d)}
-.k span{position:absolute;bottom:3px;left:0;right:0;text-align:center;font-size:9px;color:#6d6d70}
-.master{display:flex;flex-direction:column;align-items:center;gap:4px;color:var(--dim);font-size:10.5px;letter-spacing:.1em}
-.master input{width:90px}
+.machine{position:relative;background:#141414;border-radius:12px;padding:20px 18px 16px;box-shadow:inset 0 1px 0 #3a3a3a,0 12px 32px rgba(0,0,0,.45);font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;text-transform:uppercase;letter-spacing:.08em;display:flex;flex-direction:column;gap:14px}
+.fp{display:grid;grid-template-columns:minmax(0,26fr) minmax(0,24fr) minmax(0,50fr);gap:0 10px;align-items:start}
+.left{display:grid;grid-template-columns:repeat(2,1fr);gap:10px 6px;justify-items:center}
+.right{display:flex;flex-direction:column;gap:12px;min-width:0}
+.frame{aspect-ratio:1;width:100%;background:#000;border-radius:12%;padding:14.2%;box-shadow:inset 0 1px 0 #232323,0 2px 6px rgba(0,0,0,.5)}
+.screen{width:100%;height:100%;display:block;background:#050505;border-radius:3%;box-shadow:inset 0 0 14px rgba(0,0,0,.6)}
+.knob{display:flex;flex-direction:column;align-items:center;gap:4px;user-select:none;-webkit-user-select:none;width:100%}
+.knob .dial{order:1;width:46px;height:46px;border-radius:50%;position:relative;touch-action:none;cursor:ns-resize;background:radial-gradient(circle at 35% 30%,#5a5a5a,#0a0a0a 75%);box-shadow:0 3px 6px rgba(0,0,0,.6),0 0 0 2px #000,0 0 0 3px #3a3a3a}
+.knob .dial::before{content:"";position:absolute;inset:8px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#3c3c3c,#050505 80%);box-shadow:inset 0 -2px 3px rgba(255,255,255,.08)}
+.knob .dial i{position:absolute;left:50%;top:4px;width:3px;height:12px;margin-left:-1.5px;border-radius:2px;background:#f2efe6;transform-origin:50% 19px;z-index:1}
+.knob .nm{order:2;font:600 9px/1.2 "Helvetica Neue",Helvetica,Arial,sans-serif;letter-spacing:.08em;color:#a8a59d;text-align:center}
+.krow{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;justify-items:center}
+.krow .dial{background:radial-gradient(circle at 35% 30%,#7d858d,#2b3138 75%)}
+.krow .dial i{background:#141414}
+.krow .dial::before{background:radial-gradient(circle at 35% 30%,#7db4f7,#235eae 80%)}
+.krow .dial i{background:#fff}
+.btns{display:grid;grid-template-columns:repeat(6,1fr);gap:4px}
+.btns button{padding:6px 2px;min-height:0;font:600 9.5px/1.2 "Helvetica Neue",Helvetica,Arial,sans-serif;letter-spacing:.08em;text-transform:uppercase;background:#232323;border:1px solid #000;border-radius:3px;color:#e8e6e1;box-shadow:0 2px 0 #000;width:100%}
+.btns button::before{content:"";display:block;width:6px;height:6px;border-radius:50%;background:#000;margin:0 auto 5px}
+.btns button.lit::before{background:#ff3b1f;box-shadow:0 0 6px #ff3b1f}
+.btns button.hold{box-shadow:0 2px 0 #000,inset 0 0 0 1px #ff3b1f;color:#fff}
+.keys{position:relative;display:flex;height:96px;touch-action:none;user-select:none;-webkit-user-select:none;width:100%;border:6px solid #000;background:#000;border-radius:8px}
+.k{flex:1;margin:0 1px;background:linear-gradient(#2a2a2a,#0a0a0a);border:1px solid #000;box-shadow:inset 0 0 0 2px #1a1a1a,0 2px 0 #000;border-radius:0 0 8px 8px;min-width:0;position:relative}
+.k.d{background:linear-gradient(#d9362b,#8a1d14)}
+.bk{position:absolute;top:0;height:60%;background:linear-gradient(#4a5058,#1d2227);border:1px solid #000;box-shadow:inset 0 0 0 2px #232323;border-radius:0 0 6px 6px;z-index:2;transform:translateX(-50%)}
+.bk.d{background:#d9362b}
+.k span{position:absolute;bottom:4px;left:0;right:0;text-align:center;font-size:8px;color:#a8a59d}
+#pwr{position:absolute;top:5px;right:18px;display:flex;align-items:center;gap:6px;font:700 8px Helvetica,Arial,sans-serif;color:#8d8a83;letter-spacing:.14em}
+#pwr i{width:6px;height:6px;border-radius:50%;background:#3a1410}#pwr.on i{background:#ff3b1f;box-shadow:0 0 6px #ff3b1f}
+.master{display:flex;align-items:center;gap:10px;color:#a8a59d;font:600 9px Helvetica,Arial,sans-serif;letter-spacing:.1em;justify-content:flex-end}
+.master input{width:110px;accent-color:#ff3b1f}
+@media (max-width:700px){.fp{grid-template-columns:1fr;gap:12px}.frame{width:min(100%,300px);margin:0 auto;order:-1}.left{grid-template-columns:repeat(3,1fr)}.btns{grid-template-columns:repeat(4,1fr)}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
 details{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:10px 14px}
 summary{cursor:pointer;font-family:var(--display);font-weight:500}
 details p,details li{color:var(--dim);max-width:75ch}
@@ -63,18 +72,18 @@ details b{color:var(--fg);font-weight:600}
   <div class="msg" id="msg">L'écran et les boutons marchent déjà. « Activer le son » ouvre la sortie audio du navigateur.</div>
 
   <div class="machine">
-    <div class="left" id="left"></div>
-    <div class="mid">
-      <canvas id="lcd" class="screen" width="240" height="240" aria-label="Écran de la machine"></canvas>
-      <div class="krow" id="knobs"></div>
-      <div class="btns" id="btns"></div>
+    <div id="pwr"><i></i>POWER</div>
+    <div class="fp">
+      <div class="left" id="left"></div>
+      <div class="frame"><canvas id="lcd" class="screen" width="240" height="240" aria-label="Écran de la machine"></canvas></div>
+      <div class="right">
+        <div class="krow" id="knobs"></div>
+        <div class="btns" id="btns"></div>
+      </div>
     </div>
-    <div class="right">
-      <div class="master"><span>MASTER</span><input id="master" type="range" min="0" max="1000" value="826" aria-label="Volume général"></div>
-    </div>
+    <div class="keys" id="keys"></div>
+    <div class="master"><span>MASTER</span><input id="master" type="range" min="0" max="1000" value="826" aria-label="Volume général"></div>
   </div>
-
-  <div class="keys" id="keys"></div>
   <div class="msg" id="kmsg">Clavier d'ordinateur : A W S E D R F G Y H U J K O L P ; (la touche A est le fa le plus grave).</div>
 
   <details>
@@ -101,15 +110,14 @@ function msg(t){$("#msg").textContent=t;}
 /* ---- knobs ---- */
 function makeKnob(host,label,fn){
   const k=document.createElement("div");k.className="knob";
-  k.innerHTML='<div class="dial" role="slider" tabindex="0" aria-label="'+label+'"><i></i></div><div class="pm"><button aria-label="'+label+' moins">−</button><button aria-label="'+label+' plus">+</button></div><div class="nm">'+label+'</div>';
-  const d=k.querySelector(".dial"),i=k.querySelector("i"),[bm,bp]=k.querySelectorAll("button");
+  k.innerHTML='<div class="dial" role="slider" tabindex="0" aria-label="'+label+'"><i></i></div><div class="nm">'+label+'</div>';
+  const d=k.querySelector(".dial"),i=k.querySelector("i");
   let ang=0,acc=0,last=0;
   const turn=n=>{if(!X||!n)return;fn(n);ang+=n*12;i.style.transform="rotate("+ang+"deg)";};
   d.addEventListener("pointerdown",e=>{d.setPointerCapture(e.pointerId);last=e.clientY;acc=0;});
   d.addEventListener("pointermove",e=>{if(!d.hasPointerCapture(e.pointerId))return;acc+=last-e.clientY;last=e.clientY;const s=Math.trunc(acc/5);if(s){acc-=s*5;turn(s);}});
   d.addEventListener("wheel",e=>{e.preventDefault();turn(e.deltaY<0?1:-1);},{passive:false});
   d.addEventListener("keydown",e=>{if(e.key==="ArrowUp"||e.key==="ArrowRight")turn(1);if(e.key==="ArrowDown"||e.key==="ArrowLeft")turn(-1);});
-  bm.onclick=()=>turn(-1);bp.onclick=()=>turn(1);
   host.append(k);
 }
 
@@ -163,7 +171,7 @@ async function startAudio(){
   sp.connect(actx.destination);audioOn=true;
   if(actx.sampleRate!==44100)msg("Ce navigateur joue à "+actx.sampleRate+" Hz : le firmware est réglé pour 44 100 Hz, les notes seront décalées.");
   else msg("Son actif.");
-  $("#start").hidden=true;
+  $("#start").hidden=true;$("#pwr").classList.add("on");
 }
 function fw_keys(){X.fw_tick(Math.floor(performance.now()-t0),(held|tapped)>>>0);}
 
