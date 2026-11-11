@@ -74,11 +74,11 @@ static int32_t met(dvoice_t *V, int32_t m16, int32_t tf16)           /* six squa
 
 /* what makes the kits differ beyond the kick, snare and hats: per kit (808, 909, acoustic, Linn, DMX, Vermona) the clap's burst spacing / tail / filter, the cowbell's pair of squares, the toms' pitch, sweep and decay */
 static const uint16_t CLS[6] = { 507, 450, 507, 360, 600, 700 };                                   /* clap: samples between the bursts */
-static const int32_t CLA[6] = { A24(.16), A24(.22), A24(.16), A24(.10), A24(.30), A24(.12) };       /* the tail's decay */
+static const int32_t CLA[6] = { A24(.16), A24(.22), A24(.16), A24(.10), A24(.2), A24(.12) };       /* the tail's decay */
 static const int32_t CLH[6] = { Q16(.1), Q16(.14), Q16(.1), Q16(.2), Q16(.08), Q16(.16) };           /* high-pass */
 static const int32_t CLL[6] = { Q16(.12), Q16(.18), Q16(.12), Q16(.3), Q16(.07), Q16(.22) };        /* low-pass base */
 static const uint16_t CBF[6][2] = { { 540, 800 }, { 540, 800 }, { 540, 800 }, { 590, 880 }, { 500, 740 }, { 1100, 1650 } };   /* cowbell: the two squares (Hz) */
-static const int32_t CBD[6] = { A24(.12), A24(.12), A24(.12), A24(.08), A24(.2), A24(.14) };
+static const int32_t CBD[6] = { A24(.12), A24(.12), A24(.12), A24(.08), A24(.14), A24(.14) };
 static const uint16_t TMH[6] = { 250, 200, 190, 225, 180, 265 }, TML[6] = { 120, 110, 95, 128, 98, 145 };      /* toms: hi / low pitch (Hz) */
 static const int32_t TMS[6] = { Q16(.6), Q16(.8), Q16(.35), Q16(.95), Q16(.5), Q16(1.25) };                 /* the pitch sweep */
 static const uint16_t TDH[6] = { 280, 224, 320, 215, 380, 300 }, TDL[6] = { 403, 322, 460, 300, 500, 420 };   /* decay, ms */
@@ -97,7 +97,7 @@ static int32_t dvoice_core(int ty, dvoice_t *V, int k, const dpar_t *pr)
         if (ty == 0) {
             int32_t f = lin ? M16((52 * 256) + 110 * M15(256, EX(.018)), tf) : ver ? M16((48 * 256) + 130 * M15(256, EX(.025)), tf) : M16((55 * 256) + 150 * M15(256, EX(.012)), tf);
             V->ph += dinc(f);
-            s = M15(sin_q15(V->ph), EXV(.17, .45, .3));
+            s = M15(sin_q15(V->ph), EXV(.17, .45, .22));
             if (!lin) s = M15(c_tanh(M16(s, Q16(ver ? 1.3 : 1.6))), Q(.8));
             o = M15(s + M15(M15(EX(.003), M15(tn, lin ? Q(.5) : Q(.7))), nz), Q(.9));
         } else if (ty == 1) {
@@ -112,7 +112,7 @@ static int32_t dvoice_core(int ty, dvoice_t *V, int k, const dpar_t *pr)
             int op = ty == 3;
             x = lin ? M15(nz, Q(.75)) + M15(met(V, Q16(1.0), tf), Q(.3)) : ver ? M15(nz, Q(.15)) + M15(met(V, Q16(1.1), tf), Q(.7)) : M15(nz, Q(.5)) + M15(met(V, Q16(1.3), tf), Q(.4));
             x = M15(HPF(x, Q16(lin ? .42 : ver ? .5 : .34) + M16(tn * 2, Q16(.3))), Q(1.5) / 2) * 2;
-            o = M15(M15(x, op ? EXV(.3, .45, .35) : EXV(.035, .04, .05)), Q(.6));
+            o = M15(M15(x, op ? EXV(.22, .45, .28) : EXV(.035, .04, .05)), Q(.6));
         }
         return o;
     }
@@ -228,8 +228,11 @@ static int32_t dvoice_core(int ty, dvoice_t *V, int k, const dpar_t *pr)
 static int32_t dvoice(int ty, dvoice_t *V, int k, const dpar_t *pr)
 {
     int32_t o = dvoice_core(ty, V, k, pr);
-    if (k == 3) o = ((o + 64) >> 7) << 7;                             /* the Linn: 9 bits */
-    else if (k == 4) o = ((o + 128) >> 8) << 8;                       /* the DMX: 8 bits */
+    if (k == 3 || k == 4) {                                           /* the sampled machines: the Linn 9 bits, the DMX 8; a sample ends, so below a small threshold the tail is taken away (smoothly: the part above it stays) */
+        int sh = k == 3 ? 7 : 8, th = k == 3 ? 384 : 512, neg = o < 0, m = neg ? -o : o;
+        m = m > th ? ((m - th) >> sh) << sh : 0;                       /* truncation toward zero: no crackle left in a quiet tail */
+        o = neg ? -m : m;
+    }
     return o;
 }
 static int32_t sq15(int32_t v1000) { return v1000 * 32768 / 1000; }
