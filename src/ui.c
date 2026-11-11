@@ -294,13 +294,12 @@ static void sin_cos_deg(int32_t deg_q8, int32_t *s, int32_t *c)     /* degrees (
 #define PTR_R 203
 #endif
 static uint32_t dimmix(uint32_t c);
-extern const uint8_t KNOB_SPRM0[], KNOB_SPRM1[], KNOB_SPRP0[], KNOB_SPRP1[], KNOB_SPRD0[], KNOB_SPRD1[];
+extern const uint8_t KNOB_SPRP0[], KNOB_SPRP1[];                          /* one knob skin for every engine: the Prophet's (it saved ~ 60 KB of flash) */
 static void draw_knob(int cx, int cy, int32_t n_q16, uint32_t am)       /* am: opacity 0..256 (a dimmed cell); the skin follows the track's engine */
 {
     int32_t ox = KX8[cx], oy = KY8[cy], cxq = ox + 5528, cyq = oy + 5528;       /* centre = origin + 30 * 0.71983 px */
-    int i, skin = voices_engine(voices_sel());
-    const uint8_t *spr = skin == ENG_MOOG ? (cx ? KNOB_SPRM1 : KNOB_SPRM0) : skin == ENG_PROPH ? (cx ? KNOB_SPRP1 : KNOB_SPRP0)
-                         : skin == ENG_DRUM ? (cx ? KNOB_SPRD1 : KNOB_SPRD0) : (cx ? KNOB_SPR1 : KNOB_SPR0);
+    int i, skin = ENG_PROPH;                                                    /* one look for every engine: the Prophet's knob */
+    const uint8_t *spr = cx ? KNOB_SPRP1 : KNOB_SPRP0;
     for (i = 0; i < 11; i++) {                                                  /* the 11 ticks */
         int32_t s, c;
         int lit = (int32_t)i * 6554 <= n_q16 + 66;

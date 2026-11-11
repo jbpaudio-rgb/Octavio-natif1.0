@@ -330,7 +330,7 @@ static void seq_draw(void)
         char lab[16];
         {   /* the knob follows the engine of the track: Minimoog / Prophet sprites (the drums' SEQ is the lane grid: its pitch sequencer keeps the Vactrol one) */
             int skin = voices_engine(voices_sel());
-            knob_g(kl8 + 2662, 29212, skin == ENG_MOOG ? KNOB_BIGM : skin == ENG_PROPH ? KNOB_BIGP : KNOB_BIG, 54, 57672, param_n_q16(id), 256, skin);
+            knob_g(kl8 + 2662, 29212, KNOB_BIGP, 54, 57672, param_n_q16(id), 256, ENG_PROPH);
         }
         upcase(lab, SQLAB[k]);
         nl = ui_strlen(lab);
