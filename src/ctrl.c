@@ -79,12 +79,12 @@ static void itoa2(char *o, int v, int pad)         /* v >= 0, zero padded to `pa
     o[n] = 0;
 }
 
-static const char *const ENG_TAG[CENG_N] = { "VACT", "MINI", "PRO70", "DRUM", "TB303", "SSAW", "VC3" };   /* dn(): the display name of each engine (by engine id) */
-static const uint8_t LIDX[CENG_N] = { ENG_VAC, ENG_MOOG, ENG_PROPH, ENG_TB3, ENG_SSAW, ENG_VC3, ENG_DRUM };   /* the ALGORITHM list, in this order: the drums come last (track 4 only) */
+static const char *const ENG_TAG[CENG_N] = { "VACT", "MINI", "PRO70", "DRUM", "TB303", "POLI", "VC3" };   /* dn(): the display name of each engine (by engine id) */
+static const uint8_t LIDX[CENG_N] = { ENG_VAC, ENG_MOOG, ENG_PROPH, ENG_TB3, ENG_POL, ENG_VC3, ENG_DRUM };   /* the ALGORITHM list, in this order: the drums come last (track 4 only) */
 static int eng_li(int e) { int i; for (i = 0; i < CENG_N; i++) if (LIDX[i] == e) return i; return 0; }
 /* the pages an engine has, as a mask of engine page indexes (engine_pages.c EPI_*: GLO, OSC1..OSC4, EDIT, ENV, ENV2); the new engines have only the pages their parameters fill */
-static int eng_pmask(int e) { return e == ENG_TB3 ? 0x61 : e == ENG_SSAW ? 0xE3 : e == ENG_VC3 ? 0x6F : (e == ENG_MOOG || e == ENG_PROPH) ? 0xFF : 0; }
-static int is_new_eng(int e) { return e == ENG_TB3 || e == ENG_SSAW || e == ENG_VC3; }
+static int eng_pmask(int e) { return e == ENG_TB3 ? 0x61 : e == ENG_POL ? 0xEF : e == ENG_VC3 ? 0x6F : (e == ENG_MOOG || e == ENG_PROPH) ? 0xFF : 0; }
+static int is_new_eng(int e) { return e == ENG_TB3 || e == ENG_POL || e == ENG_VC3; }
 static const char *etag(int t) { return t >= 0 && t < CENG_N ? ENG_TAG[t] : "???"; }
 static int cur_engine(void) { return voices_engine(sel); }
 static int ceng_n(void) { return sel >= DRUM_T0 ? CENG_N : CENG_N - 1; }       /* the list entries (the drums are the last) */       /* the engines the selected track offers: the drums run on track 4 only (one drum machine, M) */

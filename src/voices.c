@@ -8,7 +8,7 @@
 #include "ui.h"
 #include "eng_moog.c"
 #include "eng_vc3.c"
-#include "eng_ssaw.c"
+#include "eng_pol.c"
 #include "eng_tb3.c"
 #include "eng_prophet.c"
 #include "eng_drum.c"
@@ -50,7 +50,7 @@ static void eng_on(int t, int note, int vel15)
     case ENG_PROPH: proph_on(t, note, vel15); break;
     case ENG_DRUM: drum_on(t, note, vel15); break;
     case ENG_TB3: tb3_on(t, note, vel15); break;
-    case ENG_SSAW: ssaw_on(t, note, vel15); break;
+    case ENG_POL: pol_on(t, note, vel15); break;
     case ENG_VC3: v3_on(t, note, vel15); break;
     }
 }
@@ -61,7 +61,7 @@ static void eng_off(int t)                                /* every voice of the 
     case ENG_MOOG: moog_off(t); break;
     case ENG_PROPH: proph_off(t); break;
     case ENG_TB3: tb3_off(t); break;
-    case ENG_SSAW: ssaw_off(t); break;
+    case ENG_POL: pol_off(t); break;
     case ENG_VC3: v3_off(t); break;
     }
 }
@@ -86,7 +86,7 @@ void voices_init(void)
         for (i = 0; i < ARP_COUNT; i++) TK[t].a.p[i] = ARP_DEF[i];
         moog_init(t);
         v3_init(t);
-        ssaw_init(t);
+        pol_init(t);
         tb3_init(t);
         proph_init(t);
         drum_init(t);
@@ -128,10 +128,10 @@ void voices_param(int t, int eng, int id, int v)
     else if (eng == ENG_PROPH) proph_set(t & 3, id, v);
     else if (eng == ENG_DRUM) drum_set(t & 3, id, v);
     else if (eng == ENG_VC3) v3_set(t & 3, id, v);
-    else if (eng == ENG_SSAW) ssaw_set(t & 3, id, v);
+    else if (eng == ENG_POL) pol_set(t & 3, id, v);
     else if (eng == ENG_TB3) tb3_set(t & 3, id, v);
 }
-int voices_param_get(int t, int eng, int id) { return eng == ENG_MOOG ? moog_get(t & 3, id) : eng == ENG_PROPH ? proph_get(t & 3, id) : eng == ENG_DRUM ? drum_get(t & 3, id) : eng == ENG_TB3 ? tb3_get(t & 3, id) : eng == ENG_SSAW ? ssaw_get(t & 3, id) : eng == ENG_VC3 ? v3_get(t & 3, id) : 0; }
+int voices_param_get(int t, int eng, int id) { return eng == ENG_MOOG ? moog_get(t & 3, id) : eng == ENG_PROPH ? proph_get(t & 3, id) : eng == ENG_DRUM ? drum_get(t & 3, id) : eng == ENG_TB3 ? tb3_get(t & 3, id) : eng == ENG_POL ? pol_get(t & 3, id) : eng == ENG_VC3 ? v3_get(t & 3, id) : 0; }
 
 
 /* ---- the step clock (the prototype's seq() / fire()): 16th notes at the tempo from PLAY; the drum lanes (DG) fire here ---- */
@@ -611,7 +611,7 @@ void voices_render(int32_t *out, int n)
 #endif
             } break;
         case ENG_TB3: if (!tb3_active(t)) act = 0; else tb3_render(t, tmp, n); break;
-        case ENG_SSAW: if (!ssaw_active(t)) act = 0; else ssaw_render(t, tmp, n); break;
+        case ENG_POL: if (!pol_active(t)) act = 0; else pol_render(t, tmp, n); break;
         case ENG_VC3: if (!v3_active(t)) act = 0; else v3_render(t, tmp, n); break;
         default: act = 0; break;
         }

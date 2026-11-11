@@ -4,10 +4,11 @@
  * tanh(sum(track) * .8 * 1.5 * .7). Parameter values are thousandths (selects: indices), like params.h. */
 #pragma once
 #include <stdint.h>
-enum { ENG_VAC, ENG_MOOG, ENG_PROPH, ENG_DRUM, ENG_TB3, ENG_SSAW, ENG_VC3, ENG_N };
-/* the parameters of the TB-303, Supersaw and VC3 engines (eng_tb3.c / eng_ssaw.c / eng_vc3.c); values in thousandths */
+enum { ENG_VAC, ENG_MOOG, ENG_PROPH, ENG_DRUM, ENG_TB3, ENG_POL, ENG_VC3, ENG_N };
+/* the parameters of the TB-303, Polivoks and VC3 engines (eng_tb3.c / eng_pol.c / eng_vc3.c); values in thousandths */
 enum { TB_WAVE, TB_TUNE, TB_CUT, TB_RES, TB_ENV, TB_DEC, TB_ACC, TB_SLD, TB_DRV, TB_LVL, TB_COUNT };
-enum { SS_TUNE, SS_RNG, SS_DET, SS_MIX, SS_VOW, SS_CUT, SS_RES, SS_ENV, SS_ATK, SS_DEC, SS_SUS, SS_REL, SS_FATK, SS_FDEC, SS_LVL, SS_DRF, SS_OCT, SS_FRM, SS_COUNT };
+enum { PL_TUNE, PL_O2T, PL_O1W, PL_O1P, PL_O2W, PL_O2P, PL_SYN, PL_M1, PL_M2, PL_MN, PL_DRV, PL_CUT, PL_RES, PL_MOD, PL_ENV, PL_LR, PL_LP, PL_LW, PL_LF,
+       PL_ATK, PL_DEC, PL_SUS, PL_REL, PL_FATK, PL_FDEC, PL_LVL, PL_COUNT };
 enum { V3_TUNE, V3_O1W, V3_O2W, V3_O2T, V3_O3R, V3_O3S, V3_M1, V3_M2, V3_MN, V3_MR, V3_CUT, V3_RES, V3_KEY,
        V3_L1, V3_L2, V3_LF, V3_LA, V3_E1, V3_E2, V3_EF, V3_X2, V3_XA, V3_F1, V3_F2,      /* the patch matrix: pins LFO/ENV/O1/FILTER -> O1 pitch/O2 pitch/FILTER/AMP (0 = no pin) */
        V3_ATK, V3_DEC, V3_SUS, V3_REL, V3_LVL, V3_COUNT };
@@ -78,13 +79,13 @@ void tb3_on(int t, int note, int vel15);
 void tb3_off(int t);
 int  tb3_active(int t);
 void tb3_render(int t, int32_t *out, int n);
-void ssaw_init(int t);
-void ssaw_set(int t, int id, int v);
-int  ssaw_get(int t, int id);
-void ssaw_on(int t, int note, int vel15);
-void ssaw_off(int t);
-int  ssaw_active(int t);
-void ssaw_render(int t, int32_t *out, int n);
+void pol_init(int t);
+void pol_set(int t, int id, int v);
+int  pol_get(int t, int id);
+void pol_on(int t, int note, int vel15);
+void pol_off(int t);
+int  pol_active(int t);
+void pol_render(int t, int32_t *out, int n);
 void v3_init(int t);
 void v3_set(int t, int id, int v);
 int  v3_get(int t, int id);

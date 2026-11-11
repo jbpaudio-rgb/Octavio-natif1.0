@@ -84,8 +84,8 @@ VARIANTS = {
     "drum4":       V(NOGOV, eng=E("MOOG", "MOOG", "DRUM", "DRUM")),
     "moog4":       V(NOGOV, eng=E("MOOG", "MOOG", "MOOG", "MOOG")),
     "vc34":       V(NOGOV + "-DLT_FXMASK=0 -DLT_NOMOD", eng=E("VC3", "VC3", "VC3", "VC3")),
-    "ssaw4fx":     V(NOGOV, eng=E("SSAW", "SSAW", "SSAW", "SSAW")),                                                  # 4 supersaws + the whole effects chain + mod
-    "ssaw4":       V(NOGOV + "-DLT_FXMASK=0 -DLT_NOMOD", eng=E("SSAW", "SSAW", "SSAW", "SSAW")),
+    "pol4fx":     V(NOGOV, eng=E("POL", "POL", "POL", "POL")),                                                  # 4 polivoks + the whole effects chain + mod
+    "pol4":       V(NOGOV + "-DLT_FXMASK=0 -DLT_NOMOD", eng=E("POL", "POL", "POL", "POL")),
     "tb34":       V(NOGOV + "-DLT_FXMASK=0 -DLT_NOMOD", eng=E("TB3", "TB3", "TB3", "TB3")),
     "proph4":      V(NOGOV, eng=E("PROPH", "PROPH", "PROPH", "PROPH")),
     "full_ui":     V(NOGOV, ms=UI_MS, keys=UI, snap="1500,3000,4500"),    # the worst case measured, front panel driven

@@ -38,8 +38,9 @@ static const epd_t PRD[PR_COUNT] = {
     { EF_MSA, 5, 0, 0 }, { EF_MSD, 5, 0, 0 }, PC(10), { EF_MSD, 5, 0, 0 }, PC(10) };
 static const char *const O_TBW[] = { "Saw", "Square" };
 static const epd_t TBD[TB_COUNT] = { SL(2, O_TBW), { EF_C7, 5, 0, 0 }, PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10) };
-static const epd_t SSD[SS_COUNT] = { { EF_C7, 5, 0, 0 }, SL(5, O_RNG), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), { EF_MSA, 5, 0, 0 }, { EF_MSD, 5, 0, 0 }, PC(10), { EF_MSD, 5, 0, 0 },
-                                     { EF_MSA, 5, 0, 0 }, { EF_MSD, 5, 0, 0 }, PC(10), PC(10), PC(10), PC(10) };
+static const char *const O_OFFON[] = { "Off", "On" };
+static const epd_t PLD[PL_COUNT] = { { EF_C7, 5, 0, 0 }, PC(10), PC(10), PC(10), PC(10), PC(10), SL(2, O_OFFON), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10),
+                                     PC(10), PC(10), PC(10), PC(10), { EF_MSA, 5, 0, 0 }, { EF_MSD, 5, 0, 0 }, PC(10), { EF_MSD, 5, 0, 0 }, { EF_MSA, 5, 0, 0 }, { EF_MSD, 5, 0, 0 }, PC(10) };
 static const epd_t V3D[V3_COUNT] = { { EF_C7, 5, 0, 0 }, PC(10), PC(10), PC(10), PC(10), SL(4, O_LFO), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10),
                                      PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10),
                                      { EF_MSA, 5, 0, 0 }, { EF_MSD, 5, 0, 0 }, PC(10), { EF_MSD, 5, 0, 0 }, PC(10) };
@@ -76,17 +77,19 @@ static const epg_t PR_PG[EPI_N] = {
     { "AMP ENV", { "ATTACK", "DECAY", "SUSTAIN", "RELEASE" }, { PR_ATK, PR_DEC, PR_SUS, PR_REL } },
     { "FILTER ENV", { "ATTACK", "DECAY", "SUSTAIN", "RELEASE" }, { PR_FATK, PR_FDEC, PR_FSUS, PR_FREL } } };
 
-/* TB-303, Supersaw, Gremlin: their parameters fill only the pages they need (title 0 = the engine has no such page; ctrl.c eng_pmask() lists them); -1 = a knob without a parameter */
+/* TB-303, Polivoks, Gremlin: their parameters fill only the pages they need (title 0 = the engine has no such page; ctrl.c eng_pmask() lists them); -1 = a knob without a parameter */
 static const epg_t TB_PG[EPI_N] = {
     [EPI_GLO] = { "OSCILLATOR", { "WAVE", "TUNE", "DRIVE", "LEVEL" }, { TB_WAVE, TB_TUNE, TB_DRV, TB_LVL } },
     [EPI_EDIT] = { "FILTER", { "CUTOFF", "RESO", "ENV MOD", "DECAY" }, { TB_CUT, TB_RES, TB_ENV, TB_DEC } },
     [EPI_ENV] = { "ACCENT / SLIDE", { "ACCENT", "SLIDE", "", "" }, { TB_ACC, TB_SLD, -1, -1 } } };
-static const epg_t SS_PG[EPI_N] = {
-    [EPI_GLO] = { "SUPERSAW", { "TUNE", "RANGE", "DETUNE", "MIX" }, { SS_TUNE, SS_RNG, SS_DET, SS_MIX } },
-    [EPI_OSC1] = { "VOICE", { "VOWEL", "FORMANT", "OCT UP", "DRIFT" }, { SS_VOW, SS_FRM, SS_OCT, SS_DRF } },
-    [EPI_EDIT] = { "FILTER", { "CUTOFF", "RESO", "ENV AMT", "LEVEL" }, { SS_CUT, SS_RES, SS_ENV, SS_LVL } },
-    [EPI_ENV] = { "AMP ENV", { "ATTACK", "DECAY", "SUSTAIN", "RELEASE" }, { SS_ATK, SS_DEC, SS_SUS, SS_REL } },
-    [EPI_ENV2] = { "FILTER ENV", { "ATTACK", "DECAY", "", "" }, { SS_FATK, SS_FDEC, -1, -1 } } };
+static const epg_t PL_PG[EPI_N] = {
+    [EPI_GLO] = { "POLIVOKS", { "TUNE", "O2 TUNE", "SYNC", "LEVEL" }, { PL_TUNE, PL_O2T, PL_SYN, PL_LVL } },
+    [EPI_OSC1] = { "OSCILLATORS", { "O1 WAVE", "O1 PW", "O2 WAVE", "O2 PW" }, { PL_O1W, PL_O1P, PL_O2W, PL_O2P } },
+    [EPI_OSC2] = { "MIXER", { "O1", "O2", "NOISE", "DRIVE" }, { PL_M1, PL_M2, PL_MN, PL_DRV } },
+    [EPI_OSC3] = { "LFO", { "RATE", "PITCH", "PWM", "FILTER" }, { PL_LR, PL_LP, PL_LW, PL_LF } },
+    [EPI_EDIT] = { "FILTER", { "CUTOFF", "RESO", "MODE", "ENV AMT" }, { PL_CUT, PL_RES, PL_MOD, PL_ENV } },
+    [EPI_ENV] = { "AMP ENV", { "ATTACK", "DECAY", "SUSTAIN", "RELEASE" }, { PL_ATK, PL_DEC, PL_SUS, PL_REL } },
+    [EPI_ENV2] = { "FILTER ENV", { "ATTACK", "DECAY", "", "" }, { PL_FATK, PL_FDEC, -1, -1 } } };
 static const epg_t V3_PG[EPI_N] = {
     [EPI_GLO] = { "VCS3", { "TUNE", "O1 WAVE", "O2 WAVE", "O2 TUNE" }, { V3_TUNE, V3_O1W, V3_O2W, V3_O2T } },
     [EPI_OSC1] = { "MODULATION", { "O3 RATE", "O3 SHAPE", "", "" }, { V3_O3R, V3_O3S, -1, -1 } },
@@ -150,8 +153,8 @@ static int ep_on(void)                          /* the 2 x 2 knob page of a non-
         }
         return 1;
     }
-    p = e == ENG_MOOG ? &MG_PG[x] : e == ENG_PROPH ? &PR_PG[x] : e == ENG_TB3 ? &TB_PG[x] : e == ENG_SSAW ? &SS_PG[x] : &V3_PG[x];
-    if (!p->title) p = e == ENG_TB3 ? &TB_PG[0] : e == ENG_SSAW ? &SS_PG[0] : &V3_PG[0];      /* a page the engine does not have */
+    p = e == ENG_MOOG ? &MG_PG[x] : e == ENG_PROPH ? &PR_PG[x] : e == ENG_TB3 ? &TB_PG[x] : e == ENG_POL ? &PL_PG[x] : &V3_PG[x];
+    if (!p->title) p = e == ENG_TB3 ? &TB_PG[0] : e == ENG_POL ? &PL_PG[0] : &V3_PG[0];      /* a page the engine does not have */
     {
         int n = 0;
         const char *s;
@@ -167,7 +170,7 @@ static const epd_t *ep_desc(int id)
     case ENG_MOOG: return &MGD[id];
     case ENG_PROPH: return &PRD[id];
     case ENG_TB3: return &TBD[id];
-    case ENG_SSAW: return &SSD[id];
+    case ENG_POL: return &PLD[id];
     case ENG_VC3: return &V3D[id];
     }
     return &DRD[id % DR_PER];
