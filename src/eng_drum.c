@@ -72,7 +72,18 @@ static int32_t met(dvoice_t *V, int32_t m16, int32_t tf16)           /* six squa
 #define HPF(x, c) ({ int32_t _x = (x); V->l += M16(_x - V->l, (c)); _x - V->l; })
 #define LPF(x, c) ({ int32_t _x = (x); V->l2 += M16(_x - V->l2, (c)); V->l2; })
 
-static int32_t dvoice(int ty, dvoice_t *V, int k, const dpar_t *pr)
+/* what makes the kits differ beyond the kick, snare and hats: per kit (808, 909, acoustic, Linn, DMX, Vermona) the clap's burst spacing / tail / filter, the cowbell's pair of squares, the toms' pitch, sweep and decay */
+static const uint16_t CLS[6] = { 507, 450, 507, 360, 600, 700 };                                   /* clap: samples between the bursts */
+static const int32_t CLA[6] = { A24(.16), A24(.22), A24(.16), A24(.10), A24(.30), A24(.12) };       /* the tail's decay */
+static const int32_t CLH[6] = { Q16(.1), Q16(.14), Q16(.1), Q16(.2), Q16(.08), Q16(.16) };           /* high-pass */
+static const int32_t CLL[6] = { Q16(.12), Q16(.18), Q16(.12), Q16(.3), Q16(.07), Q16(.22) };        /* low-pass base */
+static const uint16_t CBF[6][2] = { { 540, 800 }, { 540, 800 }, { 540, 800 }, { 590, 880 }, { 500, 740 }, { 1100, 1650 } };   /* cowbell: the two squares (Hz) */
+static const int32_t CBD[6] = { A24(.12), A24(.12), A24(.12), A24(.08), A24(.2), A24(.14) };
+static const uint16_t TMH[6] = { 250, 200, 190, 225, 180, 265 }, TML[6] = { 120, 110, 95, 128, 98, 145 };      /* toms: hi / low pitch (Hz) */
+static const int32_t TMS[6] = { Q16(.6), Q16(.8), Q16(.35), Q16(.95), Q16(.5), Q16(1.25) };                 /* the pitch sweep */
+static const uint16_t TDH[6] = { 280, 224, 320, 215, 380, 300 }, TDL[6] = { 403, 322, 460, 300, 500, 420 };   /* decay, ms */
+
+static int32_t dvoice_core(int ty, dvoice_t *V, int k, const dpar_t *pr)
 {
     int32_t tu = V->t - pr->hd, t = tu < 0 ? 0 : tu, tf, tn = pr->tn, dfi = pr->dfi, nz = c_rand15(), s, e, x;
     int ci = 0;
@@ -81,7 +92,7 @@ static int32_t dvoice(int ty, dvoice_t *V, int k, const dpar_t *pr)
 #define EXD(tau) exc(V, ci++, tu, A24(tau), dfi)
 #define EXV(a, b, c) (lin ? EXD(a) : ver ? EXD(b) : EXD(c))                /* the kit picks the time constant (each A24 stays a constant) */
     if (k >= 3 && ty <= 3) {                                          /* LinnDrum (k 3) and Oberheim DMX (k 4): 8-bit-ish samples (the low bits dropped); Vermona DRM1 (k 5): analog, long and ringing */
-        int lin = k == 3, ver = k == 5, sh = ver ? 0 : lin ? 7 : 8;
+        int lin = k == 3, ver = k == 5;
         int32_t o, b, nn;
         if (ty == 0) {
             int32_t f = lin ? M16((52 * 256) + 110 * M15(256, EX(.018)), tf) : ver ? M16((48 * 256) + 130 * M15(256, EX(.025)), tf) : M16((55 * 256) + 150 * M15(256, EX(.012)), tf);
@@ -103,7 +114,7 @@ static int32_t dvoice(int ty, dvoice_t *V, int k, const dpar_t *pr)
             x = M15(HPF(x, Q16(lin ? .42 : ver ? .5 : .34) + M16(tn * 2, Q16(.3))), Q(1.5) / 2) * 2;
             o = M15(M15(x, op ? EXV(.3, .45, .35) : EXV(.035, .04, .05)), Q(.6));
         }
-        return sh ? ((o + (1 << (sh - 1))) >> sh) << sh : o;
+        return o;
     }
     if (ty == 0) {                                                    /* kick */
         int32_t f, cl;
@@ -172,18 +183,18 @@ static int32_t dvoice(int ty, dvoice_t *V, int k, const dpar_t *pr)
             e = EXD(.3);
             return M15(M15(sin_q15(V->ph), Q(.9)) + M15(M15(HPF(nz, Q16(.2)), EX(.01)), M15(Q(.2) + M15(tn, Q(.9)), Q(.6))), M15(e, Q(.9)));
         } else {
-            int32_t c = Q16(.12) + M16(tn * 2, Q16(.25)), pl, ts = (int32_t)(((int64_t)t * 1000) / 44100);  /* ms */
-            x = LPF(HPF(nz, Q16(.1)), c) * 3;
-            if (ts < 34) { int32_t tm = (int32_t)(((int64_t)(t % 507) * 1) ); pl = exq(tm, A24(.0035), 65536); }   /* 11.5 ms bursts */
-            else pl = exq(t - 1499, A24(.16), dfi);
+            int32_t c = CLL[k] + M16(tn * 2, Q16(.25)), pl, sp = CLS[k];
+            x = LPF(HPF(nz, CLH[k]), c) * 3;
+            if (t < 3 * sp) pl = exq(t % sp, A24(.0035), 65536);                          /* three bursts */
+            else pl = exq(t - 3 * sp + 8, CLA[k], dfi);
             return M15(x, M15(pl, Q(.8)));
         }
     }
     if (ty > 5) {                                                     /* hi / low tom */
         int hi = ty == 6;
-        int32_t f0 = hi ? (k == 1 ? 200 : k == 0 ? 250 : 190) : (k == 1 ? 110 : k == 0 ? 120 : 95);
-        int32_t swv = Q16(1) + M16((k == 0 ? Q16(.6) : k == 1 ? Q16(.8) : Q16(.35)), EX(.04) * 2);
-        int32_t dcs = hi ? (k == 0 ? 280 : k == 1 ? 224 : 320) : (k == 0 ? 403 : k == 1 ? 322 : 460);   /* decay, ms */
+        int32_t f0 = hi ? TMH[k] : TML[k];
+        int32_t swv = Q16(1) + M16(TMS[k], EX(.04) * 2);
+        int32_t dcs = hi ? TDH[k] : TDL[k];                                                            /* decay, ms */
         int32_t cl;
         V->ph += dinc(M16(M16(f0 * 256, tf), swv));
         e = exc(V, ci++, tu, A24(.001) / dcs, dfi);
@@ -197,10 +208,11 @@ static int32_t dvoice(int ty, dvoice_t *V, int k, const dpar_t *pr)
     }
     /* type 5: cowbell / ride / crash (the Linn and the DMX have the cowbell) */
     if (k == 0 || k >= 3) {
-        V->ph += dinc(M16(540 * 256, tf)); V->ph2 += dinc(M16(800 * 256, tf));
-        x = (V->ph < 0x80000000u ? 32768 : -32768) + (V->ph2 < 0x80000000u ? 32768 : -32768);
+        V->ph += dinc(M16(CBF[k][0] * 256, tf)); V->ph2 += dinc(M16(CBF[k][1] * 256, tf));
+        if (k == 5) x = sin_q15(V->ph) + M15(sin_q15(V->ph2), Q(.6));                                  /* the Vermona: sines, a ping rather than a bell */
+        else x = (V->ph < 0x80000000u ? 32768 : -32768) + (V->ph2 < 0x80000000u ? 32768 : -32768);
         x = LPF(x, Q16(.18) + M16(tn * 2, Q16(.4)));
-        e = M15(EXD(.12), 32768 - EX(.0008));
+        e = M15(exc(V, ci++, tu, CBD[k], dfi), 32768 - EX(.0008));
         return M15(M15(x, e), Q(.5));
     }
     if (k == 1) {
@@ -213,6 +225,13 @@ static int32_t dvoice(int ty, dvoice_t *V, int k, const dpar_t *pr)
     return M15(M15(x, M15(EXD(1.4), 32768 - EX(.004))), Q(.45));
 }
 
+static int32_t dvoice(int ty, dvoice_t *V, int k, const dpar_t *pr)
+{
+    int32_t o = dvoice_core(ty, V, k, pr);
+    if (k == 3) o = ((o + 64) >> 7) << 7;                             /* the Linn: 9 bits */
+    else if (k == 4) o = ((o + 128) >> 8) << 8;                       /* the DMX: 8 bits */
+    return o;
+}
 static int32_t sq15(int32_t v1000) { return v1000 * 32768 / 1000; }
 
 static void drum_derive(drum_t *d)
