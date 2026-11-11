@@ -209,28 +209,28 @@ static const struct { uint8_t grp, kind; uint16_t a; } DSTM[N_DST] = {
     { 32, DK_ENG, SS_DRF },  /* 204 ssdrf */
     { 32, DK_ENG, SS_OCT },  /* 205 ssoct */
     { 32, DK_ENG, SS_FRM },  /* 206 ssfrm */
-    { 64, DK_ENG, GM_TUNE },  /* 207 gmtune */
-    { 64, DK_ENG, GM_RAT },  /* 208 gmrat */
-    { 64, DK_ENG, GM_XMD },  /* 209 gmxmd */
-    { 64, DK_ENG, GM_FLD },  /* 210 gmfld */
-    { 64, DK_ENG, GM_CHS },  /* 211 gmchs */
-    { 64, DK_ENG, GM_RTE },  /* 212 gmrte */
-    { 64, DK_ENG, GM_NOI },  /* 213 gmnoi */
-    { 64, DK_ENG, GM_GLT },  /* 214 gmglt */
-    { 64, DK_ENG, GM_CRU },  /* 215 gmcru */
-    { 64, DK_ENG, GM_CUT },  /* 216 gmcut */
-    { 64, DK_ENG, GM_RES },  /* 217 gmres */
-    { 64, DK_ENG, GM_ATK },  /* 218 gmatk */
-    { 64, DK_ENG, GM_DEC },  /* 219 gmdec */
-    { 64, DK_ENG, GM_REL },  /* 220 gmrel */
-    { 64, DK_ENG, GM_SYN },  /* 221 gmsyn */
-    { 64, DK_ENG, GM_RNG },  /* 222 gmrng */
-    { 64, DK_ENG, GM_DRV },  /* 223 gmdrv */
-    { 64, DK_ENG, GM_SUB },  /* 224 gmsub */
-    { 64, DK_ENG, GM_DIV },  /* 225 gmdiv */
-    { 64, DK_ENG, GM_CMB },  /* 226 gmcmb */
-    { 64, DK_ENG, GM_FBK },  /* 227 gmfbk */
-    { 64, DK_ENG, GM_BITE },  /* 228 gmbite */
+    { 64, DK_ENG, V3_TUNE },  /* 207 v3tune */
+    { 64, DK_ENG, V3_O1W },  /* 208 v3o1w */
+    { 64, DK_ENG, V3_O2W },  /* 209 v3o2w */
+    { 64, DK_ENG, V3_O2T },  /* 210 v3o2t */
+    { 64, DK_ENG, V3_O3R },  /* 211 v3o3r */
+    { 64, DK_ENG, V3_M1 },  /* 212 v3m1 */
+    { 64, DK_ENG, V3_M2 },  /* 213 v3m2 */
+    { 64, DK_ENG, V3_MN },  /* 214 v3mn */
+    { 64, DK_ENG, V3_MR },  /* 215 v3mr */
+    { 64, DK_ENG, V3_CUT },  /* 216 v3cut */
+    { 64, DK_ENG, V3_RES },  /* 217 v3res */
+    { 64, DK_ENG, V3_KEY },  /* 218 v3key */
+    { 64, DK_ENG, V3_O3P },  /* 219 v3o3p */
+    { 64, DK_ENG, V3_O3F },  /* 220 v3o3f */
+    { 64, DK_ENG, V3_XMD },  /* 221 v3xmd */
+    { 64, DK_ENG, V3_ENF },  /* 222 v3enf */
+    { 64, DK_ENG, V3_FBK },  /* 223 v3fbk */
+    { 64, DK_ENG, V3_ENP },  /* 224 v3enp */
+    { 64, DK_ENG, V3_ATK },  /* 225 v3atk */
+    { 64, DK_ENG, V3_DEC },  /* 226 v3dec */
+    { 64, DK_ENG, V3_SUS },  /* 227 v3sus */
+    { 64, DK_ENG, V3_REL },  /* 228 v3rel */
 };
 static const uint8_t DSTL0[70] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 182, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68 };
 static const uint8_t DSTL1[79] = { 0, 69, 70, 71, 72, 75, 78, 76, 79, 77, 80, 73, 74, 81, 82, 83, 7, 8, 102, 103, 182, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68 };

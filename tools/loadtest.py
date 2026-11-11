@@ -83,7 +83,7 @@ VARIANTS = {
     "fx_nobudget": V(NOGOV + "-DFX_BUDGET=1000000"),                      # all 16 slots running
     "drum4":       V(NOGOV, eng=E("MOOG", "MOOG", "DRUM", "DRUM")),
     "moog4":       V(NOGOV, eng=E("MOOG", "MOOG", "MOOG", "MOOG")),
-    "grem4":       V(NOGOV + "-DLT_FXMASK=0 -DLT_NOMOD", eng=E("GREM", "GREM", "GREM", "GREM")),
+    "vc34":       V(NOGOV + "-DLT_FXMASK=0 -DLT_NOMOD", eng=E("VC3", "VC3", "VC3", "VC3")),
     "ssaw4fx":     V(NOGOV, eng=E("SSAW", "SSAW", "SSAW", "SSAW")),                                                  # 4 supersaws + the whole effects chain + mod
     "ssaw4":       V(NOGOV + "-DLT_FXMASK=0 -DLT_NOMOD", eng=E("SSAW", "SSAW", "SSAW", "SSAW")),
     "tb34":       V(NOGOV + "-DLT_FXMASK=0 -DLT_NOMOD", eng=E("TB3", "TB3", "TB3", "TB3")),

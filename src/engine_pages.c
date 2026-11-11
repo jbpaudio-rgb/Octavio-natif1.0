@@ -10,6 +10,7 @@
 enum { EF_PCT, EF_MSA, EF_MSD, EF_C7, EF_C12, EF_SEL, EF_SHA, EF_SHB };     /* how the LCD prints it */
 typedef struct { uint8_t fmt, step, nopt; const char *const *opts; } epd_t;
 static const char *const O_WAVE[] = { "Tri", "Saw", "Square", "Pulse" };
+static const char *const O_LFO[] = { "Sine", "Tri", "Square", "S&H" };
 static const char *const O_RNG[] = { "32'", "16'", "8'", "4'", "2'" };
 static const char *const O_NZ[] = { "White", "Pink", "Brown", "Blue", "Crackle" };
 static const char *const O_REL[] = { "Short", "= Decay" };
@@ -39,8 +40,8 @@ static const char *const O_TBW[] = { "Saw", "Square" };
 static const epd_t TBD[TB_COUNT] = { SL(2, O_TBW), { EF_C7, 5, 0, 0 }, PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10) };
 static const epd_t SSD[SS_COUNT] = { { EF_C7, 5, 0, 0 }, SL(5, O_RNG), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), { EF_MSA, 5, 0, 0 }, { EF_MSD, 5, 0, 0 }, PC(10), { EF_MSD, 5, 0, 0 },
                                      { EF_MSA, 5, 0, 0 }, { EF_MSD, 5, 0, 0 }, PC(10), PC(10), PC(10), PC(10) };
-static const epd_t GMD[GM_COUNT] = { { EF_C7, 5, 0, 0 }, PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), { EF_MSA, 5, 0, 0 }, { EF_MSD, 5, 0, 0 }, { EF_MSD, 5, 0, 0 },
-                                     PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10) };
+static const epd_t V3D[V3_COUNT] = { { EF_C7, 5, 0, 0 }, PC(10), PC(10), PC(10), PC(10), SL(4, O_LFO), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10),
+                                     { EF_MSA, 5, 0, 0 }, { EF_MSD, 5, 0, 0 }, PC(10), { EF_MSD, 5, 0, 0 }, PC(10) };
 static const epd_t DRD[DR_PER] = { PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10) };
 
 static const char *const DVN[3][8] = { { "BD", "SD", "CH", "OH", "CP", "CB", "HT", "LT" }, { "BD", "SD", "CH", "OH", "CP", "RD", "HT", "LT" },
@@ -85,13 +86,13 @@ static const epg_t SS_PG[EPI_N] = {
     [EPI_EDIT] = { "FILTER", { "CUTOFF", "RESO", "ENV AMT", "LEVEL" }, { SS_CUT, SS_RES, SS_ENV, SS_LVL } },
     [EPI_ENV] = { "AMP ENV", { "ATTACK", "DECAY", "SUSTAIN", "RELEASE" }, { SS_ATK, SS_DEC, SS_SUS, SS_REL } },
     [EPI_ENV2] = { "FILTER ENV", { "ATTACK", "DECAY", "", "" }, { SS_FATK, SS_FDEC, -1, -1 } } };
-static const epg_t GM_PG[EPI_N] = {
-    [EPI_GLO] = { "GREMLIN", { "TUNE", "FEEDBK", "BITE", "DRIVE" }, { GM_TUNE, GM_FBK, GM_BITE, GM_DRV } },
-    [EPI_OSC1] = { "OSCILLATOR", { "RATIO", "FM AMT", "SYNC", "RING" }, { GM_RAT, GM_XMD, GM_SYN, GM_RNG } },
-    [EPI_OSC2] = { "MANGLE", { "FOLD", "CHAOS", "CH RATE", "GLITCH" }, { GM_FLD, GM_CHS, GM_RTE, GM_GLT } },
-    [EPI_OSC3] = { "DIRT", { "NOISE", "CRUSH", "SUB", "DIVIDE" }, { GM_NOI, GM_CRU, GM_SUB, GM_DIV } },
-    [EPI_EDIT] = { "FILTER", { "CUTOFF", "RESO", "COMB", "LEVEL" }, { GM_CUT, GM_RES, GM_CMB, GM_LVL } },
-    [EPI_ENV] = { "ENVELOPE", { "ATTACK", "DECAY", "RELEASE", "" }, { GM_ATK, GM_DEC, GM_REL, -1 } } };
+static const epg_t V3_PG[EPI_N] = {
+    [EPI_GLO] = { "VCS3", { "TUNE", "O1 WAVE", "O2 WAVE", "O2 TUNE" }, { V3_TUNE, V3_O1W, V3_O2W, V3_O2T } },
+    [EPI_OSC1] = { "MODULATION", { "O3 RATE", "O3 SHAPE", "O3>PITCH", "O3>FILT" }, { V3_O3R, V3_O3S, V3_O3P, V3_O3F } },
+    [EPI_OSC2] = { "PATCH", { "X-MOD", "FEEDBK", "ENV>PIT", "ENV>FILT" }, { V3_XMD, V3_FBK, V3_ENP, V3_ENF } },
+    [EPI_OSC3] = { "MIXER", { "O1", "O2", "NOISE", "RING" }, { V3_M1, V3_M2, V3_MN, V3_MR } },
+    [EPI_EDIT] = { "FILTER", { "CUTOFF", "RESO", "KEY", "LEVEL" }, { V3_CUT, V3_RES, V3_KEY, V3_LVL } },
+    [EPI_ENV] = { "ENVELOPE", { "ATTACK", "DECAY", "SUSTAIN", "RELEASE" }, { V3_ATK, V3_DEC, V3_SUS, V3_REL } } };
 
 static struct { char title[28]; const char *nm[4]; int16_t id[4]; int eng, idx; } EP;     /* the page on the screen */
 static int ep_eng(void) { return voices_engine(voices_sel()); }
@@ -148,8 +149,8 @@ static int ep_on(void)                          /* the 2 x 2 knob page of a non-
         }
         return 1;
     }
-    p = e == ENG_MOOG ? &MG_PG[x] : e == ENG_PROPH ? &PR_PG[x] : e == ENG_TB3 ? &TB_PG[x] : e == ENG_SSAW ? &SS_PG[x] : &GM_PG[x];
-    if (!p->title) p = e == ENG_TB3 ? &TB_PG[0] : e == ENG_SSAW ? &SS_PG[0] : &GM_PG[0];      /* a page the engine does not have */
+    p = e == ENG_MOOG ? &MG_PG[x] : e == ENG_PROPH ? &PR_PG[x] : e == ENG_TB3 ? &TB_PG[x] : e == ENG_SSAW ? &SS_PG[x] : &V3_PG[x];
+    if (!p->title) p = e == ENG_TB3 ? &TB_PG[0] : e == ENG_SSAW ? &SS_PG[0] : &V3_PG[0];      /* a page the engine does not have */
     {
         int n = 0;
         const char *s;
@@ -166,7 +167,7 @@ static const epd_t *ep_desc(int id)
     case ENG_PROPH: return &PRD[id];
     case ENG_TB3: return &TBD[id];
     case ENG_SSAW: return &SSD[id];
-    case ENG_GREM: return &GMD[id];
+    case ENG_VC3: return &V3D[id];
     }
     return &DRD[id % DR_PER];
 }

@@ -4,12 +4,12 @@
  * tanh(sum(track) * .8 * 1.5 * .7). Parameter values are thousandths (selects: indices), like params.h. */
 #pragma once
 #include <stdint.h>
-enum { ENG_VAC, ENG_MOOG, ENG_PROPH, ENG_DRUM, ENG_TB3, ENG_SSAW, ENG_GREM, ENG_N };
-/* the parameters of the TB-303, Supersaw and Gremlin engines (eng_tb3.c / eng_ssaw.c / eng_grem.c); values in thousandths */
+enum { ENG_VAC, ENG_MOOG, ENG_PROPH, ENG_DRUM, ENG_TB3, ENG_SSAW, ENG_VC3, ENG_N };
+/* the parameters of the TB-303, Supersaw and VC3 engines (eng_tb3.c / eng_ssaw.c / eng_vc3.c); values in thousandths */
 enum { TB_WAVE, TB_TUNE, TB_CUT, TB_RES, TB_ENV, TB_DEC, TB_ACC, TB_SLD, TB_DRV, TB_LVL, TB_COUNT };
 enum { SS_TUNE, SS_RNG, SS_DET, SS_MIX, SS_VOW, SS_CUT, SS_RES, SS_ENV, SS_ATK, SS_DEC, SS_SUS, SS_REL, SS_FATK, SS_FDEC, SS_LVL, SS_DRF, SS_OCT, SS_FRM, SS_COUNT };
-enum { GM_TUNE, GM_RAT, GM_XMD, GM_FLD, GM_CHS, GM_RTE, GM_NOI, GM_GLT, GM_CRU, GM_CUT, GM_RES, GM_ATK, GM_DEC, GM_REL, GM_LVL,
-       GM_SYN, GM_RNG, GM_DRV, GM_SUB, GM_DIV, GM_CMB, GM_FBK, GM_BITE, GM_COUNT };
+enum { V3_TUNE, V3_O1W, V3_O2W, V3_O2T, V3_O3R, V3_O3S, V3_M1, V3_M2, V3_MN, V3_MR, V3_CUT, V3_RES, V3_KEY, V3_O3P, V3_O3F, V3_XMD, V3_ENF, V3_FBK, V3_ENP,
+       V3_ATK, V3_DEC, V3_SUS, V3_REL, V3_LVL, V3_COUNT };
 enum { MG_W1, MG_R1, MG_T1, MG_P1, MG_L1, MG_W2, MG_R2, MG_T2, MG_P2, MG_L2, MG_W3, MG_R3, MG_T3, MG_P3, MG_L3,
        MG_NTYPE, MG_NTONE, MG_NCRUSH, MG_NLEV, MG_CUT, MG_RES, MG_ENV, MG_GLIDE, MG_REL, MG_ATK, MG_DEC, MG_SUS,
        MG_FATK, MG_FDEC, MG_FSUS, MG_LVL, MG_COUNT };
@@ -84,13 +84,13 @@ void ssaw_on(int t, int note, int vel15);
 void ssaw_off(int t);
 int  ssaw_active(int t);
 void ssaw_render(int t, int32_t *out, int n);
-void grem_init(int t);
-void grem_set(int t, int id, int v);
-int  grem_get(int t, int id);
-void grem_on(int t, int note, int vel15);
-void grem_off(int t);
-int  grem_active(int t);
-void grem_render(int t, int32_t *out, int n);
+void v3_init(int t);
+void v3_set(int t, int id, int v);
+int  v3_get(int t, int id);
+void v3_on(int t, int note, int vel15);
+void v3_off(int t);
+int  v3_active(int t);
+void v3_render(int t, int32_t *out, int n);
 void drum_init(int t);
 void drum_set(int t, int id, int v);
 int  drum_get(int t, int id);

@@ -7,7 +7,7 @@
 #include "params.h"
 #include "ui.h"
 #include "eng_moog.c"
-#include "eng_grem.c"
+#include "eng_vc3.c"
 #include "eng_ssaw.c"
 #include "eng_tb3.c"
 #include "eng_prophet.c"
@@ -51,7 +51,7 @@ static void eng_on(int t, int note, int vel15)
     case ENG_DRUM: drum_on(t, note, vel15); break;
     case ENG_TB3: tb3_on(t, note, vel15); break;
     case ENG_SSAW: ssaw_on(t, note, vel15); break;
-    case ENG_GREM: grem_on(t, note, vel15); break;
+    case ENG_VC3: v3_on(t, note, vel15); break;
     }
 }
 static void eng_off(int t)                                /* every voice of the track into release */
@@ -62,7 +62,7 @@ static void eng_off(int t)                                /* every voice of the 
     case ENG_PROPH: proph_off(t); break;
     case ENG_TB3: tb3_off(t); break;
     case ENG_SSAW: ssaw_off(t); break;
-    case ENG_GREM: grem_off(t); break;
+    case ENG_VC3: v3_off(t); break;
     }
 }
 static int8_t sq_note[NTRK] = { -1, -1, -1, -1 };          /* the note the step sequencer sounds on a polyphonic engine */
@@ -85,7 +85,7 @@ void voices_init(void)
         TK[t].vol = 26214;
         for (i = 0; i < ARP_COUNT; i++) TK[t].a.p[i] = ARP_DEF[i];
         moog_init(t);
-        grem_init(t);
+        v3_init(t);
         ssaw_init(t);
         tb3_init(t);
         proph_init(t);
@@ -127,11 +127,11 @@ void voices_param(int t, int eng, int id, int v)
     if (eng == ENG_MOOG) moog_set(t & 3, id, v);
     else if (eng == ENG_PROPH) proph_set(t & 3, id, v);
     else if (eng == ENG_DRUM) drum_set(t & 3, id, v);
-    else if (eng == ENG_GREM) grem_set(t & 3, id, v);
+    else if (eng == ENG_VC3) v3_set(t & 3, id, v);
     else if (eng == ENG_SSAW) ssaw_set(t & 3, id, v);
     else if (eng == ENG_TB3) tb3_set(t & 3, id, v);
 }
-int voices_param_get(int t, int eng, int id) { return eng == ENG_MOOG ? moog_get(t & 3, id) : eng == ENG_PROPH ? proph_get(t & 3, id) : eng == ENG_DRUM ? drum_get(t & 3, id) : eng == ENG_TB3 ? tb3_get(t & 3, id) : eng == ENG_SSAW ? ssaw_get(t & 3, id) : eng == ENG_GREM ? grem_get(t & 3, id) : 0; }
+int voices_param_get(int t, int eng, int id) { return eng == ENG_MOOG ? moog_get(t & 3, id) : eng == ENG_PROPH ? proph_get(t & 3, id) : eng == ENG_DRUM ? drum_get(t & 3, id) : eng == ENG_TB3 ? tb3_get(t & 3, id) : eng == ENG_SSAW ? ssaw_get(t & 3, id) : eng == ENG_VC3 ? v3_get(t & 3, id) : 0; }
 
 
 /* ---- the step clock (the prototype's seq() / fire()): 16th notes at the tempo from PLAY; the drum lanes (DG) fire here ---- */
@@ -612,7 +612,7 @@ void voices_render(int32_t *out, int n)
             } break;
         case ENG_TB3: if (!tb3_active(t)) act = 0; else tb3_render(t, tmp, n); break;
         case ENG_SSAW: if (!ssaw_active(t)) act = 0; else ssaw_render(t, tmp, n); break;
-        case ENG_GREM: if (!grem_active(t)) act = 0; else grem_render(t, tmp, n); break;
+        case ENG_VC3: if (!v3_active(t)) act = 0; else v3_render(t, tmp, n); break;
         default: act = 0; break;
         }
         if (act && TK[t].eng != ENG_PROPH)      /* ENGINE_TRIM: every engine sits 4.4 dB lower (the Prophet's own trim is in its voice sum, ahead of its soft limit) so that a 5-note chord does not saturate */

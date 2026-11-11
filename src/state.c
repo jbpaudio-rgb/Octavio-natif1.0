@@ -54,7 +54,7 @@ static const struct { uint8_t id, rev, scene; int16_t a, z; } PVR[6] = {
     { 0x04, 1, 0, P_ARPMODE, P_ARPPAT }, { 0x05, 1, 0, P_M4T, P_STEPV }, { 0x07, 1, 1, P_VOL0, P_VOL3 } };
 
 static const int16_t *st_pv;                        /* encode from this PV image instead of the live one (legacy records) */
-static int16_t st_def_tb[TB_COUNT], st_def_ss[SS_COUNT], st_def_gm[GM_COUNT];
+static int16_t st_def_tb[TB_COUNT], st_def_ss[SS_COUNT], st_def_v3[V3_COUNT];
 static int16_t st_def_mg[MG_COUNT], st_def_pr[PR_COUNT], st_def_dr[ST_DRUM_N], st_def_sq[ST_SQ_N];
 static uint8_t st_ready;
 
@@ -70,7 +70,7 @@ static void state_init(void)
     for (i = 0; i < PR_COUNT; i++) st_def_pr[i] = (int16_t)voices_param_get(0, ENG_PROPH, i);
     for (i = 0; i < TB_COUNT; i++) st_def_tb[i] = (int16_t)voices_param_get(0, ENG_TB3, i);
     for (i = 0; i < SS_COUNT; i++) st_def_ss[i] = (int16_t)voices_param_get(0, ENG_SSAW, i);
-    for (i = 0; i < GM_COUNT; i++) st_def_gm[i] = (int16_t)voices_param_get(0, ENG_GREM, i);
+    for (i = 0; i < V3_COUNT; i++) st_def_v3[i] = (int16_t)voices_param_get(0, ENG_VC3, i);
     for (i = 0; i < ST_DRUM_N; i++) st_def_dr[i] = (int16_t)voices_param_get(DRUM_T0, ENG_DRUM, st_drum_id(i));
     for (i = 0; i < ST_SQ_N; i++) st_def_sq[i] = (int16_t)ui_seq_get_t(0, i / 16, i % 16);
     st_ready = 1;
@@ -84,7 +84,7 @@ static int st_sec(int i, secd_t *s)                 /* the i-th section this fir
         int k = i - 28;
         s->t = (uint8_t)(k / 3); s->e = (uint8_t)(ENG_TB3 + k % 3);
         s->id = (uint8_t)(0x50 + k); s->rev = 1; s->kind = SK_ENG;
-        s->n = (uint8_t)(s->e == ENG_TB3 ? TB_COUNT : s->e == ENG_SSAW ? SS_COUNT : GM_COUNT);
+        s->n = (uint8_t)(s->e == ENG_TB3 ? TB_COUNT : s->e == ENG_SSAW ? SS_COUNT : V3_COUNT);
         return 1;
     }
     if (i == 27) { s->id = 0x42; s->rev = 2; s->kind = SK_DSQ2; s->n = ST_DSQ2_N; }          /* read only: the two drum tracks of rev 2 */
@@ -134,7 +134,7 @@ static int st_def(const secd_t *s, int i)
 {
     switch (s->kind) {
     case SK_PV: return PD[s->a + i].def;
-    case SK_ENG: return s->e == ENG_MOOG ? st_def_mg[i] : s->e == ENG_PROPH ? st_def_pr[i] : s->e == ENG_TB3 ? st_def_tb[i] : s->e == ENG_SSAW ? st_def_ss[i] : s->e == ENG_GREM ? st_def_gm[i] : st_def_dr[i];
+    case SK_ENG: return s->e == ENG_MOOG ? st_def_mg[i] : s->e == ENG_PROPH ? st_def_pr[i] : s->e == ENG_TB3 ? st_def_tb[i] : s->e == ENG_SSAW ? st_def_ss[i] : s->e == ENG_VC3 ? st_def_v3[i] : st_def_dr[i];
     case SK_SQ: return st_def_sq[i];
     case SK_SQT: return s->t ? 0 : st_def_sq[i];
     case SK_MODT: return modt_def(i);

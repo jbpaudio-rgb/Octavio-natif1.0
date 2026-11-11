@@ -226,12 +226,12 @@ static int32_t ep_log2mag(int32_t lz_q16, int32_t k_q16)      /* log2 |(1 + jz)^
 static void epg_filter(void)
 {
     int t = voices_sel(), e = EP.eng, x, n = 0;
-    int cut = e == ENG_MOOG ? voices_param_get(t, e, MG_CUT) : e == ENG_TB3 ? voices_param_get(t, e, TB_CUT) : e == ENG_SSAW ? voices_param_get(t, e, SS_CUT) : e == ENG_GREM ? voices_param_get(t, e, GM_CUT) : voices_param_get(t, e, PR_CUT);
-    int res = e == ENG_MOOG ? voices_param_get(t, e, MG_RES) : e == ENG_TB3 ? voices_param_get(t, e, TB_RES) : e == ENG_SSAW ? voices_param_get(t, e, SS_RES) : e == ENG_GREM ? voices_param_get(t, e, GM_RES) : voices_param_get(t, e, PR_RES);
-    int env = e == ENG_MOOG ? voices_param_get(t, e, MG_ENV) : e == ENG_TB3 ? voices_param_get(t, e, TB_ENV) : e == ENG_SSAW ? voices_param_get(t, e, SS_ENV) : e == ENG_GREM ? 0 : voices_param_get(t, e, PR_ENV);
+    int cut = e == ENG_MOOG ? voices_param_get(t, e, MG_CUT) : e == ENG_TB3 ? voices_param_get(t, e, TB_CUT) : e == ENG_SSAW ? voices_param_get(t, e, SS_CUT) : e == ENG_VC3 ? voices_param_get(t, e, V3_CUT) : voices_param_get(t, e, PR_CUT);
+    int res = e == ENG_MOOG ? voices_param_get(t, e, MG_RES) : e == ENG_TB3 ? voices_param_get(t, e, TB_RES) : e == ENG_SSAW ? voices_param_get(t, e, SS_RES) : e == ENG_VC3 ? voices_param_get(t, e, V3_RES) : voices_param_get(t, e, PR_RES);
+    int env = e == ENG_MOOG ? voices_param_get(t, e, MG_ENV) : e == ENG_TB3 ? voices_param_get(t, e, TB_ENV) : e == ENG_SSAW ? voices_param_get(t, e, SS_ENV) : e == ENG_VC3 ? voices_param_get(t, e, V3_ENF) : voices_param_get(t, e, PR_ENV);
     int32_t l2fc, l2fc2, k_q16, l2f20 = lg2q16(20, 0), l2k = lg2q16(1000, 0), cap = lg2q16(18000, 0);
     static int32_t ya[EW / 2 + 2], yb[EW / 2 + 2];
-    if (e == ENG_MOOG || e == ENG_SSAW || e == ENG_GREM) {                    /* the new engines: the same cutoff law as the Minimoog's (their own resonance scale; a 4-pole curve is drawn for their 2-pole filter: indicative) */
+    if (e == ENG_MOOG || e == ENG_SSAW || e == ENG_VC3) {                    /* the new engines: the same cutoff law as the Minimoog's (their own resonance scale; a 4-pole curve is drawn for their 2-pole filter: indicative) */
         l2fc = lg2q16(30, 0) + (cut * 602931) / 1000;                         /* 30 * 2^(cut * 9.2) */
         k_q16 = (int32_t)(res * (e == ENG_MOOG ? 267 : 196));                 /* 4 * res * 1.02 */
         l2fc2 = l2fc + (env * 327680) / 1000;                                 /* * 2^(env * 5) */
@@ -286,9 +286,9 @@ static void epg_env(void)
     if (e == ENG_SSAW) {
         sa = voices_param_get(t, e, e2 ? SS_FATK : SS_ATK); sd2 = voices_param_get(t, e, e2 ? SS_FDEC : SS_DEC);
         ep_env_s = voices_param_get(t, e, SS_SUS); sr = voices_param_get(t, e, SS_REL);
-    } else if (e == ENG_GREM) {
-        sa = voices_param_get(t, e, GM_ATK); sd2 = voices_param_get(t, e, GM_DEC);
-        ep_env_s = 600; sr = voices_param_get(t, e, GM_REL);                    /* its sustain is fixed at .6 */
+    } else if (e == ENG_VC3) {
+        sa = voices_param_get(t, e, V3_ATK); sd2 = voices_param_get(t, e, V3_DEC);
+        ep_env_s = voices_param_get(t, e, V3_SUS); sr = voices_param_get(t, e, V3_REL);
     } else if (e == ENG_MOOG) {
         sa = voices_param_get(t, e, e2 ? MG_FATK : MG_ATK); sd2 = voices_param_get(t, e, e2 ? MG_FDEC : MG_DEC);
         ep_env_s = voices_param_get(t, e, e2 ? MG_FSUS : MG_SUS);
