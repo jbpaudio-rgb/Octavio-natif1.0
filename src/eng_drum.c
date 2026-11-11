@@ -79,28 +79,29 @@ static int32_t dvoice(int ty, dvoice_t *V, int k, const dpar_t *pr)
     tf = pr->pe ? M16(pr->tf, 65536 + (int32_t)(((int64_t)pr->pe * exc(V, ci++, tu, A24(.04), 65536)) >> 15)) : pr->tf;
 #define EX(tau) exc(V, ci++, tu, A24(tau), 65536)
 #define EXD(tau) exc(V, ci++, tu, A24(tau), dfi)
+#define EXV(a, b, c) (lin ? EXD(a) : ver ? EXD(b) : EXD(c))                /* the kit picks the time constant (each A24 stays a constant) */
     if (k >= 3 && ty <= 3) {                                          /* LinnDrum (k 3) and Oberheim DMX (k 4): 8-bit-ish samples (the low bits dropped); Vermona DRM1 (k 5): analog, long and ringing */
         int lin = k == 3, ver = k == 5, sh = ver ? 0 : lin ? 7 : 8;
         int32_t o, b, nn;
         if (ty == 0) {
             int32_t f = lin ? M16((52 * 256) + 110 * M15(256, EX(.018)), tf) : ver ? M16((48 * 256) + 130 * M15(256, EX(.025)), tf) : M16((55 * 256) + 150 * M15(256, EX(.012)), tf);
             V->ph += dinc(f);
-            s = M15(sin_q15(V->ph), EXD(lin ? .17 : ver ? .45 : .3));
+            s = M15(sin_q15(V->ph), EXV(.17, .45, .3));
             if (!lin) s = M15(c_tanh(M16(s, Q16(ver ? 1.3 : 1.6))), Q(.8));
             o = M15(s + M15(M15(EX(.003), M15(tn, lin ? Q(.5) : Q(.7))), nz), Q(.9));
         } else if (ty == 1) {
             int32_t fe = Q16(1) + M16(Q16(.2), EX(.015) * 2);
             V->ph += dinc(M16(M16((lin ? 195 : ver ? 180 : 170) * 256, tf), fe));
             if (ver) V->ph2 += dinc(M16(M16(330 * 256, tf), fe));
-            b = M15(sin_q15(V->ph) + (ver ? M15(sin_q15(V->ph2), Q(.5)) : 0), M15(lin ? Q(.5) : ver ? Q(.4) : Q(.55), EXD(lin ? .06 : ver ? .08 : .09)));
+            b = M15(sin_q15(V->ph) + (ver ? M15(sin_q15(V->ph2), Q(.5)) : 0), M15(lin ? Q(.5) : ver ? Q(.4) : Q(.55), EXV(.06, .08, .09)));
             nn = lin ? HPF(nz, Q16(.1)) : LPF(HPF(nz, Q16(ver ? .15 : .08)), Q16(ver ? .7 : .55));
-            nn = M15(M15(nn, EXD(lin ? .15 : ver ? .2 : .12)), M15(Q(.25) + M15(tn, Q(1.0)), Q(.8)));
+            nn = M15(M15(nn, EXV(.15, .2, .12)), M15(Q(.25) + M15(tn, Q(1.0)), Q(.8)));
             o = M15(b + nn, Q(.9));
         } else {
             int op = ty == 3;
             x = lin ? M15(nz, Q(.75)) + M15(met(V, Q16(1.0), tf), Q(.3)) : ver ? M15(nz, Q(.15)) + M15(met(V, Q16(1.1), tf), Q(.7)) : M15(nz, Q(.5)) + M15(met(V, Q16(1.3), tf), Q(.4));
             x = M15(HPF(x, Q16(lin ? .42 : ver ? .5 : .34) + M16(tn * 2, Q16(.3))), Q(1.5) / 2) * 2;
-            o = M15(M15(x, op ? EXD(lin ? .3 : ver ? .45 : .35) : EXD(lin ? .035 : ver ? .04 : .05)), Q(.6));
+            o = M15(M15(x, op ? EXV(.3, .45, .35) : EXV(.035, .04, .05)), Q(.6));
         }
         return sh ? ((o + (1 << (sh - 1))) >> sh) << sh : o;
     }
