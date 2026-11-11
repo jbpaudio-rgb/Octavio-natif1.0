@@ -137,7 +137,8 @@ void mod_apply(int n)
             int b = 5 * s, dst = M[b], x, id, k, kind;
             int32_t src, amt, xq, nn, cur, mn, mx;
             uint32_t ph0;
-            if (dst <= 0 || dst >= N_DST || !M[b + 3]) continue;
+            int need = eng == ENG_VC3 && voices_param_get(t, eng, V3_FMS) >= V3FS_MOD0;          /* a VC3 track whose filter FM listens to the modulation system: the sources run for it too */
+            if ((dst <= 0 || dst >= N_DST || !M[b + 3]) && !need) continue;
             ph0 = MS_[t][s].ph;
             MS_[t][s].ph += INC_MHZ(lfo_mhz(M, b)) * (uint32_t)n;
             if (s < 4) src = lfo_wf(MS_[t][s].ph, M[b + 1]);
@@ -147,9 +148,14 @@ void mod_apply(int n)
                 MS_[t][s].shs += (int32_t)(((int64_t)(MS_[t][s].shv - MS_[t][s].shs) * c_expm(xq16 * (uint32_t)n / 128u)) >> 16);
                 src = MS_[t][s].shs;
             }
+            mod_bus[t][s] = src;
+            if (dst <= 0 || dst >= N_DST || !M[b + 3]) continue;
             amt = (M[b + 3] * M[b + 3] * 2147) >> 16;               /* amount^2, Q15 */
             xq = (int32_t)(((int64_t)src * amt) >> 15);
             mod_dest(t, eng, dst, xq, lvl, sqg, &vac);
+        }
+        if (eng == ENG_VC3 && voices_param_get(t, eng, V3_FMS) >= V3FS_MOD0) {         /* the sequencer lines as FM sources: the current step value (0 while the sequencer stands still) */
+            for (s = 0; s < 6; s++) mod_bus[t][6 + s] = voices_seq_cur() >= 0 ? (int32_t)((int64_t)ui_seq_get_t(t, s, voices_seq_cur()) * 32768 / 1000) : 0;
         }
         if (voices_seq_cur() >= 0) {                                 /* the sequencer lines (destination master + 3): the step value times the amount */
             const int16_t *QL = t == mod_view ? &PV[P_M4T] : MODT[t].q;

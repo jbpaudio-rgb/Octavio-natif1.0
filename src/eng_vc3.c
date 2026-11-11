@@ -16,7 +16,7 @@ typedef struct {
     v3pin_t pc[56];                                     /* the pins that act once per chunk: any source into RATE / CUT / RES / O1W / O2W, the slow ones into O1F / O2F */
     uint8_t s1[7], s2[7], sf[10], so[10], sa[10];       /* the pins that act per sample: audio sources into O1F, O2F; any into FIN, OUT, AM */
     int16_t a1[7], a2[7], af[10], ao[10], aa[10];
-    int32_t oct16, o2s16, cut16, k16, lev, l3, key;
+    int32_t oct16, o2s16, cut16, k16, lev, l3, key, fma;
     int32_t ai, sus;
     uint32_t dc, rc, inc3;
     uint32_t ph1, ph2, ph3;
@@ -27,7 +27,7 @@ typedef struct {
 static v3_t V3[4];
 static void v3_defaults(int16_t *p)
 {
-    static const int16_t D[V3_PIN0] = { 500, 350, 700, 503, 350, 0, 600, 450, 20, 500, 600, 350, 1000 };
+    static const int16_t D[V3_PIN0] = { 500, 350, 700, 503, 350, 0, 600, 450, 20, 500, 600, 350, 1000, 0, 0 };
     int i;
     for (i = 0; i < V3_PIN0; i++) p[i] = D[i];
     for (i = V3_PIN0; i < V3_COUNT; i++) p[i] = 0;
@@ -57,6 +57,7 @@ static void v3_derive(v3_t *m)
     m->cut16 = (p[V3_CUT] * 602931) / 1000;
     m->k16 = p[V3_RES] <= 800 ? p[V3_RES] * 295 : 236000 + (p[V3_RES] - 800) * 950;   /* 0 .. 6.5: past ~4 the ladder rings on its own */
     m->lev = p[V3_LVL] * 32768 / 1000;
+    m->fma = p[V3_FMA] * 32768 / 1000;
     m->ai = (int32_t)exp2_fx(C_L2_AI0 - (p[V3_ATK] * C_L2_ATK) / 1000, 0);
     m->dc = c_1mexp(exp2_fx(C_L2_DC0 - (p[V3_DEC] * C_L2_DCR) / 1000, 0));
     m->rc = c_1mexp(exp2_fx(C_L2_DC0 - (p[V3_REL] * C_L2_DCR) / 1000, 0));
@@ -83,7 +84,7 @@ void v3_set(int t, int id, int v)
     v3_t *m = &V3[t];
     if (id < 0 || id >= V3_COUNT) return;
     if (v < 0) v = 0;
-    if (v > (id == V3_O3S ? 3 : 1000)) v = id == V3_O3S ? 3 : 1000;
+    { int mx = id == V3_O3S ? 3 : id == V3_FMS ? V3FS_N - 1 : 1000; if (v > mx) v = mx; }
     m->p[id] = (int16_t)v;
     m->dirty = 1;
 }
@@ -135,7 +136,7 @@ void v3_render(int t, int32_t *out, int n)
     if (m->dirty) v3_derive(m);
     while (i < n) {
         int cnt = n - i < 8 ? n - i : 8;
-        int32_t *sv = m->sv, nn, lg1 = 0, lg2 = 0, cm, ratem = 0, x16, g, k16, mo1, mo2, lg3;
+        int32_t *sv = m->sv, fmsrc, fmidx, fmbus, nn, lg1 = 0, lg2 = 0, cm, ratem = 0, x16, g, k16, mo1, mo2, lg3;
         uint32_t inc1, inc2, rd1, rd2, old3;
         nn = (int32_t)(((int64_t)(m->note16 - (60 << 16)) * 21845) >> 18);          /* the note, in octaves, Q16 */
         sv[V3S_ENV] = m->a.e >> 15;
@@ -174,8 +175,13 @@ void v3_render(int t, int32_t *out, int n)
         if (x16 > 82354 || x16 < 0) x16 = 82354;
         g = (int32_t)c_expm((uint32_t)x16);
         if (g > 26000) g = 26000;                       /* a 4-pole with its one-sample feedback delay is no longer clean above ~ 0.4 */
+        {                                                                          /* the filter FM source for this chunk: a voice source (read each sample) or a modulation-system bus value */
+            int fs = m->p[V3_FMS];
+            fmbus = fs >= V3FS_MOD0; fmsrc = fmbus ? mod_bus[t][fs - V3FS_MOD0] : 0;
+            fmidx = fs == V3FS_LFO ? V3S_LFO : fs == V3FS_O1 ? V3S_O1 : fs == V3FS_O2 ? V3S_O2 : fs == V3FS_NOI ? V3S_NOI : fs == V3FS_ENV ? V3S_ENV : V3S_FILT;
+        }
         for (j = 0; j < cnt; j++, i++) {
-            int32_t o1, o2, s, u, e, o, fm1 = 0, fm2 = 0, am = 32768, ob = 0;
+            int32_t o1, o2, s, u, e, o, fm1 = 0, fm2 = 0, am = 32768, ob = 0, gg = g;
             for (q = 0; q < m->n1; q++) fm1 += (int32_t)(((int64_t)sv[m->s1[q]] * m->a1[q]) >> 15);        /* audio-rate FM: last sample's sources */
             for (q = 0; q < m->n2; q++) fm2 += (int32_t)(((int64_t)sv[m->s2[q]] * m->a2[q]) >> 15);
             m->ph1 += (uint32_t)((int32_t)inc1 + (int32_t)(((int64_t)inc1 * fm1) >> 15));
@@ -189,10 +195,15 @@ void v3_render(int t, int32_t *out, int n)
             s = 0;
             for (q = 0; q < m->nf; q++) s += (int32_t)(((int64_t)sv[m->sf[q]] * m->af[q]) >> 15);
             u = v3_sat(s + (c_rand15() >> 10) - (int32_t)(((int64_t)k16 * (m->y4 >> 8)) >> 16));          /* a whisper of noise at the input starts the self-oscillation, as on the real thing */
-            m->y1 += (int32_t)(((int64_t)((u << 8) - m->y1) * g) >> 16);                                        /* the four poles keep 8 extra bits: at a low cutoff the steps are tiny */
-            m->y2 += (int32_t)(((int64_t)(m->y1 - m->y2) * g) >> 16);
-            m->y3 += (int32_t)(((int64_t)(m->y2 - m->y3) * g) >> 16);
-            m->y4 += (int32_t)(((int64_t)(m->y3 - m->y4) * g) >> 16);
+            if (m->fma) {                                                                                     /* FM of the cutoff: g follows the source, up to a factor 3 at full */
+                int32_t fv = (int32_t)(((int64_t)(fmbus ? fmsrc : sv[fmidx]) * m->fma) >> 15);
+                gg = g + (int32_t)(((int64_t)g * fv) >> 14);
+                gg = gg < 0 ? 0 : gg > 26000 ? 26000 : gg;
+            }
+            m->y1 += (int32_t)(((int64_t)((u << 8) - m->y1) * gg) >> 16);                                        /* the four poles keep 8 extra bits: at a low cutoff the steps are tiny */
+            m->y2 += (int32_t)(((int64_t)(m->y1 - m->y2) * gg) >> 16);
+            m->y3 += (int32_t)(((int64_t)(m->y2 - m->y3) * gg) >> 16);
+            m->y4 += (int32_t)(((int64_t)(m->y3 - m->y4) * gg) >> 16);
             sv[V3S_FILT] = m->y4 >> 8;
             for (q = 0; q < m->no; q++) ob += (int32_t)(((int64_t)sv[m->so[q]] * m->ao[q]) >> 15);
             for (q = 0; q < m->na; q++) am += (int32_t)(((int64_t)sv[m->sa[q]] * m->aa[q]) >> 15);

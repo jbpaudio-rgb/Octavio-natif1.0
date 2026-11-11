@@ -9,9 +9,11 @@ enum { ENG_VAC, ENG_MOOG, ENG_PROPH, ENG_DRUM, ENG_TB3, ENG_POL, ENG_VC3, ENG_N 
 enum { TB_WAVE, TB_TUNE, TB_CUT, TB_RES, TB_ENV, TB_DEC, TB_ACC, TB_SLD, TB_DRV, TB_LVL, TB_COUNT };
 enum { PL_TUNE, PL_O2T, PL_O1W, PL_O1P, PL_O2W, PL_O2P, PL_SYN, PL_M1, PL_M2, PL_MN, PL_DRV, PL_CUT, PL_RES, PL_MOD, PL_ENV, PL_LR, PL_LP, PL_LW, PL_LF,
        PL_ATK, PL_DEC, PL_SUS, PL_REL, PL_FATK, PL_FDEC, PL_LVL, PL_COUNT };
-enum { V3_TUNE, V3_O1W, V3_O2W, V3_O2T, V3_O3R, V3_O3S, V3_CUT, V3_RES, V3_ATK, V3_DEC, V3_SUS, V3_REL, V3_LVL,
+enum { V3_TUNE, V3_O1W, V3_O2W, V3_O2T, V3_O3R, V3_O3S, V3_CUT, V3_RES, V3_ATK, V3_DEC, V3_SUS, V3_REL, V3_LVL, V3_FMA, V3_FMS,
        V3_PIN0,                                                 /* the pin matrix: V3_PIN0 + 10 * source + destination, 0 = no pin, 1..1000 = its amount */
        V3_COUNT = V3_PIN0 + 100 };
+enum { V3FS_LFO, V3FS_O1, V3FS_O2, V3FS_NOI, V3FS_ENV, V3FS_FILT, V3FS_MOD0, V3FS_N = V3FS_MOD0 + 12 };      /* the filter FM sources: the voice's own, then the modulation system's (LFO 1..4, S&H 1..2, sequencer lines 1..6) */
+extern int32_t mod_bus[4][12];                                                                                       /* those twelve, per track, Q15 (lfo.c fills them for a VC3 track whose FM source is one of them) */
 enum { V3S_O1, V3S_O1S, V3S_O2, V3S_O2S, V3S_LFO, V3S_NOI, V3S_RING, V3S_FILT, V3S_ENV, V3S_KEY, V3S_N };               /* the matrix rows */
 enum { V3D_O1F, V3D_O2F, V3D_RATE, V3D_CUT, V3D_RES, V3D_FIN, V3D_OUT, V3D_AM, V3D_O1W, V3D_O2W, V3D_N };               /* its columns */
 #define V3_PIN(s, d) (V3_PIN0 + (s) * V3D_N + (d))

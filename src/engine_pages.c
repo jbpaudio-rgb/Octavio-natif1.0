@@ -11,6 +11,7 @@ enum { EF_PCT, EF_MSA, EF_MSD, EF_C7, EF_C12, EF_SEL, EF_SHA, EF_SHB };     /* h
 typedef struct { uint8_t fmt, step, nopt; const char *const *opts; } epd_t;
 static const char *const O_WAVE[] = { "Tri", "Saw", "Square", "Pulse" };
 static const char *const O_LFO[] = { "Sine", "Tri", "Square", "S&H" };
+static const char *const O_FMS[] = { "LFO", "OSC1", "OSC2", "NOISE", "ENV", "FILT", "MOD1", "MOD2", "MOD3", "MOD4", "SH1", "SH2", "SEQ1", "SEQ2", "SEQ3", "SEQ4", "SEQ5", "SEQ6" };
 static const char *const O_RNG[] = { "32'", "16'", "8'", "4'", "2'" };
 static const char *const O_NZ[] = { "White", "Pink", "Brown", "Blue", "Crackle" };
 static const char *const O_REL[] = { "Short", "= Decay" };
@@ -41,7 +42,7 @@ static const epd_t TBD[TB_COUNT] = { SL(2, O_TBW), { EF_C7, 5, 0, 0 }, PC(10), P
 static const char *const O_OFFON[] = { "Off", "On" };
 static const epd_t PLD[PL_COUNT] = { { EF_C7, 5, 0, 0 }, PC(10), PC(10), PC(10), PC(10), PC(10), SL(2, O_OFFON), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10),
                                      PC(10), PC(10), PC(10), PC(10), { EF_MSA, 5, 0, 0 }, { EF_MSD, 5, 0, 0 }, PC(10), { EF_MSD, 5, 0, 0 }, { EF_MSA, 5, 0, 0 }, { EF_MSD, 5, 0, 0 }, PC(10) };
-static const epd_t V3D[V3_COUNT] = { { EF_C7, 5, 0, 0 }, PC(10), PC(10), PC(10), PC(10), SL(4, O_LFO), PC(10), PC(10), { EF_MSA, 5, 0, 0 }, { EF_MSD, 5, 0, 0 }, PC(10), { EF_MSD, 5, 0, 0 }, PC(10),
+static const epd_t V3D[V3_COUNT] = { { EF_C7, 5, 0, 0 }, PC(10), PC(10), PC(10), PC(10), SL(4, O_LFO), PC(10), PC(10), { EF_MSA, 5, 0, 0 }, { EF_MSD, 5, 0, 0 }, PC(10), { EF_MSD, 5, 0, 0 }, PC(10), PC(10), SL(18, O_FMS),
                                      [V3_PIN0 ... V3_COUNT - 1] = PC(10) };
 static const epd_t DRD[DR_PER] = { PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10), PC(10) };
 
@@ -93,7 +94,7 @@ static const epg_t V3_PG[EPI_N] = {
     [EPI_GLO] = { "VCS3", { "TUNE", "O1 WAVE", "O2 WAVE", "O2 TUNE" }, { V3_TUNE, V3_O1W, V3_O2W, V3_O2T } },
     [EPI_OSC1] = { "LFO", { "RATE", "SHAPE", "", "" }, { V3_O3R, V3_O3S, -1, -1 } },
     [EPI_OSC2] = { "PATCH", { "SOURCE", "DEST", "PIN", "" }, { -1, -1, -1, -1 } },
-    [EPI_EDIT] = { "FILTER", { "CUTOFF", "RESO", "", "LEVEL" }, { V3_CUT, V3_RES, -1, V3_LVL } },
+    [EPI_EDIT] = { "FILTER", { "CUTOFF", "RESO", "FM AMT", "FM SRC" }, { V3_CUT, V3_RES, V3_FMA, V3_FMS } },
     [EPI_ENV] = { "ENVELOPE", { "ATTACK", "DECAY", "SUSTAIN", "RELEASE" }, { V3_ATK, V3_DEC, V3_SUS, V3_REL } } };
 
 static struct { char title[28]; const char *nm[4]; int16_t id[4]; int eng, idx; } EP;     /* the page on the screen */

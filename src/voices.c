@@ -9,6 +9,7 @@
 #include "eng_moog.c"
 #include "eng_vc3.c"
 
+int32_t mod_bus[4][12];
 static int16_t vsc_buf[1024];                           /* the last 1024 samples of the selected track while it sounds (it keeps the last picture when it stops) */
 static int vsc_w;
 static void vsc_push(const int32_t *b, int n)
