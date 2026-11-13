@@ -322,37 +322,80 @@ int drum_active(int t)
     return 0;
 }
 
+/* One voice's block: its samples are added to acc (pre-tanh). A voice only ever touches its own state, so the voices of a block can be shared between the two cores. */
+static void drum_voice(drum_t *d, int v, int32_t *acc, int n)
+{
+    dvoice_t *V = &d->V[v];
+    const dpar_t *P = &d->P[v];
+    int ty = d->p[v * DR_PER + DR_TYPE], k = d->p[v * DR_PER + DR_KV], i;
+    for (i = 0; i < n && V->on; i++) {
+        int32_t x, ax;
+        x = dvoice(ty, V, k, P);
+        if (P->at > 0 && V->t < P->at) x = (int32_t)(((int64_t)x * V->t) / P->at);
+        if (P->dr > 0) {
+            int32_t m = Q16(1) + P->dr * 328;
+            x = (int32_t)(((int64_t)c_tanh((int32_t)(((int64_t)x * m) >> 16)) * P->drinv) >> 15);
+        }
+        if (P->fl_t < 0) { V->fl += M16(x - V->fl, P->fl_c); x = V->fl; }
+        else if (P->fl_t > 0) { V->fh += M16(x - V->fh, P->fl_c); x = x - V->fh; }
+        V->t++;
+        ax = x < 0 ? -x : x;
+        if (!(V->t & 3)) V->e = (ax << 8) > M16(V->e, 65272) ? (ax << 8) : M16(V->e, 65272);       /* every 4th sample (65470^4): the follower only gates the voice's end and ranks it for the governor */       /* the output follower in Q23: in Q15 its decay stalled at 1 LSB / sample and killed quiet low-pitched voices at the zero crossings */
+        x = M15(M15(x, P->g), V->vel);
+        if (V->kill) { x = (x * (int32_t)V->kill) >> 5; if (!--V->kill) V->on = 0; }          /* fading out: 32 .. 1 / 32 */
+        if (ty == 2 || ty == 3) x = M15(x, Q(1.9) / 2) * 2;
+        acc[i] += x;
+        if ((V->t > 2205 && V->e < (13 << 8)) || V->t > 176400) V->on = 0;
+    }
+}
+
+/* The second core (CPU1, main.c OCT_CPU1): the sounding voices are shared between the two cores, every other one to CPU1 (a job: drum_job) into dj_out, the rest by CPU0 into acc; CPU0 adds the two when
+ * the job is back. If CPU1 is off, retired or the job cannot be handed over, CPU0 renders everything (a dropped job's voices too). */
+#ifdef OCT_CPU1
+static struct { drum_t *d; int n; uint32_t mask; } dj;
+static int32_t dj_out[128];
+static void drum_job(uint32_t unused)
+{
+    int v;
+    (void)unused;
+    for (v = 0; v < 6; v++) if ((dj.mask >> v) & 1u) drum_voice(dj.d, v, dj_out, dj.n);
+}
+#endif
+
 void drum_render(int t, int32_t *out, int n)
 {
     drum_t *d = dp(t);
     int i, v;
-    if (!d) { for (i = 0; i < n; i++) out[i] = 0; return; }
+    int32_t acc[128];
+    if (!d || n > 128) { for (i = 0; i < n; i++) out[i] = 0; return; }
     if (d->dirty) drum_derive(d);
-    for (i = 0; i < n; i++) {
-        int32_t acc = 0;
-        for (v = 0; v < 6; v++) {
-            dvoice_t *V = &d->V[v];
-            const dpar_t *P = &d->P[v];
-            int32_t x, ax, ty;
-            if (!V->on) continue;
-            ty = d->p[v * DR_PER + DR_TYPE];
-            x = dvoice(ty, V, d->p[v * DR_PER + DR_KV], P);
-            if (P->at > 0 && V->t < P->at) x = (int32_t)(((int64_t)x * V->t) / P->at);
-            if (P->dr > 0) {
-                int32_t m = Q16(1) + P->dr * 328;
-                x = (int32_t)(((int64_t)c_tanh((int32_t)(((int64_t)x * m) >> 16)) * P->drinv) >> 15);
+    for (i = 0; i < n; i++) acc[i] = 0;
+#ifdef OCT_CPU1
+    if (fm1_cpu1_on) {
+        uint32_t m0 = 0, m1 = 0;
+        int na = 0, handed = 0;
+        for (v = 0; v < 6; v++) if (d->V[v].on) { if (na++ & 1) m1 |= 1u << v; else m0 |= 1u << v; }
+        if (m1) {
+            for (i = 0; i < n; i++) dj_out[i] = 0;
+            dj.d = d; dj.n = n; dj.mask = m1;
+            fm1_cpu1_sync();
+            if (fm1_cpu1_run(drum_job, 0)) {
+                handed = 1;
+                for (v = 0; v < 6; v++) if ((m0 >> v) & 1u) drum_voice(d, v, acc, n);
+                if (fm1_cpu1_wait() == 0) {
+                    fm1_cpu1_sync();
+                    for (i = 0; i < n; i++) acc[i] += dj_out[i];
+                } else
+                    for (v = 0; v < 6; v++) if ((m1 >> v) & 1u) drum_voice(d, v, acc, n);       /* retired: CPU0 does the dropped job */
             }
-            if (P->fl_t < 0) { V->fl += M16(x - V->fl, P->fl_c); x = V->fl; }
-            else if (P->fl_t > 0) { V->fh += M16(x - V->fh, P->fl_c); x = x - V->fh; }
-            V->t++;
-            ax = x < 0 ? -x : x;
-            if (!(V->t & 3)) V->e = (ax << 8) > M16(V->e, 65272) ? (ax << 8) : M16(V->e, 65272);       /* every 4th sample (65470^4): the follower only gates the voice's end and ranks it for the governor */       /* the output follower in Q23: in Q15 its decay stalled at 1 LSB / sample and killed quiet low-pitched voices at the zero crossings */
-            x = M15(M15(x, P->g), V->vel);
-            if (V->kill) { x = (x * (int32_t)V->kill) >> 5; if (!--V->kill) V->on = 0; }          /* fading out: 32 .. 1 / 32 */
-            if (ty == 2 || ty == 3) x = M15(x, Q(1.9) / 2) * 2;
-            acc += x;
-            if ((V->t > 2205 && V->e < (13 << 8)) || V->t > 176400) V->on = 0;
         }
-        out[i] = M15(c_tanh(M15(acc, Q(.9))), Q(.8));
+        if (!handed) for (v = 0; v < 6; v++) if (((m0 | m1) >> v) & 1u) drum_voice(d, v, acc, n);
+        goto summed;
     }
+#endif
+    for (v = 0; v < 6; v++) if (d->V[v].on) drum_voice(d, v, acc, n);
+#ifdef OCT_CPU1
+summed:
+#endif
+    for (i = 0; i < n; i++) out[i] = M15(c_tanh(M15(acc[i], Q(.9))), Q(.8));
 }
