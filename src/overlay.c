@@ -142,7 +142,15 @@ static void draw_hud(void)
         for (i = 3; i >= 0; i--) s[k++] = HX[(hud.btn >> (4 * i)) & 15u];
         s[k] = 0; gfx_text(F_OV_HINT, s, 4 * 64, 77, C_GREY, 0, 0, SCR_W);
     }
-    #if FEATURE_MAXTRACKS /* MAXTRACKS */
+    #if defined(OCT_CPU1) && !defined(NO_FXC1)
+    {   /* the effects on CPU1: their time in the block (J) and the time CPU0 waited for them (W), permille -> percent */
+        const char *p = "FX C1 JOB "; k = 0; for (i = 0; p[i]; i++) s[k++] = p[i];
+        hud_pct(a, hud.fxj); for (i = 0; a[i]; i++) s[k++] = a[i];
+        p = " WAIT "; for (i = 0; p[i]; i++) s[k++] = p[i];
+        hud_pct(a, hud.fxw); for (i = 0; a[i]; i++) s[k++] = a[i];
+        s[k] = 0; gfx_text(F_OV_HINT, s, 4 * 64, 66, C_GREY, 0, 0, SCR_W);
+    }
+    #elif FEATURE_MAXTRACKS /* MAXTRACKS */
     { char m[40] = "MAX TRACKS n  PLAY=CHG REC=HIDE"; m[11] = (char)('0' + hud.mt); gfx_text(F_OV_HINT, m, 4 * 64, 66, hud.mt < 4 ? C_RED : 0x6a6862u, 0, 0, SCR_W); }
 #else
     gfx_text(F_OV_HINT, "HOME + REC = HIDE", 4 * 64, 66, 0x6a6862u, 0, 0, SCR_W);

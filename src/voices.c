@@ -639,6 +639,7 @@ void voices_render(int32_t *out, int n)
 #endif
 #ifdef FX_C1
     int32_t *tmp = fxb[0];
+    uint32_t fxw = 0;
     int fxp = -1, fxpb = 0;                     /* the track whose chain CPU1 is running, and the buffer it is in */
 #else
     int32_t tmp[128];
@@ -724,8 +725,10 @@ void voices_render(int32_t *out, int n)
         if (fm1_cpu1_on && n <= 128 && fx_has_chain(t)) {
             if (fxp >= 0) {                     /* the previous job: wait for it, then its mix */
                 int32_t *pb = fxb[fxpb];
+                uint32_t tw = fm1_ticks();
                 if (fm1_cpu1_wait() == 0) fm1_cpu1_sync();
                 else fx_track(fxj.t, pb, fxj.n, fxj.act);       /* retired: CPU0 does the dropped job */
+                fxw += fm1_ticks() - tw;
                 track_mix(fxp, pb, n, acc);
                 fxp = -1;
             }
@@ -740,10 +743,14 @@ void voices_render(int32_t *out, int n)
 #ifdef FX_C1
     if (fxp >= 0) {
         int32_t *pb = fxb[fxpb];
+        uint32_t tw = fm1_ticks();
         if (fm1_cpu1_wait() == 0) fm1_cpu1_sync();
         else fx_track(fxj.t, pb, fxj.n, fxj.act);
+        fxw += fm1_ticks() - tw;
         track_mix(fxp, pb, n, acc);
     }
+    hud.fxw = (hud.fxw * 7u + fxw * 1000u / GOV_P) >> 3;
+    hud.fxj = (hud.fxj * 7u + perf.fx_last * 1000u / GOV_P) >> 3;
 #endif
     for (i = 0; i < n; i++) {
         int32_t s = (int32_t)(((acc[i] >> 15) * 34406) >> 15);            /* * 1.05 (1.5 * .7) */
