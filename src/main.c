@@ -55,6 +55,19 @@ static struct { uint32_t magic, pending, failed; } guard __attribute__((section(
 /* Boot trace for a start that never reaches the main loop (first real-FM-1 test: after a power-off the FM-1 stays dark and ends in the chip's update mode):
  * [0] magic, [1] the stage this attempt has reached, [2] the stage the previous attempt had reached, [3] attempts since the last good start.  Read with tools/fm1_peek.py in update mode. */
 volatile uint32_t octavio_boot[4] __attribute__((section(".noinit")));
+/* a trail of every boot's early steps, kept in retained RAM (read back with the unbricker's retained-ram.bin): 'H1ST', length, bytes */
+volatile uint8_t octavio_hist[64] __attribute__((section(".noinit")));
+static void hst(uint8_t b)
+{
+    volatile uint8_t *h = octavio_hist;
+    if (h[0] != 'H' || h[1] != '1' || h[2] != 'S' || h[3] != 'T' || h[4] > 58u || (b == 0xF0 && h[4] && h[4 + h[4]] == 0xEE)) {
+        h[0] = 'H'; h[1] = '1'; h[2] = 'S'; h[3] = 'T'; h[4] = 0;
+    }
+    if (h[4] < 58u) {
+        h[5 + h[4]] = b;
+        h[4]++;
+    }
+}
 #ifdef BOOTLOG
 /* flash trail of every start (survives UBOOT and power loss): sector 0xE7000, one byte per event, appended, never erased
  * until full.  A start = 0xA0, the reset reason (P33 RST_SRC & 0x7F), stages 3..17 as they are reached, 0xB0 at the healthy point. */
@@ -399,7 +412,7 @@ static void perf_stack_scan(void)                    /* bytes below the deepest 
 static void app_main(void)
 {
     uint32_t i, last_adc = 0, last_frame = 0;
-    octavio_boot[1] = 2;
+    octavio_boot[1] = 2; hst(0x40);
     {
         uint32_t f = irq_save();
         flash_ok = FL_FAR(fl_jedec_ram)() == 0x856014u;
@@ -475,7 +488,7 @@ static void app_main(void)
         }
         if (!boots_ok && now > 2000u) {
             boots_ok = 1;
-            octavio_boot[1] = 20; octavio_boot[3] = 0;
+            octavio_boot[1] = 20; octavio_boot[3] = 0; hst(0xEE);
 #ifdef BOOTLOG
             boot_log(0xB0);
 #endif
@@ -551,16 +564,22 @@ static void app_main(void)
 void fm1_cstart(void)
 {
     uint32_t *s, *d;
+    hst(0xF0);
     fm1_wdt_arm(0x0D);                          /* first of all: whatever hangs after this, the watchdog and the boot guard bring the FM-1 back to update mode */
 #ifdef BOOTLOG
     FM1_LCD_PA_OUT &= ~FM1_LCD_BL;              /* beacon: backlight on at the very first instructions of cstart */
     FM1_LCD_PA_DIR &= ~FM1_LCD_BL;
 #endif
+    hst(0x01);
     fm1_time_init();
-    fm1_vdc14_raise(7);                         /* M-VAVE's firmware raises the core supplies to these as it starts; the boot loader */
-    fm1_sysvdd_raise(15);                       /* leaves 3 and 11, which some units do not run 360 MHz code on (felucca-bsp fm1_sys.h) */
+    hst(0x02);
+    fm1_vdc14_raise(7);
+    hst(0x03);                         /* M-VAVE's firmware raises the core supplies to these as it starts; the boot loader */
+    fm1_sysvdd_raise(15);
+    hst(0x04);                                  /* leaves 3 and 11, which some units do not run 360 MHz code on (felucca-bsp fm1_sys.h) */
     if (octavio_boot[0] != 0x4F425354u) { octavio_boot[0] = 0x4F425354u; octavio_boot[1] = 0; octavio_boot[2] = 0; octavio_boot[3] = 0; }
     octavio_boot[2] = octavio_boot[1]; octavio_boot[3]++; octavio_boot[1] = 1;
+    hst(0x05);
     if (guard.magic != 0x4F435431u) {
         guard.magic = 0x4F435431u;
         guard.failed = 0;
@@ -574,15 +593,15 @@ void fm1_cstart(void)
         guard.pending = 0;
         fm1_enter_uboot();
     }
-    octavio_boot[1] = 0x31;
+    octavio_boot[1] = 0x31; hst(0x31);
     fm1_irq_init();
-    octavio_boot[1] = 0x32;
+    octavio_boot[1] = 0x32; hst(0x32);
     for (d = _bss_start; d < _bss_end; d++)
         *d = 0;
-    octavio_boot[1] = 0x33;
+    octavio_boot[1] = 0x33; hst(0x33);
     for (s = _data_load, d = _data_start; d < _data_end; s++, d++)
         *d = *s;
-    octavio_boot[1] = 0x34;
+    octavio_boot[1] = 0x34; hst(0x34);
     for (s = _rt_load, d = _rt_start; d < _rt_end; s++, d++)
         *d = *s;
 #ifdef BOOTLOG
@@ -600,7 +619,7 @@ void fm1_cstart(void)
     perf_stack_paint();
     perf.magic = 0x4A504552u;
 #endif
-    octavio_boot[1] = 0x35;
+    octavio_boot[1] = 0x35; hst(0x35);
     fm1_guard_enable(FM1_GUARD_STACK | FM1_GUARD_WRITE | FM1_GUARD_BUS | FM1_GUARD_PC);
     app_main();
     for (;;)
