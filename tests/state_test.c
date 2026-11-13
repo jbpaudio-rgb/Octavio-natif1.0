@@ -718,6 +718,18 @@ int main(int argc, char **argv)
                 CHECK(((ui_seq_gates(0) >> ((s0 + 1) & 15)) & 1) && ui_seq_note(0, (s0 + 1) & 15) == 2 - seq_pitch(0, (s0 + 1) & 15), "late in the step: the next step, less the pitch line there (note %d)", ui_seq_note(0, (s0 + 1) & 15));
                 press(CB_PLAY); press(CB_REC);
             }
+            {   /* the pitch editor: the black key (OPk) of the selected line is lit */
+                static const uint8_t WHk[12] = { 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1 };
+                int ln, i2, bi, nlit, base2 = ui_note_of_key(0);
+                pg = PGN_SEQ; psq = 1; fm1_in.notes = 0; fm1_in.buttons = 0; bdn = 0;
+                for (ln = 0; ln < SEQ_LINES; ln++) {
+                    ui_seq_select(ln, -1); leds_update();
+                    nlit = 0; bi = -1;
+                    for (i2 = 0; i2 < 27; i2++) if (!WHk[(base2 + i2) % 12] && (fm1_led[14 + i2] & 2)) { nlit++; bi++; }
+                    CHECK(nlit == 1, "pitch editor line %d: %d black keys lit", ln, nlit);
+                }
+                ui_seq_select(0, -1); psq = 0; pg = PGN_GLO;
+            }
             printf("synth note steps: SEQ once, key = step on / select, SELECT = note, SEQ again = pitch editor\n");
             pg = PGN_GLO; state_defaults();
         }
