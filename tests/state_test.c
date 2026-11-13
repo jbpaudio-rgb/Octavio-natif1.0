@@ -688,6 +688,25 @@ int main(int argc, char **argv)
         dq_latch = -1; sel = 0; pg = PGN_GLO; voices_select(0);
         printf("drum sequencer: SELECT steps the voice with wrap, its OP key lights, SEQ + SELECT unchanged\n");
         state_defaults();
+        {   /* the note steps of a synth track: SEQ once = the steps, a white key turns a step on and selects it, SELECT = its note, a second tap on the selected step turns it off, SEQ again = the pitch editor */
+            voices_select(0); sel = 0; pg = PGN_GLO; bdn = 0; lt = 0; chord = 0; dn_ = 0; psq = 0; fm1_in.notes = 0; T += 5000;
+            press(CB_SEQ);
+            CHECK(ctrl_page() == PGN_DSEQ, "SEQ on a synth track: the note steps (page %d)", ctrl_page());
+            CHECK(ctrl_dseq_key(3) == 1 && ((ui_seq_gates(0) >> 3) & 1) && ctrl_nseq_step() == 3, "a white key turns the step on and selects it");
+            ctrl_side(ROLE_SELECT, 2, 9000); ctrl_side(ROLE_SELECT, 1, 9010);
+            CHECK(ui_seq_note(0, 3) == 3, "SELECT changes the selected step's note (%d)", ui_seq_note(0, 3));
+            CHECK(ctrl_dseq_key(5) == 1 && ctrl_nseq_step() == 5 && ui_seq_note(0, 3) == 3, "another step: turned on and selected, the first keeps its note");
+            ctrl_dseq_key(3);
+            CHECK(ctrl_nseq_step() == 3 && ((ui_seq_gates(0) >> 3) & 1), "a tap on an on step only selects it");
+            ctrl_dseq_key(3);
+            CHECK(!((ui_seq_gates(0) >> 3) & 1), "a second tap on the selected step turns it off");
+            press(CB_SEQ);
+            CHECK(ctrl_page() == PGN_SEQ, "SEQ again: the pitch editor (page %d)", ctrl_page());
+            press(CB_SEQ);
+            CHECK(ctrl_page() == PGN_DSEQ, "SEQ again: back to the note steps (page %d)", ctrl_page());
+            printf("synth note steps: SEQ once, key = step on / select, SELECT = note, SEQ again = pitch editor\n");
+            pg = PGN_GLO; state_defaults();
+        }
     }
     /* 7e. M: the debug indicator: HOME held + REC toggles it, REC alone still records */
     {

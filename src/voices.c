@@ -209,7 +209,7 @@ static void seq_synth(int t, int cur, int32_t sl)
 {
     int note;
     if (!((SQG[t] >> cur) & 1u)) { sq_off[t] = 0; return; }
-    note = 60 + 12 * ctrl_octave_val() + seq_pitch(t, cur);
+    note = 60 + 12 * ctrl_octave_val() + seq_pitch(t, cur) + SQN[t][cur];
     note = note < 0 ? 0 : note > 127 ? 127 : note;
     if ((TK[t].eng == ENG_PROPH || TK[t].eng == ENG_JUN) && sq_note[t] >= 0) poly_off(t, sq_note[t]);
     eng_on(t, note, 32767);

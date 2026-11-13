@@ -19,6 +19,7 @@ enum { DK_NONE, DK_PV, DK_ENV, DK_LVL, DK_ARP, DK_FX, DK_ENG, DK_DRUM, DK_SQG };
 #define MODQ_N 24                                      /* PV[P_M4T..P_M9G]: 6 lines x (dest, key, amount, glide) */
 #define MODT_N (MODM_N + MODQ_N + 1)                   /* + the track's sequencer gate bits (16 steps) */
 static struct { int16_t m[MODM_N], q[MODQ_N]; } MODT[4];
+static int8_t SQN[4][16];                        /* the note of each step of each track (semitones from the octave's C: the note-step page, SEQ once) */
 static uint16_t SQG[4] = { 0, 0, 0, 0 };     /* the synth sequencer gate steps of each track (the prototype TRX[t].GT): empty at start (the prototype had track 1 on every other step) */
 static uint8_t mod_view;                               /* the track whose matrix is in PV[] */
 
@@ -112,7 +113,7 @@ static void mod_defaults(void)
         for (i = 0; i < MODM_N; i++) MODT[t].m[i] = PD[P_M0T + i].def;
         for (i = 0; i < MODQ_N; i++) MODT[t].q[i] = PD[P_M4T + i].def;
     }
-    for (t = 0; t < 4; t++) SQG[t] = 0u;          /* TRX[t].GT: no step triggers at start (was: track 1 every other step) */
+    for (t = 0; t < 4; t++) { int s; SQG[t] = 0u; for (s = 0; s < 16; s++) SQN[t][s] = 0; }          /* TRX[t].GT: no step triggers at start (was: track 1 every other step) */
     mod_view = 0;
 }
 void mod_select(int t)                                 /* the selected track changed: its matrix into PV[] */

@@ -40,6 +40,7 @@ void ctrl_fxo_knob(int steps);                      /* K1 on FX ORDER: move the 
 int  ctrl_arp_sub(void);                            /* the ARP page of a synth: 0 ARP, 1 ARP 2, 2 ARP 3 */
 int  ctrl_dseq_key(int w);                          /* a white key (0..15) on the drum sequencer page: toggles that step of the selected lane; 1 = used */
 void ctrl_op_release(int o);                        /* a black key was released (the held lane of the drum sequencer) */
+int  ctrl_nseq_step(void);                          /* the note-step page of a synth track: the selected step */
 int  ctrl_dseq_held(void);                          /* the lane held / latched with its OP key on the DSEQ page, -1 none */
 int  ctrl_op_key(int o);                            /* a black key (0..) pressed: 1 when a held button made it a chord (no note) */
 int  ctrl_playing(void), ctrl_rec(void);

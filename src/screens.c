@@ -238,6 +238,10 @@ int  ui_seq_get_t(int t, int line, int step) { return sq_vt[t & 3][line][step]; 
 void ui_seq_set_t(int t, int line, int step, int v) { if (line >= 0 && line < 6 && step >= 0 && step < 16) { sq_vt[t & 3][line][step] = (int16_t)v; seq_sync(); dirty_all = 1; } }
 void ui_seq_gate_toggle(int step) { if (step >= 0 && step < 16) { SQG[mod_view] ^= (uint16_t)(1u << step); dirty_all = 1; } }
 int  ui_seq_gate(int step) { return (SQG[mod_view] >> step) & 1; }
+int  ui_seq_note(int t, int s) { return SQN[t & 3][s & 15]; }
+void ui_seq_note_set(int t, int s, int v) { SQN[t & 3][s & 15] = (int8_t)(v < -24 ? -24 : v > 36 ? 36 : v); dirty_all = 1; }
+unsigned ui_seq_gates(int t) { return SQG[t & 3]; }
+void ui_seq_gate_flip(int t, int s) { SQG[t & 3] ^= (uint16_t)(1u << (s & 15)); dirty_all = 1; }
 void ui_seq_cur(int step) { if (step != sq_cur) { sq_cur = step; dirty_all = 1; } }
 
 /* one knob: svg origin (ox8, oy8) in Q8 px, u = px per svg unit (Q16); the body is a sprite */
@@ -366,8 +370,45 @@ static void dq_stroke(int32_t x, int32_t y, int32_t w, int32_t h, int32_t lw, ui
     dq_rect(x - a, y + b, x + b, y + h - a, col);
     dq_rect(x + w - a, y + b, x + w + b, y + h - a, col);
 }
+/* The note steps of a synth track (SEQ once): 16 columns, a bar per step whose height is the step's note (bright = the step plays), the selected step framed, the playing step in red;
+ * the title is the selected step's note.  Native page (the prototype only has the pitch editor): same canvas as the drum sequencer. */
+static void nseq_name(char *o, int midi)
+{
+    static const char *const NM[12] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
+    const char *n = NM[((midi % 12) + 12) % 12];
+    int k = 0, oc = midi / 12 - 1;
+    while (*n) o[k++] = *n++;
+    if (oc < 0) { o[k++] = '-'; oc = -oc; }
+    o[k++] = (char)('0' + oc % 10); o[k] = 0;
+}
+static void nseq_draw(void)
+{
+    int t = voices_sel(), ss = ctrl_nseq_step(), x, cur = sq_cur, n, k;
+    uint16_t g = (uint16_t)ui_seq_gates(t);
+    char tt[16], nb[8];
+    int32_t w;
+    n = 60 + 12 * ctrl_octave_val() + ui_seq_note(t, ss);
+    n = n < 0 ? 0 : n > 127 ? 127 : n;
+    nseq_name(nb, n);
+    k = 0; tt[k++] = 'S'; tt[k++] = 'T'; tt[k++] = 'E'; tt[k++] = 'P'; tt[k++] = ' ';
+    if (ss + 1 >= 10) tt[k++] = '1';
+    tt[k++] = (char)('0' + (ss + 1) % 10); tt[k++] = ' '; tt[k++] = ' ';
+    { int j = 0; while (nb[j]) tt[k++] = nb[j++]; }
+    tt[k] = 0;
+    w = gfx_text_w64(F_TITLE, tt, 65);
+    gfx_text(F_TITLE, tt, 460 + ((14440 - w) >> 1), 23, COL_TEXT, 65, 0, 233);
+    for (x = 0; x < 16; x++) {
+        int on = (g >> x) & 1, off = ui_seq_note(t, x), hh = 500 + (off + 24) * 60, x0 = 944 + x * 268;       /* -24 .. +36 semitones -> 500 .. 4100 */
+        uint32_t col = on ? (x == ss ? 0xf2efe6u : 0xa8a59du) : 0x3a3a38u;
+        dq_rect(x0, 48 + 24, x0 + 236, 48 + 24 + 4380, x % 4 == 0 ? 0x2a2a2au : 0x1a1a1au);
+        dq_rect(x0, 48 + 24 + 4380 - hh, x0 + 236, 48 + 24 + 4380, col);
+    }
+    if (cur >= 0) dq_stroke(928 + (cur & 15) * 268, 32, 268, 4416, 24, COL_RED);               /* the playing step */
+    dq_stroke(928 + ss * 268, 32, 268, 4416, 16, COL_TEXT);                                     /* the selected step */
+}
 static void dseq_draw(void)
 {
+    if (voices_engine(voices_sel()) != ENG_DRUM) { nseq_draw(); return; }
     static const char *const KITL[NKIT] = { "808", "909", "ACOUSTIC", "LINNDRUM", "DMX", "VERMONA" };
     int t = voices_sel(), sv = ctrl_drum_voice(), v, x, k, held = ctrl_dseq_held(), cur = sq_cur;
     char tt[16];

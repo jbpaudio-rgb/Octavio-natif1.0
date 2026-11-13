@@ -37,4 +37,8 @@ int  ui_seq_get_t(int t, int line, int step);          /* track t's step values 
 void ui_seq_set_t(int t, int line, int step, int v);
 void ui_seq_gate_toggle(int step);
 int  ui_seq_gate(int step);
+int  ui_seq_note(int t, int s);                    /* the note-step page (synth tracks): the semitone offset of a step, its gates (bit s), a gate flipped */
+void ui_seq_note_set(int t, int s, int v);
+unsigned ui_seq_gates(int t);
+void ui_seq_gate_flip(int t, int s);
 void ui_seq_cur(int step);                   /* -1: stopped */

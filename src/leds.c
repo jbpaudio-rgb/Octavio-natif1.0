@@ -25,7 +25,7 @@ static void leds_update(void)
     int t = voices_sel(), cur = voices_arp_note(t), base = ui_note_of_key(0);
     held = voices_held_keys(t, base);
     int dq = ctrl_page() == PGN_DSEQ, dcur = dq ? voices_seq_cur() : -1;
-    uint32_t dgate = dq ? drum_gates(t, ctrl_drum_voice()) : 0;
+    uint32_t dgate = dq ? (voices_engine(t) == ENG_DRUM ? drum_gates(t, ctrl_drum_voice()) : ui_seq_gates(t)) : 0;
     int pgn = ctrl_page(), dsel = voices_engine(t) == ENG_DRUM && (pgn == PGN_DSEQ || pgn == PGN_EDIT || pgn == PGN_ENV || pgn == PGN_ARP) ? ctrl_drum_voice() : -1;     /* markSel(): the black key (OPk) of the selected voice */
     int sq = ctrl_page() == PGN_SEQ, scur = sq ? voices_seq_cur() : -1;
     uint32_t sqh = 0;                                   /* the pitch sequencer page: the line's 16 step values (hash) and the selected step */

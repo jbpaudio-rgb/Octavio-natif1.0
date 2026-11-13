@@ -25,6 +25,7 @@ static uint16_t hw;                                /* octavio-J: buttons physica
 static uint32_t lu[CB_COUNT];                      /* each button's last release (0 after a chord) */
 static int chord, sel_down, sel_mv;
 static uint8_t dv[4];                              /* each track's selected drum voice (the prototype's eng.dv) */
+static int8_t ns_sel;                                         /* the note-step page: the selected step */
 static int psq, dq_held = -1, dq_latch = -1, dq_l = -1;      /* SEQ on the drums: psq = the pitch sequencer was asked for; the lane held / latched (opHeld / opLatch) */
 static uint32_t dq_t;
 static uint32_t alg_t;                             /* the last ALGORITHM turn on a track (algT): SELECT picks the drum kit for 5 s after it */
@@ -398,7 +399,11 @@ static void btn(int t, uint32_t ms)                /* btn(): a button's action (
             if (pg == PGN_DSEQ) { psq = 1; pg = PGN_SEQ; }
             else if (pg == PGN_SEQ && psq) { psq = 0; pg = PGN_DSEQ; }
             else { psq = 0; pg = PGN_DSEQ; }
-        } else pg = PGN_SEQ;
+        } else {                                        /* the synths: SEQ = the note steps (DSEQ); pressed again: the pitch editor (psq), again: back */
+            if (pg == PGN_DSEQ) { psq = 1; pg = PGN_SEQ; }
+            else if (pg == PGN_SEQ && psq) { psq = 0; pg = PGN_DSEQ; }
+            else { psq = 0; pg = PGN_DSEQ; }
+        }
     }
     else if (t == CB_PLAY) { auto_play = !auto_play; voices_play(auto_play); }
     else if (t == CB_REC) { rec = !rec; }
@@ -591,6 +596,10 @@ void ctrl_side(int role, int steps, uint32_t ms)
     g_ms = ms;
     if (role == ROLE_PRESETS) side_wheel(steps, ONE / 50, pk_get, pk_set, &pp_ws, &pp_wq);
     else if (role == ROLE_ALGO) side_wheel(steps, lane_a() >= 0 || sel >= DRUM_T0 ? ONE / (NKIT - 1) : ONE / 50, ak_get, ak_set, &ap_ws, &ap_wq);
+    else if (pg == PGN_DSEQ && cur_engine() != ENG_DRUM && !pend && steps != 0) {      /* SELECT on the note steps: the selected step's note, one semitone per detent */
+        ui_seq_note_set(sel, ns_sel, ui_seq_note(sel, ns_sel) + steps);
+        bump();
+    }
     else if (pg == PGN_DSEQ && cur_engine() == ENG_DRUM && !pend && !type_held() && !kit_h() && steps != 0) {      /* SELECT alone on the drum sequencer: the next / previous voice (lane), wrapping; its black key lights (leds.c) and the grid shows it */
         int v = ((int)dv[sel & 3] + steps) % 6;
         if (v < 0) v += 6;
@@ -630,11 +639,9 @@ static void norm_pg(void)                          /* page(): a page the track's
     if (pg != PGN_ARP || e == ENG_DRUM) arp_sub = 0;            /* page(): the drums have no ARP2 / ARP3 */
     if (pg == PGN_GLO2 && e != ENG_DRUM) pg = PGN_GLO;
     if (pg != PGN_DSEQ) dq_held = dq_latch = -1;
+    if (pg == PGN_SEQ && !psq) pg = PGN_DSEQ;                   /* the drums and the synths: the step page first, the pitch editor on a second press */
     if (e == ENG_DRUM) {
-        if (pg == PGN_SEQ && !psq) pg = PGN_DSEQ;
         if (pg == PGN_ENV2 || (pg >= PGN_OSC1 && pg <= PGN_OSC4)) pg = PGN_EDIT;
-    } else {
-        if (pg == PGN_DSEQ) pg = PGN_SEQ;
     }
     if (is_new_eng(e)) {                                /* a page the engine does not have: its first */
         int x = pg == PGN_GLO ? 0 : (pg >= PGN_OSC1 && pg <= PGN_OSC4) ? pg - PGN_OSC1 + 1 : pg == PGN_EDIT ? 5 : pg == PGN_ENV ? 6 : pg == PGN_ENV2 ? 7 : -1;
@@ -746,9 +753,18 @@ void ctrl_fxo_knob(int steps)
     }
     bump();
 }
+int ctrl_nseq_step(void) { return ns_sel; }
 int ctrl_dseq_key(int w)
 {
     uint16_t g;
+    if (cur_engine() != ENG_DRUM && pg == PGN_DSEQ && !HELD(CB_HOME) && !sc_mode && w >= 0 && w <= 15) {          /* the note steps of a synth: an off step turns on and is selected; an on step is selected, then a second tap turns it off */
+        int on = (ui_seq_gates(sel) >> w) & 1;
+        if (!on) { ui_seq_gate_flip(sel, w); ns_sel = (int8_t)w; }
+        else if (ns_sel == w) ui_seq_gate_flip(sel, w);
+        else ns_sel = (int8_t)w;
+        bump();
+        return 1;
+    }
     if (cur_engine() != ENG_DRUM || pg != PGN_DSEQ || HELD(CB_HOME) || sc_mode || w < 0 || w > 15) return 0;
     g = drum_gates(sel, dv[sel & 3]);
     drum_gates_set(sel, dv[sel & 3], (uint16_t)(g ^ (1u << w)));                          /* d[w] = d[w] ? 0 : 1 */
