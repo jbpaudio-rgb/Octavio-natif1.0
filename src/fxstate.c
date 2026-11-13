@@ -155,6 +155,16 @@ struct {
     uint32_t irqoff;                                     /* longest span (ticks) the main loop found interrupts disabled in the last second: not measured here, 0 */
 } hud;
 #define HUD_P 69632u
+/* The effects on CPU1 (voices.c FX_C1) run beside CPU0's engines: while CPU0 does not wait for them (hud.fxw, permille of a block) they add almost nothing to the block, so the governor counts
+ * a quarter of their cost, admits them up to GOV_ADMIT_C1, and takes voices before them when the load is over the line (bypassing an effect would free little). One very long block still bypasses them. */
+#define GOV_ADMIT_C1 (GOV_P / 100u * 72u)
+#if defined(OCT_CPU1) && !defined(NO_FXC1)
+static inline int fx_on_c1(void) { return fm1_cpu1_on; }
+#else
+static inline int fx_on_c1(void) { return 0; }
+#endif
+#define FXG_UNIT(c) (fx_on_c1() ? GOV_UNIT(c) / 4u : GOV_UNIT(c))
+static inline int fx_may_shed(void) { return !fx_on_c1() || gov_last > GOV_EMERG || hud.fxw > 50u; }
 static void gov_block(uint32_t d)                    /* end of an audio block: its length in ticks */
 {
 #ifndef NO_GOV

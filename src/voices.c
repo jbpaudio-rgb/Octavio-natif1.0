@@ -525,7 +525,7 @@ static void gov_voices(void)
     }
     np_prev = np;
     int severe = gov_last > GOV_EMERG || gov_peak > GOV_P / 100u * 85u;               /* a real overrun is near: only then does the Prophet lose voices */
-    if (gov_n >= GOV_SETTLE && ((gov_peak > GOV_SHED && !gov_wait) || gov_last > GOV_EMERG) && !(fx_run[0] | fx_run[1] | fx_run[2] | fx_run[3]) && ((GOV_ECO && !pv_eco && np > 0) || nd > GOV_DMIN || (severe && np > GOV_PMIN))) {       /* no effect left to bypass: fewer voices */
+    if (gov_n >= GOV_SETTLE && ((gov_peak > GOV_SHED && !gov_wait) || gov_last > GOV_EMERG) && (!(fx_run[0] | fx_run[1] | fx_run[2] | fx_run[3]) || !fx_may_shed()) && ((GOV_ECO && !pv_eco && np > 0) || nd > GOV_DMIN || (severe && np > GOV_PMIN))) {       /* no effect left to bypass: fewer voices */
         uint32_t over = (gov_last > gov_peak ? gov_last : gov_peak) - GOV_AIM, freed = 0;
         int guard;
         for (guard = 0; guard < 24 && freed < over; guard++) {                    /* order: effects (above), then drum voices down to GOV_DMIN, and the Prophet (down to GOV_PMIN) only when severe: a chord of five keys is the instrument's point */

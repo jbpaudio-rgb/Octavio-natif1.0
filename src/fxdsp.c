@@ -571,7 +571,7 @@ void fx_admit(void)                                     /* once per audio block,
                 else { fx_run[t] &= (uint8_t)~(1u << q); fx_off[t] &= (uint8_t)~(1u << q); }
             }
 #ifndef NO_GOV
-        if (gov_n >= GOV_SETTLE && ((gov_peak > GOV_SHED && !gov_wait) || gov_last > GOV_EMERG) && used) {  /* overload (measured): bypass the last running slots (track 4 slot 4 first) until about GOV_AIM is freed; one very long block: now */
+        if (gov_n >= GOV_SETTLE && ((gov_peak > GOV_SHED && !gov_wait) || gov_last > GOV_EMERG) && used && fx_may_shed()) {  /* overload (measured): bypass the last running slots (track 4 slot 4 first) until about GOV_AIM is freed; one very long block: now */
             uint32_t over = (gov_last > gov_peak ? gov_last : gov_peak) - GOV_AIM, freed = 0;
             for (t = FX_NTRK - 1; t >= 0 && freed < over; t--)
                 for (q = FX_NSLOT - 1; q >= 0 && freed < over; q--)
@@ -588,9 +588,9 @@ void fx_admit(void)                                     /* once per audio block,
                 if (FEFF[t][FX_FIRST[f] + FX_P[f].n - 1 - P_F0DRIVE] <= 0 || (fx_run[t] >> q & 1)) continue;
 #ifndef NO_GOV
                 if (gov_on && gov_n < 4u) continue;             /* no measure yet */
-                if (gov_cool || gov_peak + extra + GOV_UNIT(FX_COST[f]) > GOV_ADMIT) { if (!(fx_off[t] >> q & 1)) fx_refused++; fx_off[t] |= (uint8_t)(1u << q); continue; }
+                if (gov_cool || gov_peak + extra + FXG_UNIT(FX_COST[f]) > (fx_on_c1() ? GOV_ADMIT_C1 : GOV_ADMIT)) { if (!(fx_off[t] >> q & 1)) fx_refused++; fx_off[t] |= (uint8_t)(1u << q); continue; }
 #endif
-                if (used + FX_COST[f] <= FX_BUDGET) { used += FX_COST[f]; extra += GOV_UNIT(FX_COST[f]); fx_run[t] |= (uint8_t)(1u << q); fx_off[t] &= (uint8_t)~(1u << q); }
+                if (used + FX_COST[f] <= FX_BUDGET) { used += FX_COST[f]; extra += FXG_UNIT(FX_COST[f]); fx_run[t] |= (uint8_t)(1u << q); fx_off[t] &= (uint8_t)~(1u << q); }
                 else { if (!(fx_off[t] >> q & 1)) fx_refused++; fx_off[t] |= (uint8_t)(1u << q); }
             }
     }
