@@ -9,7 +9,7 @@
 #define RING_PUBLISH() __asm__ volatile("" ::: "memory")
 #define PERSIST_FLASH 1
 #ifndef NO_CPU1
-#define OCT_CPU1 1                /* the second core renders half of a Prophet chord (eng_prophet.c) and half of the drum voices (eng_drum.c); -DNO_CPU1 builds without it */
+#define OCT_CPU1 1                /* the second core renders half of a Prophet chord (eng_prophet.c), half of the drum voices (eng_drum.c) and the effect chains (voices.c, FX_C1; -DNO_FXC1 keeps them on CPU0); -DNO_CPU1 builds without it */
 #define FM1_CPU1 1                /* fm1_irq.h hands the second core's faults to fm1_cpu1.h */
 #define FM1_CPU1_FALLBACK 1       /* a misread, a fault or a late job: one core until power-off, no restart */
 #endif

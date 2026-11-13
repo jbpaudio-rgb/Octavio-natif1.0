@@ -10,7 +10,7 @@
  * CPU: only slots with Mix > 0 cost anything; the budget of fxstate.c admits them (fx_run) or bypasses them (fx_off); a track whose engine is silent and whose chain has
  * been silent for FX_IDLE_BLOCKS blocks sleeps (no processing at all). */
 
-#define FXPOOL_N 36160u                 /* samples (72 KB) of delay-line pool PER TRACK */
+#define FXPOOL_N 36032u                 /* samples (72 KB) of delay-line pool PER TRACK */
 static int16_t fxpool[FX_NTRK][FXPOOL_N] __attribute__((aligned(4)));
 static const int16_t *FV;                /* the parameters (thousandths, FX_NP of them from P_F0DRIVE) of the track being processed */
 #define FVAL(id) (FV[(id) - P_F0DRIVE])
@@ -616,6 +616,7 @@ void fx_mod(int k, int32_t xq)                          /* on every track */
     int t;
     for (t = 0; t < FX_NTRK; t++) fx_mod_t(t, k, xq);
 }
+int fx_has_chain(int t) { return fx_any[t]; }          /* a chain to run (else fx_track returns at once) */
 int fx_awake(int t)
 {
 #ifdef FX_TEST

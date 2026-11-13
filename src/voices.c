@@ -598,12 +598,51 @@ static unsigned mt_mask(void)
 }
 #endif
 /* MAXTRACKS end */
+#if defined(OCT_CPU1) && !defined(NO_FXC1)
+#define FX_C1 1
+#endif
+/* The track's volume, HOME's meter and the sum (after the effects) */
+static void track_mix(int t, int32_t *tmp, int n, int64_t *acc)
+{
+    int i;
+    {                                       /* HOME's meter: this block's peak of the track */
+        int32_t pk = 0;
+        for (i = 0; i < n; i++) { int32_t a = tmp[i] < 0 ? -tmp[i] : tmp[i]; if (a > pk) pk = a; }
+        ui_peak(t, pk > 32767 ? 32767 : pk);
+    }
+    {                                       /* the track volume = HOME's fader (PV[P_VOL0 + t]), read every block and ramped over it (a step would zipper) */
+        int32_t v0 = TK[t].vol, v1 = PV[P_VOL0 + t], rq = 65536 / n;
+        v1 = (v1 < 0 ? 0 : v1 > 1000 ? 1000 : v1) * 32767 / 1000;
+        TK[t].vol = (int16_t)v1;
+        if (v0 == v1) for (i = 0; i < n; i++) acc[i] += (int64_t)tmp[i] * v1;
+        else for (i = 0; i < n; i++) acc[i] += (int64_t)tmp[i] * (v0 + (int32_t)(((int64_t)(v1 - v0) * ((i + 1) * rq)) >> 16));
+    }
+}
+#ifdef FX_C1
+/* The effects on the second core: a track's chain (fx_track) is a job for CPU1 while CPU0 renders the next track's engine, so no latency is added: the track's mix waits until the
+ * job is back. One job at a time, so fx_track (and its globals) only ever run on one core at a time; the engines' own splitting (Prophet, drums) falls back to CPU0 while the job runs.
+ * Two buffers: the engine renders into the one the job is not using. */
+static int32_t fxb[2][128];
+static struct { int t, n, act; int32_t *x; } fxj;
+static void fx_job(uint32_t unused)
+{
+    (void)unused;
+    fx_track(fxj.t, fxj.x, fxj.n, fxj.act);
+}
+int fx_has_chain(int t);                         /* fxdsp.c */
+#endif
+
 void voices_render(int32_t *out, int n)
 {
 #ifdef LT_BURN
     lt_burn();
 #endif
+#ifdef FX_C1
+    int32_t *tmp = fxb[0];
+    int fxp = -1, fxpb = 0;                     /* the track whose chain CPU1 is running, and the buffer it is in */
+#else
     int32_t tmp[128];
+#endif
     int t, i;
     int64_t acc[128];
     for (i = 0; i < n; i++) acc[i] = 0;
@@ -626,6 +665,9 @@ void voices_render(int32_t *out, int n)
 #endif
 #ifndef NO_PERF
         te0 = PERF_NOW();
+#endif
+#ifdef FX_C1
+        tmp = fxb[fxp >= 0 ? fxpb ^ 1 : 0];    /* not the buffer CPU1 is working in */
 #endif
         switch (TK[t].eng) {
         case ENG_VAC: if (t != vac_owner) act = 0; else vac_render(tmp, n); break;
@@ -678,20 +720,31 @@ void voices_render(int32_t *out, int n)
             for (i = 0; i < n; i++) { int32_t g = (int32_t)(((i + 1) * rq) >> 1); if (!up) g = 32768 - g; tmp[i] = (int32_t)(((int64_t)tmp[i] * g) >> 15); }
         }
 #endif
+#ifdef FX_C1
+        if (fm1_cpu1_on && n <= 128 && fx_has_chain(t)) {
+            if (fxp >= 0) {                     /* the previous job: wait for it, then its mix */
+                int32_t *pb = fxb[fxpb];
+                if (fm1_cpu1_wait() == 0) fm1_cpu1_sync();
+                else fx_track(fxj.t, pb, fxj.n, fxj.act);       /* retired: CPU0 does the dropped job */
+                track_mix(fxp, pb, n, acc);
+                fxp = -1;
+            }
+            fxj.t = t; fxj.n = n; fxj.act = act; fxj.x = tmp;
+            fm1_cpu1_sync();
+            if (fm1_cpu1_run(fx_job, 0)) { fxp = t; fxpb = (int)(tmp - fxb[0]) ? 1 : 0; continue; }
+        }
+#endif
         fx_track(t, tmp, n, act);               /* the track's effects (fxdsp.c), then the track volume as the prototype: F(tb[i]) * t.vol */
-        {                                       /* HOME's meter: this block's peak of the track */
-            int32_t pk = 0;
-            for (i = 0; i < n; i++) { int32_t a = tmp[i] < 0 ? -tmp[i] : tmp[i]; if (a > pk) pk = a; }
-            ui_peak(t, pk > 32767 ? 32767 : pk);
-        }
-        {                                       /* the track volume = HOME's fader (PV[P_VOL0 + t]), read every block and ramped over it (a step would zipper) */
-            int32_t v0 = TK[t].vol, v1 = PV[P_VOL0 + t], rq = 65536 / n;
-            v1 = (v1 < 0 ? 0 : v1 > 1000 ? 1000 : v1) * 32767 / 1000;
-            TK[t].vol = (int16_t)v1;
-            if (v0 == v1) for (i = 0; i < n; i++) acc[i] += (int64_t)tmp[i] * v1;
-            else for (i = 0; i < n; i++) acc[i] += (int64_t)tmp[i] * (v0 + (int32_t)(((int64_t)(v1 - v0) * ((i + 1) * rq)) >> 16));
-        }
+        track_mix(t, tmp, n, acc);
     }
+#ifdef FX_C1
+    if (fxp >= 0) {
+        int32_t *pb = fxb[fxpb];
+        if (fm1_cpu1_wait() == 0) fm1_cpu1_sync();
+        else fx_track(fxj.t, pb, fxj.n, fxj.act);
+        track_mix(fxp, pb, n, acc);
+    }
+#endif
     for (i = 0; i < n; i++) {
         int32_t s = (int32_t)(((acc[i] >> 15) * 34406) >> 15);            /* * 1.05 (1.5 * .7) */
         out[i] = c_tanh(s);
