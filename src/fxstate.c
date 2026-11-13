@@ -108,16 +108,16 @@ uint32_t fx_refused;                                 /* counts the slots the bud
 #define GOV_P 69660u                                 /* one audio block in TIMER4 ticks */
 #endif
 #ifndef GOV_SHED
-#define GOV_SHED (GOV_P / 100u * 66u)                /* was 50 (M) and 74 before: measured on the real FM-1 (HUD, 4 Prophet voices in ECO + 3 FX = 40 % average, 0 lost blocks, jitter 0.2 %), so the margin for a slow machine is not needed any more */
+#define GOV_SHED (GOV_P / 100u * 90u)                /* user's choice: 90 (was 66, 50 (M), 74 before): measured on the real FM-1 (HUD, 4 Prophet voices in ECO + 3 FX = 40 % average, 0 lost blocks, jitter 0.2 %), so the margin for a slow machine is not needed any more */
 #endif
 #ifndef GOV_ADMIT
-#define GOV_ADMIT (GOV_P / 100u * 58u)
+#define GOV_ADMIT (GOV_P / 100u * 80u)
 #endif
 #ifndef GOV_AIM
-#define GOV_AIM (GOV_P / 100u * 62u)                 /* a shed removes enough to land about here */
+#define GOV_AIM (GOV_P / 100u * 84u)                 /* a shed removes enough to land about here */
 #endif
 #ifndef GOV_EMERG
-#define GOV_EMERG (GOV_P / 100u * 85u)               /* one block this long: shed now, without waiting for the window or the wait (the ISR is about to overrun) */
+#define GOV_EMERG (GOV_P / 100u * 97u)               /* one block this long: shed now, without waiting for the window or the wait (the ISR is about to overrun) */
 #endif
 #define GOV_SETTLE 16u                              /* blocks measured before the governor acts at all (the start-up burst is not a load) */
 #define GOV_WAIT 12u                                 /* blocks between two sheds: the 4-block window must show the effect of the last one */

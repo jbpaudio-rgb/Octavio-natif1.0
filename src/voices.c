@@ -524,7 +524,7 @@ static void gov_voices(void)
         pv_eco = 1; gov_mark(1, &gov_vcool, GOV_COOL / 8u); gov.voices++;
     }
     np_prev = np;
-    int severe = gov_last > GOV_EMERG || gov_peak > GOV_P / 100u * 80u;               /* a real overrun is near: only then does the Prophet lose voices */
+    int severe = gov_last > GOV_EMERG || gov_peak > GOV_P / 100u * 95u;               /* a real overrun is near: only then does the Prophet lose voices */
     if (gov_n >= GOV_SETTLE && ((gov_peak > GOV_SHED && !gov_wait) || gov_last > GOV_EMERG) && !(fx_run[0] | fx_run[1] | fx_run[2] | fx_run[3]) && ((GOV_ECO && !pv_eco && np > 0) || nd > GOV_DMIN || (severe && np > GOV_PMIN))) {       /* no effect left to bypass: fewer voices */
         uint32_t over = (gov_last > gov_peak ? gov_last : gov_peak) - GOV_AIM, freed = 0;
         int guard;
