@@ -66,7 +66,7 @@ static void cpu1_job(uint32_t n)                    /* runs on the second core, 
 }
 #endif
 static uint32_t boots_ok;
-static struct { uint32_t magic, pending, failed; } guard __attribute__((section(".noinit")));
+static volatile struct { uint32_t magic, pending, failed; } guard __attribute__((section(".noinit")));
 void fm1_alnk0_irq(void) {}                     /* isr_alnk0 is linked but no audio runs */
 
 void fm1_timer5_irq(void)                       /* 10 kHz: key scan, ms, USB at 2 kHz */

@@ -51,7 +51,7 @@ extern uint32_t _rt_start[], _rt_end[], _rt_load[];
 
 static volatile uint32_t ms;
 static uint32_t boots_ok;
-static struct { uint32_t magic, pending, failed; } guard __attribute__((section(".noinit")));
+static volatile struct { uint32_t magic, pending, failed; } guard __attribute__((section(".noinit")));
 /* Boot trace for a start that never reaches the main loop (first real-FM-1 test: after a power-off the FM-1 stays dark and ends in the chip's update mode):
  * [0] magic, [1] the stage this attempt has reached, [2] the stage the previous attempt had reached, [3] attempts since the last good start.  Read with tools/fm1_peek.py in update mode. */
 volatile uint32_t octavio_boot[4] __attribute__((section(".noinit")));
