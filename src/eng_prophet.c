@@ -303,12 +303,31 @@ static void proph_voice(proph_t *m, pvoice_t *v, int32_t *out, int n, const int3
     v->fade = 0;
 }
 
+/* The second core (CPU1, main.c OCT_CPU1): the voices of a chord are shared between the two cores, odd ones to CPU1 (a job: proph_job) into pj_out, the rest by CPU0 into out; CPU0 adds the two when
+ * the job is back. A voice is only ever touched by one core; the shared tables and the block's ramps are read only. If CPU1 is off, retired (it misread, faulted or was late: FM1_CPU1_FALLBACK 1) or
+ * the job cannot be handed over, CPU0 renders everything itself (a dropped job's voices are rendered by CPU0 after the wait). */
+static int32_t pr_cutc[16], pr_tua[16], pr_tub[16];
+#ifdef OCT_CPU1
+static struct { proph_t *m; int n; uint32_t mask; } pj;
+static int32_t pj_out[256];
+static void proph_job(uint32_t unused)
+{
+    int i;
+    (void)unused;
+    for (i = 0; i < PR_NV; i++)
+        if ((pj.mask >> i) & 1u) proph_voice(pj.m, &pj.m->V[i], pj_out, pj.n, pr_cutc, pr_tua, pr_tub);
+}
+int proph_c1_state(void) { return fm1_cpu1_on ? 1 : fm1_cpu1_gave_up ? 2 : 0; }
+#else
+int proph_c1_state(void) { return 0; }
+#endif
+
 void proph_render(int t, int32_t *out, int n)
 {
     proph_t *m = &PR[t];
     int i, ch, nch = (n + 7) >> 3;
     int32_t cut0, ta0, tb0, rq = n > 0 ? 65536 / n : 0;                /* 1 / n, Q16: the ramp position of sample i is i * rq */
-    int32_t cutc[16], tua[16], tub[16];
+    int32_t *cutc = pr_cutc, *tua = pr_tua, *tub = pr_tub;
     if (m->dirty) proph_derive(m);
     if (!m->si) { m->si = 1; m->cut_s = m->cut16; m->tuna_s = m->tuna; m->tunb_s = m->tunb; }
     cut0 = m->cut_s; ta0 = m->tuna_s; tb0 = m->tunb_s;
@@ -319,7 +338,35 @@ void proph_render(int t, int32_t *out, int n)
         tub[ch] = tb0 + (int32_t)(((int64_t)(m->tunb - tb0) * (e8 * rq)) >> 16);
     }
     for (i = 0; i < n; i++) out[i] = 0;
+#ifdef OCT_CPU1
+    if (fm1_cpu1_on && n <= 256) {
+        uint32_t m0 = 0, m1 = 0;
+        int na = 0, handed = 0;
+        for (i = 0; i < PR_NV; i++)
+            if (m->V[i].a.st && !m->V[i].sus) { if (na++ & 1) m1 |= 1u << i; else m0 |= 1u << i; }
+        if (m1) {
+            for (i = 0; i < n; i++) pj_out[i] = 0;
+            pj.m = m; pj.n = n; pj.mask = m1;
+            fm1_cpu1_sync();
+            if (fm1_cpu1_run(proph_job, 0)) {
+                handed = 1;
+                for (i = 0; i < PR_NV; i++) if ((m0 >> i) & 1u) proph_voice(m, &m->V[i], out, n, cutc, tua, tub);
+                if (fm1_cpu1_wait() == 0) {
+                    fm1_cpu1_sync();
+                    for (i = 0; i < n; i++) out[i] += pj_out[i];
+                } else
+                    for (i = 0; i < PR_NV; i++) if ((m1 >> i) & 1u) proph_voice(m, &m->V[i], out, n, cutc, tua, tub);       /* retired: CPU0 does the dropped job */
+            }
+        }
+        if (!handed)                                                     /* one voice, or the job could not be handed over: all here */
+            for (i = 0; i < PR_NV; i++) if (((m0 | m1) >> i) & 1u) proph_voice(m, &m->V[i], out, n, cutc, tua, tub);
+        goto summed;
+    }
+#endif
     for (i = 0; i < PR_NV; i++) if (m->V[i].a.st && !m->V[i].sus) proph_voice(m, &m->V[i], out, n, cutc, tua, tub);
+#ifdef OCT_CPU1
+summed:
+#endif
     for (i = 0; i < n; i++) {                                           /* the voices' sum: the DC blocker (once, not per voice), then a soft limit (slope 1 near zero): no clipping whatever the chord */
         int32_t o = (int32_t)(((int64_t)out[i] * ENGINE_TRIM_Q15) >> 15);          /* the engine trim (voices.c): the sum enters the soft limit lower, a chord stays in its linear part */
         m->dcs += (int32_t)(((int64_t)((o << 8) - m->dcs) * 4294967) >> 32);          /* .001 */

@@ -579,7 +579,7 @@ void hud_block(uint32_t t_in, uint32_t d)             /* end of an audio block (
             if (TK[t].eng == ENG_MOOG && moog_active(t)) hud.nm++;
             for (q = 0; q < 8; q++) { hud.run += (uint8_t)(fx_run[t] >> q & 1); hud.off += (uint8_t)(fx_off[t] >> q & 1); }
         }
-        hud.cd = (uint8_t)dv_cap; hud.cp = (uint8_t)pv_cap; hud.eco = pv_eco;
+        hud.cd = (uint8_t)dv_cap; hud.cp = (uint8_t)pv_cap; hud.eco = pv_eco; hud.c1 = (uint8_t)proph_c1_state();
         hud.fps = hud.nfr - hud.nfr0; hud.nfr0 = hud.nfr;
         hud.acc = hud.mx = hud.n = hud.jmx = 0;
         hud.ver++;

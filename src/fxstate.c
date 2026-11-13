@@ -147,7 +147,7 @@ struct {
     uint32_t jit, jitall;                                /* the ISR entry spacing deviating from one block: worst of the last second / since boot, permille of a block */
     uint32_t acc, mx, n, jmx, last_in;                   /* the running window */
     uint32_t fps, nfr, nfr0;                             /* LCD frames per second */
-    uint8_t np, nd, nm, run, off, cd, cp, eco;                /* Prophet voices, drum voices, Minimoog tracks sounding; FX slots running / bypassed; the governor's drum and Prophet voice caps */
+    uint8_t np, nd, nm, run, off, cd, cp, eco, c1;                /* Prophet voices, drum voices, Minimoog tracks sounding; FX slots running / bypassed; the governor's drum and Prophet voice caps */
     uint8_t mt;                                          /* MAXTRACKS: the limit (the HUD shows it) */
     uint32_t keys, btn;                                  /* the debounced note keys (bit n = key n) and buttons the scan reports now (the HUD's input line: first real-FM-1 test) */
     uint8_t kmax;                                        /* most note keys seen down at once since the start */

@@ -10,7 +10,7 @@
  * CPU: only slots with Mix > 0 cost anything; the budget of fxstate.c admits them (fx_run) or bypasses them (fx_off); a track whose engine is silent and whose chain has
  * been silent for FX_IDLE_BLOCKS blocks sleeps (no processing at all). */
 
-#define FXPOOL_N 36832u                 /* samples (72 KB) of delay-line pool PER TRACK */
+#define FXPOOL_N 36288u                 /* samples (72 KB) of delay-line pool PER TRACK */
 static int16_t fxpool[FX_NTRK][FXPOOL_N] __attribute__((aligned(4)));
 static const int16_t *FV;                /* the parameters (thousandths, FX_NP of them from P_F0DRIVE) of the track being processed */
 #define FVAL(id) (FV[(id) - P_F0DRIVE])

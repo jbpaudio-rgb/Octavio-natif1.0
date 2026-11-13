@@ -13,9 +13,11 @@ python3 "$HERE/tools/gen_tables.py"
 $CC -c "$BSP/chip/crt0.S" -o "$OUT/crt0.o"
 $CC -c "$BSP/chip/fm1_vec.S" -o "$OUT/vec.o"
 $CC -c "$BSP/chip/fm1_isr.S" -o "$OUT/isr.o"
+CPU1O=""
+case "$XCFLAGS" in *NO_CPU1*) ;; *) $CC -c "$BSP/chip/fm1_cpu1.S" -o "$OUT/cpu1.o"; CPU1O="$OUT/cpu1.o" ;; esac
 $CC -Os -ffunction-sections -fno-builtin -Wall -Wno-unused-function $XCFLAGS \
     -I"$BSP/chip" -I"$BSP/boards/fm1" -I"$HERE/src" -c "$HERE/src/main.c" -o "$OUT/main.o"
-"$TC/pi32v2/bin/ld" -T "$HERE/app.ld" "$OUT/crt0.o" "$OUT/vec.o" "$OUT/isr.o" "$OUT/main.o" -o "$OUT/octavio.elf" -Map "$OUT/octavio.map" 2>&1 | head -20
+"$TC/pi32v2/bin/ld" -T "$HERE/app.ld" "$OUT/crt0.o" "$OUT/vec.o" "$OUT/isr.o" $CPU1O "$OUT/main.o" -o "$OUT/octavio.elf" -Map "$OUT/octavio.map" 2>&1 | head -20
 "$TC/common/bin/objcopy" -O binary -j .text "$OUT/octavio.elf" "$OUT/text.bin"
 "$TC/common/bin/objcopy" -O binary -j .data "$OUT/octavio.elf" "$OUT/data.bin"
 "$TC/common/bin/objcopy" -O binary -j .ram_text "$OUT/octavio.elf" "$OUT/rt.bin"

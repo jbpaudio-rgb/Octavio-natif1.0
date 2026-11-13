@@ -8,10 +8,18 @@
 #define FELUCCA_ID "FM-1_2000"
 #define RING_PUBLISH() __asm__ volatile("" ::: "memory")
 #define PERSIST_FLASH 1
+#ifndef NO_CPU1
+#define OCT_CPU1 1                /* the second core renders half of a Prophet chord (eng_prophet.c); -DNO_CPU1 builds without it */
+#define FM1_CPU1 1                /* fm1_irq.h hands the second core's faults to fm1_cpu1.h */
+#define FM1_CPU1_FALLBACK 1       /* a misread, a fault or a late job: one core until power-off, no restart */
+#endif
 #include "fm1_time.h"
 #include "fm1_sys.h"
 #include "fm1_irq.h"
 #include "fm1_guard.h"
+#ifdef OCT_CPU1
+#include "fm1_cpu1.h"
+#endif
 #include "fm1_timer.h"
 #include "fm1_input.h"
 #include "fm1_adc.h"
@@ -595,6 +603,10 @@ void fm1_cstart(void)
 #ifndef NO_PERF
     perf_stack_paint();
     perf.magic = 0x4A504552u;
+#endif
+#ifdef OCT_CPU1
+    fm1_cpu1_bar_build(0x4F435431u);            /* at power-on, interrupts off, before the audio and the timers: the start that works (fm1_cpu1.h); if it does not answer: one core */
+    (void)fm1_cpu1_start();
 #endif
     fm1_guard_enable(FM1_GUARD_STACK | FM1_GUARD_WRITE | FM1_GUARD_BUS | FM1_GUARD_PC);
     app_main();
