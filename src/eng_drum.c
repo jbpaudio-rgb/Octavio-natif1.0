@@ -14,7 +14,7 @@
 typedef struct { int32_t tf, dfi, tn, g, hd, pe, at, dr, drinv, fl_c; int8_t fl_t; } dpar_t;
 typedef struct {
     uint8_t on, kill;                                    /* kill: samples of fade-out left (a choke or the governor takes the voice: a 32-sample ramp, then off) */
-    int32_t t, vel, e, l, l2, fl, fh;
+    int32_t t, vel, e, l, l2, fl, fh, ce;                 /* ce: the sampled machines' level follower */
     uint32_t ph, ph2, m[6];
     uint32_t minc[6]; int32_t mtf, mm;                   /* the six metal increments for the (tf, m16) they were computed with */
     uint16_t xa[6], xb[6];                               /* control-rate envelopes (exc): value at the last 8-sample boundary / the next one, per call site */
@@ -228,9 +228,13 @@ static int32_t dvoice_core(int ty, dvoice_t *V, int k, const dpar_t *pr)
 static int32_t dvoice(int ty, dvoice_t *V, int k, const dpar_t *pr)
 {
     int32_t o = dvoice_core(ty, V, k, pr);
-    if (k == 3 || k == 4) {                                           /* the sampled machines: the Linn 9 bits, the DMX 8; a sample ends, so below a small threshold the tail is taken away (smoothly: the part above it stays) */
-        int sh = k == 3 ? 7 : 8, th = k == 3 ? 384 : 512, neg = o < 0, m = neg ? -o : o;
-        m = m > th ? ((m - th) >> sh) << sh : 0;                       /* truncation toward zero: no crackle left in a quiet tail */
+    if (k == 3 || k == 4) {                                           /* the sampled machines: the Linn 9 bits, the DMX 8. The steps of a quantiser show most on a quiet tail (and a gate at a threshold crackles), so the crush fades in with the voice's level and the quiet end is a plain smooth expander: nothing is gated, nothing is stepped */
+        int sh = k == 3 ? 7 : 8, neg = o < 0, m = neg ? -o : o, g, c;
+        V->ce = m > V->ce ? m : V->ce - (V->ce >> 8) - (V->ce > 0);   /* peak follower, ~6 ms release */
+        g = V->ce >= 2048 ? 32768 : V->ce << 4;                        /* 0..1 over the last 2048 of the 32768 */
+        c = ((m + (1 << (sh - 1))) >> sh) << sh;                       /* the crushed sample */
+        m += (int32_t)(((int64_t)(c - m) * g) >> 15);                  /* crush weight = level */
+        m = (int32_t)(((int64_t)m * g) >> 15);                         /* expander: the tail closes smoothly */
         o = neg ? -m : m;
     }
     return o;
@@ -301,7 +305,7 @@ void drum_hit(int t, int v, int vel15)
     int j;
     if (!d || v < 0 || v > 5) return;
     V = &d->V[v];
-    V->on = 1; V->kill = 0; V->t = 0; V->vel = vel15; V->ph = V->ph2 = 0; V->l = V->l2 = V->fl = V->fh = 0; V->e = 32768 << 8;
+    V->on = 1; V->kill = 0; V->t = 0; V->vel = vel15; V->ph = V->ph2 = 0; V->l = V->l2 = V->fl = V->fh = V->ce = 0; V->e = 32768 << 8;
     for (j = 0; j < 6; j++) V->m[j] = 0;
     V->minc[0] = 0;
     if (d->p[v * DR_PER + DR_TYPE] == 2)
