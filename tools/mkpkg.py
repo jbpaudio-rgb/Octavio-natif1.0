@@ -48,6 +48,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--bin", default=str(ROOT / "build/octavio.bin"))
     ap.add_argument("--out", default=str(ROOT / "build/octavio.fwsc"))
+    ap.add_argument("--product", default=PRODUCT)                  # must equal the image's FELUCCA_ID
     a = ap.parse_args()
     tc = Path(os.environ["JIELI_TOOLCHAIN"])
     bsp = ROOT / "bsp"
@@ -64,7 +65,7 @@ def main():
     assert 0 < len(image) <= 0x14000
     (ldr / "ota.bin").write_bytes(wrap(image))
     print(f"loader: {len(image)} B -> ota.bin {(ldr / 'ota.bin').stat().st_size} B")
-    run(sys.executable, bsp / "tools/fm1pkg.py", a.bin, ldr / "ota.bin", a.out, "--product", PRODUCT)
+    run(sys.executable, bsp / "tools/fm1pkg.py", a.bin, ldr / "ota.bin", a.out, "--product", a.product)
 
 
 main()
