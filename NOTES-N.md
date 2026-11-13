@@ -14,3 +14,7 @@
 - Governor with FX on CPU1: a quarter of the FX cost, admission up to 72 %, voices are shed before effects unless CPU0 waits (hud.fxw > 5 %) or one block exceeds 90 %.
 - HUD line `FX C1 JOB / WAIT` (percent of a block). Measured on the FM-1: flanger + chorus JOB 3.2 %, WAIT 0.0, LOST 0, jitter 0.3 %.
 - Open: a one-off 94 % peak seen once with the first FX build (not reproduced); the FX state holds pointers, so a CPU1 misread of shared RAM is a theoretical corruption risk (fallback build: octavio-c1-drums-1205).
+
+## Octavio 1.0
+Release `octavio-1.0.fwsc` (OCT_VERSION in octavio.h, shown under the logo at start-up). Content: Prophet, drums and effect chains shared with CPU1 (governor adapted), synth note-step sequencer (SEQ once; REC while playing records into the nearest step; the pitch editor on a second press, its line's OP key lit), opens on HOME with the ocTavio logo (assets/octavio_logo.png, tools/gen_logo.py), factory presets, HOLD on SEL, empty sequencer at start.
+Not in 1.0: the note steps' notes are not saved with presets; no shutdown image (the firmware gets no power-off event).

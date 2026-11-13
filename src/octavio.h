@@ -19,6 +19,7 @@
 /* ---- fonts (assets_gen.c: Chrome renders of the prototype's glyphs, 8-bit coverage) ---- */
 typedef struct { uint16_t off; uint8_t w, h; int8_t dx, dy; } glyph_t;
 typedef struct { const glyph_t *g; const uint8_t *d; const uint8_t *map; uint8_t n; uint16_t adv64, size64; } font_t;   /* g: [4 sub-pixel phases][n] */
+#define OCT_VERSION "1.0"                                  /* the firmware release (the start-up screen shows it) */
 enum { F_TITLE, F_LABEL, F_VALUE, F_GNUM, F_HEN, F_MBI, F_MBB, F_STT, F_TBIG, F_TSM, F_MCH, F_SQL, F_SQV, F_OV_PT, F_OV_ROW, F_OV_CH, F_OV_HINT, F_OV_PN, F_OV_TST, F_OV_SM, F_DQL, F_COUNT };     /* F_GNUM: the graphs' time label, proportional (envgraph.c) */
 extern const font_t FONTS[F_COUNT];
 extern const uint8_t KNOB_BIGP[];                 /* the one knob skin (the Prophet's), small ones: ui.c */

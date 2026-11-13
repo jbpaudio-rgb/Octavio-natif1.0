@@ -163,6 +163,7 @@ static void draw_splash(void)                               /* the start-up scre
     gfx_rect(0, 0, SCR_W, SCR_H, C_PAPER, 256);
     gfx_mask(LOGO_MASK, (SCR_W - LOGO_W) / 2, 112, LOGO_W, LOGO_H, 0x0a0a0au);
     gfx_rect((SCR_W - LOGO_W) / 2, 112 + LOGO_H + 8, LOGO_W, 2, C_RED, 256);
+    text_c(F_OV_SM, "V" OCT_VERSION, 120, 112 + LOGO_H + 26, 0x6a6862u, 17);
 }
 void overlay_draw(void)
 {
