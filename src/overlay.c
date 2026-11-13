@@ -11,6 +11,7 @@
 #define C_DKRED 0xb02a14u
 #define C_LINE  0x3a3a3au
 
+#include "logo_gen.h"
 static void text_c(int f, const char *s, int cx, int base, uint32_t col, int32_t ls)    /* centred on cx (px) */
 {
     int32_t w = gfx_text_w64(f, s, ls) - ls;
@@ -157,12 +158,11 @@ static void draw_hud(void)
 #endif
 }
 
-static void draw_splash(void)                               /* the start-up screen: the name, over everything */
+static void draw_splash(void)                               /* the start-up screen: the Octavio logo (a black mask) on paper, over everything */
 {
-    gfx_rect(0, 0, SCR_W, SCR_H, 0x000000u, 256);
-    text_c(F_OV_PT, "OCTAVIO", 120, 112, C_PAPER, 24);
-    gfx_rect(70, 124, 100, 2, C_RED, 256);
-    text_c(F_OV_SM, "FM-1 ENGINES", 120, 146, C_RED, 17);
+    gfx_rect(0, 0, SCR_W, SCR_H, C_PAPER, 256);
+    gfx_mask(LOGO_MASK, (SCR_W - LOGO_W) / 2, 112, LOGO_W, LOGO_H, 0x0a0a0au);
+    gfx_rect((SCR_W - LOGO_W) / 2, 112 + LOGO_H + 8, LOGO_W, 2, C_RED, 256);
 }
 void overlay_draw(void)
 {
