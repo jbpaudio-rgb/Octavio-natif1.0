@@ -34,8 +34,8 @@ enum { DR_KIT, DR_TYPE, DR_KV, DR_TUNE, DR_DECAY, DR_TONE, DR_LEVEL, DR_ATK, DR_
 enum { ARP_MODE, ARP_OCT, ARP_RATE, ARP_GATE, ARP_SW, ARP_LATCH, ARP_ACC, ARP_CHANCE, ARP_TR, ARP_REP, ARP_HUM, ARP_PAT,
        ARP_COUNT };
 void voices_init(void);
-void voices_hold(int on);                            /* HOLD (SEL): the keys let go keep sounding / arp latch; off lets them go */
-int  voices_hold_get(void);
+void voices_hold(int t, int on);                            /* HOLD (SEL): the keys let go keep sounding / arp latch; off lets them go */
+int  voices_hold_get(int t);                          /* HOLD of a track (per track) */
 void voices_keys(uint32_t notes);                    /* the 27 key bits, every audio block: edges become kOnT / kOffT */
 void voices_note(int t, int note, int on);           /* kOnT / kOffT of a track directly (MIDI, sequencer) */
 void voices_render(int32_t *out, int n);             /* Q15 mono: engines -> mix -> tanh */

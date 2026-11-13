@@ -16,5 +16,5 @@
 - Open: a one-off 94 % peak seen once with the first FX build (not reproduced); the FX state holds pointers, so a CPU1 misread of shared RAM is a theoretical corruption risk (fallback build: octavio-c1-drums-1205).
 
 ## Octavio 1.0
-Release `octavio-1.0.fwsc` (OCT_VERSION in octavio.h, shown under the logo at start-up). Content: Prophet, drums and effect chains shared with CPU1 (governor adapted), synth note-step sequencer (SEQ once; REC while playing records into the nearest step; the pitch editor on a second press, its line's OP key lit), opens on HOME with the ocTavio logo (assets/octavio_logo.png, tools/gen_logo.py), factory presets, HOLD on SEL, empty sequencer at start.
+Release `octavio-1.0.fwsc` (OCT_VERSION in octavio.h, shown under the logo at start-up). Content: Prophet, drums and effect chains shared with CPU1 (governor adapted), synth note-step sequencer (SEQ once; REC while playing records into the nearest step; the pitch editor on a second press, its line's OP key lit), opens on HOME with the ocTavio logo (assets/octavio_logo.png, tools/gen_logo.py), factory presets, HOLD on SEL (per track: each track keeps its own held notes), empty sequencer at start.
 Not in 1.0: the note steps' notes are not saved with presets; no shutdown image (the firmware gets no power-off event).

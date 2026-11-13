@@ -411,7 +411,7 @@ static void btn(int t, uint32_t ms)                /* btn(): a button's action (
     else if (t == CB_REC) { rec = !rec; }
     else if (t == CB_ARP) { pg = PGN_ARP; arp_sub = 0; }
     else if (t == CB_SEL && pg == PGN_FXO) fxo = (fxo + 1) % FX_NSLOT;
-    else if (t == CB_SEL) { int h = !voices_hold_get(); voices_hold(h); toast("HOLD", h ? "ON" : "OFF", ms); bump(); return; }      /* SEL where it has no other meaning (the patch matrix pin, the name editor and the FX ORDER slot keep theirs) */
+    else if (t == CB_SEL) { int h = !voices_hold_get(sel); char a[8] = "HOLD T1"; a[6] = (char)('1' + (sel & 3)); voices_hold(sel, h); toast(a, h ? "ON" : "OFF", ms); bump(); return; }      /* SEL where it has no other meaning (the patch matrix pin, the name editor and the FX ORDER slot keep theirs) */
     else if (t == CB_SAVE) { save_preset(); return; }
     else return;                                    /* "Not assigned" */
     bump();
@@ -807,7 +807,7 @@ uint32_t ctrl_lit(void)                             /* #bt .on: the page's butto
     else if (pg == PGN_HOME) m |= 1u << CB_HOME;
     if (auto_play) m |= 1u << CB_PLAY;
     if (rec) m |= 1u << CB_REC;
-    if (voices_hold_get()) m |= 1u << CB_SEL;
+    if (voices_hold_get(sel)) m |= 1u << CB_SEL;
     return m;
 }
 int ctrl_splash(void) { return splash_until != 0; }

@@ -730,6 +730,20 @@ int main(int argc, char **argv)
                 }
                 ui_seq_select(0, -1); psq = 0; pg = PGN_GLO;
             }
+            {   /* HOLD per track: a track's held notes stay when another track is played, and each track's HOLD is its own */
+                voices_select(0); voices_hold(0, 1); voices_hold(1, 0);
+                voices_keys(0); voices_keys(1u << 3); voices_keys(0);
+                CHECK(hold_c[0] == 1, "track 1 HOLD on: the released key is held (%d)", hold_c[0]);
+                voices_select(1);
+                voices_keys(1u << 5); voices_keys(0);
+                CHECK(hold_c[0] == 1 && hold_c[1] == 0, "track 2 (HOLD off) plays and lets go; track 1 still holds (%d %d)", hold_c[0], hold_c[1]);
+                voices_hold(1, 1); voices_keys(0); voices_keys(1u << 6); voices_keys(0);
+                CHECK(hold_c[0] == 1 && hold_c[1] == 1, "track 2 HOLD on: its own note is held, track 1's too (%d %d)", hold_c[0], hold_c[1]);
+                voices_hold(0, 0); voices_keys(0);
+                CHECK(hold_c[0] == 0 && hold_c[1] == 1, "track 1 HOLD off lets its notes go, track 2 keeps its own (%d %d)", hold_c[0], hold_c[1]);
+                voices_hold(1, 0); voices_keys(0); voices_select(0);
+                CHECK(hold_c[1] == 0, "track 2 HOLD off");
+            }
             printf("synth note steps: SEQ once, key = step on / select, SELECT = note, SEQ again = pitch editor\n");
             pg = PGN_GLO; state_defaults();
         }

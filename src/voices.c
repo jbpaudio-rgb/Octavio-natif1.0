@@ -415,44 +415,61 @@ void voices_note(int t, int note, int on)
     }
 }
 
-/* HOLD (the SEL button): the keys let go stay sounding (a sustain pedal: the arpeggiator latches too, it gets no note-off); pressing keys again after all were let go
- * replaces the held chord; HOLD off lets everything go. The request comes from the main loop, the ISR applies it. */
-static volatile uint8_t hold_req;
-static uint8_t hold_on;
-static uint32_t hold_set;                       /* keys let go while HOLD was on: their notes still sound */
-void voices_hold(int on) { hold_req = on ? 1 : 0; }
-int voices_hold_get(void) { return hold_req; }
-static void hold_release(uint32_t m)
+/* HOLD (the SEL button), per track: the keys let go on a track whose HOLD is on stay sounding (a sustain pedal: the arpeggiator latches too, it gets no note-off); pressing keys again after all were
+ * let go replaces that track's held chord; that track's HOLD off lets its notes go. Each track keeps its own held notes, so changing track neither drops nor moves them. The request comes
+ * from the main loop, the ISR applies it. */
+static volatile uint8_t hold_req[4];
+static uint8_t hold_on[4];
+static uint8_t hold_n[4][8], hold_c[4];          /* the notes let go while the track's HOLD was on */
+void voices_hold(int t, int on) { hold_req[t & 3] = on ? 1 : 0; }
+int voices_hold_get(int t) { return hold_req[t & 3]; }
+static void hold_free(int t)                      /* all of track t's held notes go */
 {
-    int i;
-    for (i = 0; m && i < 27; i++)
-        if ((m >> i) & 1u) {
-            m &= ~(1u << i);
-            if (key_trk[i] != 255) voices_note(key_trk[i], key_note[i], 0);
+    int k;
+    for (k = 0; k < hold_c[t]; k++) voices_note(t, hold_n[t][k], 0);
+    hold_c[t] = 0;
+}
+static void hold_add(int t, int note)
+{
+    int k;
+    for (k = 0; k < hold_c[t]; k++) if (hold_n[t][k] == note) return;
+    if (hold_c[t] == 8) { voices_note(t, hold_n[t][0], 0); for (k = 0; k < 7; k++) hold_n[t][k] = hold_n[t][k + 1]; hold_c[t] = 7; }
+    hold_n[t][hold_c[t]++] = (uint8_t)note;
+}
+static void hold_retake(int t, int note)          /* a held note played again: its old note goes first, then the new one starts */
+{
+    int k;
+    for (k = 0; k < hold_c[t]; k++)
+        if (hold_n[t][k] == note) {
+            voices_note(t, note, 0);
+            for (; k + 1 < hold_c[t]; k++) hold_n[t][k] = hold_n[t][k + 1];
+            hold_c[t]--;
+            return;
         }
 }
 void voices_keys(uint32_t now)
 {
     uint32_t ch;
     int i;
-    if (hold_req != hold_on) {
-        if (!hold_req) { hold_release(hold_set); hold_set = 0; }
-        hold_on = hold_req;
-    }
-    if (hold_on && !keys_prev_v && now && hold_set) { hold_release(hold_set); hold_set = 0; }       /* a new chord replaces the held one */
+    for (i = 0; i < 4; i++)
+        if (hold_req[i] != hold_on[i]) {
+            if (!hold_req[i]) hold_free(i);
+            hold_on[i] = hold_req[i];
+        }
+    if (!keys_prev_v && now && hold_on[sel_t] && hold_c[sel_t]) hold_free(sel_t);       /* a new chord replaces the track's held one */
     ch = now ^ keys_prev_v;
     for (i = 0; ch && i < 27; i++)
         if ((ch >> i) & 1u) {
             ch &= ~(1u << i);
             if ((now >> i) & 1u) {
                 if (ctrl_bank_key_cb(i)) { key_trk[i] = 255; continue; }     /* HOME held / SAVE BANK: the white keys pick a bank */
-                if ((hold_set >> i) & 1u) { hold_set &= ~(1u << i); hold_release(1u << i); }      /* a held key pressed again: restart its note */
                 key_note[i] = (uint8_t)ui_note_of_key(i);
                 key_trk[i] = sel_t;
+                hold_retake(sel_t, key_note[i]);
                 voices_note(sel_t, key_note[i], 1);
                 seq_rec_note(sel_t, key_note[i]);
             } else if (key_trk[i] != 255) {
-                if (hold_on) hold_set |= 1u << i;
+                if (hold_on[key_trk[i] & 3]) hold_add(key_trk[i] & 3, key_note[i]);
                 else voices_note(key_trk[i], key_note[i], 0);
             } else
                 ctrl_key_rel_cb(i);
