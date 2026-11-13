@@ -205,6 +205,18 @@ static int seq_pitch(int t, int cur)
     }
     return semi;
 }
+int ctrl_rec(void);
+int ctrl_playing(void);
+static void seq_rec_note(int t, int note)           /* REC while playing: a key played on a synth track goes into the step it is nearest to (the second half of a step: the next one), turned on, with the note as played */
+{
+    int cur, off;
+    int32_t sl = (FS * 15) / bpm_v;
+    if (!seq_on || seq_cur < 0 || TK[t].eng == ENG_DRUM || !ctrl_rec() || !ctrl_playing()) return;
+    cur = seq_cnt < sl / 2 ? (seq_cur + 1) & 15 : seq_cur;
+    off = note - (60 + 12 * ctrl_octave_val()) - seq_pitch(t, cur);
+    ui_seq_note_set(t, cur, off);
+    if (!((ui_seq_gates(t) >> cur) & 1u)) ui_seq_gate_flip(t, cur);
+}
 static void seq_synth(int t, int cur, int32_t sl)
 {
     int note;
@@ -438,6 +450,7 @@ void voices_keys(uint32_t now)
                 key_note[i] = (uint8_t)ui_note_of_key(i);
                 key_trk[i] = sel_t;
                 voices_note(sel_t, key_note[i], 1);
+                seq_rec_note(sel_t, key_note[i]);
             } else if (key_trk[i] != 255) {
                 if (hold_on) hold_set |= 1u << i;
                 else voices_note(key_trk[i], key_note[i], 0);

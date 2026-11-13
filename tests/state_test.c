@@ -704,6 +704,20 @@ int main(int argc, char **argv)
             CHECK(ctrl_page() == PGN_SEQ, "SEQ again: the pitch editor (page %d)", ctrl_page());
             press(CB_SEQ);
             CHECK(ctrl_page() == PGN_DSEQ, "SEQ again: back to the note steps (page %d)", ctrl_page());
+            {   /* REC while playing: a played key goes into the step it is nearest to */
+                int k, s0;
+                T += 5000; press(CB_REC); press(CB_PLAY);
+                { static int32_t rb[128]; for (k = 0; k < 400 && voices_seq_cur() < 0; k++) voices_render(rb, 128); }
+                CHECK(ctrl_rec() && ctrl_playing() && voices_seq_cur() >= 0, "REC + PLAY: the sequencer runs");
+                s0 = voices_seq_cur();
+                seq_cnt = (FS * 15) / bpm_v;                              /* just after the step started: it is this step's */
+                seq_rec_note(0, 60 + 12 * ctrl_octave_val() + 7);
+                CHECK(((ui_seq_gates(0) >> s0) & 1) && ui_seq_note(0, s0) == 7 - seq_pitch(0, s0), "a key recorded into the playing step (%d, note %d)", s0, ui_seq_note(0, s0));
+                seq_cnt = 100;                                          /* the end of the step: the next one */
+                seq_rec_note(0, 60 + 12 * ctrl_octave_val() + 2);
+                CHECK(((ui_seq_gates(0) >> ((s0 + 1) & 15)) & 1) && ui_seq_note(0, (s0 + 1) & 15) == 2 - seq_pitch(0, (s0 + 1) & 15), "late in the step: the next step, less the pitch line there (note %d)", ui_seq_note(0, (s0 + 1) & 15));
+                press(CB_PLAY); press(CB_REC);
+            }
             printf("synth note steps: SEQ once, key = step on / select, SELECT = note, SEQ again = pitch editor\n");
             pg = PGN_GLO; state_defaults();
         }

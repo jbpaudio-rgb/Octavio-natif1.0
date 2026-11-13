@@ -757,7 +757,7 @@ int ctrl_nseq_step(void) { return ns_sel; }
 int ctrl_dseq_key(int w)
 {
     uint16_t g;
-    if (cur_engine() != ENG_DRUM && pg == PGN_DSEQ && !HELD(CB_HOME) && !sc_mode && w >= 0 && w <= 15) {          /* the note steps of a synth: an off step turns on and is selected; an on step is selected, then a second tap turns it off */
+    if (cur_engine() != ENG_DRUM && pg == PGN_DSEQ && !(rec && auto_play) && !HELD(CB_HOME) && !sc_mode && w >= 0 && w <= 15) {          /* (recording while playing: the white keys play and record, they are not steps)           /* the note steps of a synth: an off step turns on and is selected; an on step is selected, then a second tap turns it off */
         int on = (ui_seq_gates(sel) >> w) & 1;
         if (!on) { ui_seq_gate_flip(sel, w); ns_sel = (int8_t)w; }
         else if (ns_sel == w) ui_seq_gate_flip(sel, w);
