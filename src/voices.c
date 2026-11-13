@@ -403,21 +403,45 @@ void voices_note(int t, int note, int on)
     }
 }
 
+/* HOLD (the SEL button): the keys let go stay sounding (a sustain pedal: the arpeggiator latches too, it gets no note-off); pressing keys again after all were let go
+ * replaces the held chord; HOLD off lets everything go. The request comes from the main loop, the ISR applies it. */
+static volatile uint8_t hold_req;
+static uint8_t hold_on;
+static uint32_t hold_set;                       /* keys let go while HOLD was on: their notes still sound */
+void voices_hold(int on) { hold_req = on ? 1 : 0; }
+int voices_hold_get(void) { return hold_req; }
+static void hold_release(uint32_t m)
+{
+    int i;
+    for (i = 0; m && i < 27; i++)
+        if ((m >> i) & 1u) {
+            m &= ~(1u << i);
+            if (key_trk[i] != 255) voices_note(key_trk[i], key_note[i], 0);
+        }
+}
 void voices_keys(uint32_t now)
 {
-    uint32_t ch = now ^ keys_prev_v;
+    uint32_t ch;
     int i;
+    if (hold_req != hold_on) {
+        if (!hold_req) { hold_release(hold_set); hold_set = 0; }
+        hold_on = hold_req;
+    }
+    if (hold_on && !keys_prev_v && now && hold_set) { hold_release(hold_set); hold_set = 0; }       /* a new chord replaces the held one */
+    ch = now ^ keys_prev_v;
     for (i = 0; ch && i < 27; i++)
         if ((ch >> i) & 1u) {
             ch &= ~(1u << i);
             if ((now >> i) & 1u) {
                 if (ctrl_bank_key_cb(i)) { key_trk[i] = 255; continue; }     /* HOME held / SAVE BANK: the white keys pick a bank */
+                if ((hold_set >> i) & 1u) { hold_set &= ~(1u << i); hold_release(1u << i); }      /* a held key pressed again: restart its note */
                 key_note[i] = (uint8_t)ui_note_of_key(i);
                 key_trk[i] = sel_t;
                 voices_note(sel_t, key_note[i], 1);
-            } else if (key_trk[i] != 255)
-                voices_note(key_trk[i], key_note[i], 0);
-            else
+            } else if (key_trk[i] != 255) {
+                if (hold_on) hold_set |= 1u << i;
+                else voices_note(key_trk[i], key_note[i], 0);
+            } else
                 ctrl_key_rel_cb(i);
         }
     keys_prev_v = now;
