@@ -121,7 +121,7 @@ static void draw_hud(void)
       p = " ALL "; for (i = 0; p[i]; i++) s[k++] = p[i]; for (i = 0; b[i]; i++) s[k++] = b[i]; s[k++] = '%'; s[k] = 0; }
     gfx_text(F_OV_HINT, s, 4 * 64, 22, hud.uf ? C_RED : C_GREY, 0, 0, SCR_W);
     k = 0; { const char *p = "VOICES PRO "; for (i = 0; p[i]; i++) s[k++] = p[i]; put_n(c, hud.np, 0); for (i = 0; c[i]; i++) s[k++] = c[i];
-      p = " DRUM "; for (i = 0; p[i]; i++) s[k++] = p[i]; put_n(c, hud.nd, 0); for (i = 0; c[i]; i++) s[k++] = c[i];
+      p = " DR "; for (i = 0; p[i]; i++) s[k++] = p[i]; put_n(c, hud.nd, 0); for (i = 0; c[i]; i++) s[k++] = c[i];
       p = " MOOG "; for (i = 0; p[i]; i++) s[k++] = p[i]; put_n(c, hud.nm, 0); for (i = 0; c[i]; i++) s[k++] = c[i];
       p = " C1"; for (i = 0; p[i]; i++) s[k++] = p[i]; s[k++] = hud.c1 == 1 ? '+' : hud.c1 == 2 ? '!' : '-'; s[k] = 0; }
     gfx_text(F_OV_HINT, s, 4 * 64, 33, C_GREY, 0, 0, SCR_W);
