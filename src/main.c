@@ -574,11 +574,15 @@ void fm1_cstart(void)
         guard.pending = 0;
         fm1_enter_uboot();
     }
+    octavio_boot[1] = 0x31;
     fm1_irq_init();
+    octavio_boot[1] = 0x32;
     for (d = _bss_start; d < _bss_end; d++)
         *d = 0;
+    octavio_boot[1] = 0x33;
     for (s = _data_load, d = _data_start; d < _data_end; s++, d++)
         *d = *s;
+    octavio_boot[1] = 0x34;
     for (s = _rt_load, d = _rt_start; d < _rt_end; s++, d++)
         *d = *s;
 #ifdef BOOTLOG
@@ -596,6 +600,7 @@ void fm1_cstart(void)
     perf_stack_paint();
     perf.magic = 0x4A504552u;
 #endif
+    octavio_boot[1] = 0x35;
     fm1_guard_enable(FM1_GUARD_STACK | FM1_GUARD_WRITE | FM1_GUARD_BUS | FM1_GUARD_PC);
     app_main();
     for (;;)
