@@ -203,7 +203,7 @@ int ui_scene(int *y0, int *y1)
     { static uint32_t hseen; static uint8_t hon; if (hud.on && (hud.ver != hseen || !hon)) dirty_all = 1; hseen = hud.ver; hon = hud.on; if (!hud.on && !hon) { } }
     if (dest_until && (int32_t)(last_ms - dest_until) >= 0) { dest_until = 0; dirty_all = 1; }
     if (page != PG_LFO && dest_until) { dest_until = 0; dirty_all = 1; }
-    if (v != seen || ctrl_overlay() != OV_NONE) { if (v != seen) ctrl_sync(); seen = v; dirty_all = 1; }
+    if (v != seen || ctrl_overlay() != OV_NONE || ctrl_splash()) { if (v != seen) ctrl_sync(); seen = v; dirty_all = 1; }
     if (dirty_all) { dirty_all = 0; dirty_top = 0; *y0 = 0; *y1 = SCR_H; return 1; }
     if (page == PG_DSEQ) { *y0 = 0; *y1 = 1; dirty_top = 0; return 1; }         /* nothing changed: one row (the cursor, the gates and the lane mark redraw everything through dirty_all) */
     *y0 = dirty_top || page == PG_HOME ? 0 : 124;

@@ -56,6 +56,8 @@ static char list_title[20], list_note[24];
 static int list_cur, list_n, list_kind;            /* kind 0 presets, 1 algorithm, 2 the drum kits */
 /* toast */
 static uint32_t toast_until;
+#define SPLASH_MS 1800u
+static uint32_t splash_until;                      /* the start-up screen (overlay.c) shows until then */
 static char toast_a[24], toast_b[24];
 /* name editor */
 static int pend, pend_ow, pend_k, nmP;
@@ -618,13 +620,15 @@ void ctrl_tick(uint32_t ms)
     now_ms = ms;
     if (list_until && (int32_t)(ms - list_until) >= 0) { list_until = 0; bump(); }
     if (toast_until && (int32_t)(ms - toast_until) >= 0) { toast_until = 0; bump(); }
+    if (splash_until && (int32_t)(ms - splash_until) >= 0) { splash_until = 0; bump(); }
     if (sc_mode && (int32_t)(ms - sc_until) >= 0) { sc_mode = 0; bump(); }
 }
 
 void ctrl_init(uint32_t ms)
 {
     int i;
-    pg = PGN_GLO; src = sel = fxo = oct = 0; auto_play = rec = 0; lt = bdn = dn_ = 0; chord = 0; pend = 0;
+    pg = PGN_HOME; src = sel = fxo = oct = 0; auto_play = rec = 0; lt = bdn = dn_ = 0; chord = 0; pend = 0;          /* it opens on HOME */
+    splash_until = ms + SPLASH_MS;
     for (i = 0; i < CB_COUNT; i++) lu[i] = ms - 1000u;
     pp_ws = ap_ws = sel_ws = -1;
     cur_bank = -1; sc_mode = 0;
@@ -806,6 +810,7 @@ uint32_t ctrl_lit(void)                             /* #bt .on: the page's butto
     if (voices_hold_get()) m |= 1u << CB_SEL;
     return m;
 }
+int ctrl_splash(void) { return splash_until != 0; }
 int ctrl_overlay(void) { return pend ? OV_NAME : list_until ? OV_LIST : OV_NONE; }
 
 int ctrl_list_rows(char rows[5][24], char tags[5][8], int cur[1], char *title, char *note)

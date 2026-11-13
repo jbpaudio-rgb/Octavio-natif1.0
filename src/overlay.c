@@ -157,9 +157,17 @@ static void draw_hud(void)
 #endif
 }
 
+static void draw_splash(void)                               /* the start-up screen: the name, over everything */
+{
+    gfx_rect(0, 0, SCR_W, SCR_H, 0x000000u, 256);
+    text_c(F_OV_PT, "OCTAVIO", 120, 112, C_PAPER, 24);
+    gfx_rect(70, 124, 100, 2, C_RED, 256);
+    text_c(F_OV_SM, "FM-1 ENGINES", 120, 146, C_RED, 17);
+}
 void overlay_draw(void)
 {
     int o = ctrl_overlay();
+    if (ctrl_splash()) { draw_splash(); return; }
     if (o == OV_LIST) draw_list();
     else if (o == OV_NAME) draw_name();
     draw_toast();
